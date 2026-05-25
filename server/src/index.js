@@ -3,6 +3,7 @@ const cors = require('cors')
 const bcrypt = require('bcryptjs')
 const jwt = require('jsonwebtoken')
 const db = require('./db')
+const path = require('path')
 
 const app = express()
 const PORT = process.env.PORT || 4000
@@ -199,6 +200,14 @@ app.post('/api/sessions', requireAuth, (req, res) => {
   }
 
   res.status(201).json({ message: 'Session enregistrée.' })
+})
+
+// Servir les fichiers statiques du frontend en production
+app.use(express.static(path.join(__dirname, '../../client/dist')))
+
+// Fallback pour React Router (SPA)
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../../client/dist/index.html'))
 })
 
 app.listen(PORT, () => {

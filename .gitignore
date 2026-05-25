@@ -4,3 +4,22 @@ server/node_modules/
 server/data/*.db
 server/data/*.db-*
 *.log
+
+# Environment files (secrets)
+.env
+.env.local
+.env.*.local
+server/.env
+server/.env.local
+server/.env.production
+client/.env.production.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
