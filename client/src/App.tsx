@@ -1,6 +1,6 @@
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
 import { ProtectedRoute } from './components/ProtectedRoute'
-import { useAuth } from './context/AuthContext'
+import { useAuth } from './context/auth'
 import { DashboardPage } from './pages/DashboardPage'
 import { GamePage } from './pages/GamePage'
 import { HomePage } from './pages/HomePage'
@@ -24,7 +24,7 @@ function App() {
           {isAuthenticated ? (
             <>
               <NavLink className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')} to="/dashboard">
-                Dashboard
+                Mon espace
               </NavLink>
               <NavLink className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')} to="/jeu">
                 Jouer

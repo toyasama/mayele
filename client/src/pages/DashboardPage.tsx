@@ -1,17 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../context/auth'
 import { api, type DashboardData } from '../lib/api'
-
-const GAME_LABELS: Record<string, string> = {
-  addition: 'Addition',
-  soustraction: 'Soustraction',
-  multiplication: 'Multiplication',
-}
+import { GAME_LABELS, LEVEL_LABELS, type GameLevel, type GameType } from '../lib/game'
 
 function formatDate(value: string | null) {
   if (!value) {
-    return 'Jamais joué'
+    return 'Pas encore joué'
   }
 
   return new Intl.DateTimeFormat('fr-FR', {
@@ -20,10 +15,17 @@ function formatDate(value: string | null) {
   }).format(new Date(value))
 }
 
+function gameLabel(value: string) {
+  return GAME_LABELS[value as GameType] ?? value
+}
+
+function levelLabel(value: string) {
+  return LEVEL_LABELS[value as GameLevel] ?? value
+}
+
 export function DashboardPage() {
   const { user, token } = useAuth()
   const [data, setData] = useState<DashboardData | null>(null)
-  const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -31,27 +33,25 @@ export function DashboardPage() {
       return
     }
 
-    setLoading(true)
+    let active = true
+
     api
       .getDashboard(token)
       .then((payload) => {
-        setData(payload)
+        if (active) {
+          setData(payload)
+        }
       })
       .catch((err) => {
-        setError(err instanceof Error ? err.message : 'Impossible de charger le dashboard.')
+        if (active) {
+          setError(err instanceof Error ? err.message : 'Impossible de charger votre espace.')
+        }
       })
-      .finally(() => {
-        setLoading(false)
-      })
-  }, [token])
 
-  if (loading) {
-    return (
-      <section className="page">
-        <div className="card loading-card">Chargement de vos statistiques…</div>
-      </section>
-    )
-  }
+    return () => {
+      active = false
+    }
+  }, [token])
 
   if (error) {
     return (
@@ -61,99 +61,117 @@ export function DashboardPage() {
     )
   }
 
+  if (!data) {
+    return (
+      <section className="page">
+        <div className="card loading-card">Chargement de vos résultats...</div>
+      </section>
+    )
+  }
+
   return (
     <section className="page">
-      <div className="card dashboard-hero">
+      <div className="dashboard-hero">
         <div>
-          <span className="eyebrow">Dashboard joueur</span>
+          <span className="eyebrow">Mon espace</span>
           <h1>Bonjour {user?.name}</h1>
           <p className="lead small-lead">
-            Suivez vos performances et relancez une session à tout moment.
+            Suivez vos records, votre précision et les modes qui méritent un nouveau sprint.
           </p>
         </div>
 
         <div className="button-row">
           <Link className="primary-button" to="/jeu">
-            Lancer un défi
+            Lancer un sprint
           </Link>
           <Link className="secondary-button" to="/">
-            Retour accueil
+            Accueil
           </Link>
         </div>
       </div>
 
       <div className="stats-grid">
         <article className="card stat-card">
-          <span>Parties jouées</span>
-          <strong>{data?.summary.totalGames ?? 0}</strong>
+          <span>Sessions</span>
+          <strong>{data.summary.totalSessions}</strong>
         </article>
         <article className="card stat-card">
-          <span>Meilleur score</span>
-          <strong>{data?.summary.bestScore ?? 0}%</strong>
+          <span>Record</span>
+          <strong>{data.summary.bestScore}%</strong>
         </article>
         <article className="card stat-card">
-          <span>Points cumulés</span>
-          <strong>{data?.summary.totalPoints ?? 0}</strong>
+          <span>Précision moyenne</span>
+          <strong>{data.summary.averageAccuracy}%</strong>
         </article>
         <article className="card stat-card">
-          <span>Thèmes maîtrisés</span>
-          <strong>{data?.summary.masteredTopics ?? 0}</strong>
+          <span>Meilleure série</span>
+          <strong>{data.summary.bestStreak}</strong>
         </article>
       </div>
 
       <div className="grid two-columns">
         <article className="card">
-          <h2>Progression par thème</h2>
-          {data?.progressByGame.length ? (
+          <h2>Progression par entraînement</h2>
+          {data.progressByMode.length ? (
             <div className="progress-list">
-              {data.progressByGame.map((item) => (
-                <div className="progress-row" key={item.game}>
+              {data.progressByMode.map((item) => (
+                <div className="progress-row" key={`${item.game}-${item.level}`}>
                   <div>
-                    <strong>{GAME_LABELS[item.game] ?? item.game}</strong>
-                    <span>{item.attempts} tentative(s)</span>
+                    <strong>{gameLabel(item.game)}</strong>
+                    <span>{levelLabel(item.level)} · {item.attempts} sprint(s)</span>
                   </div>
                   <div className="progress-meta">
-                    <span>Best {item.bestScore}%</span>
+                    <span>Record {item.bestScore}%</span>
                     <span>Moy. {item.averageScore}%</span>
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="muted">Aucune session encore enregistrée. Lancez votre premier jeu.</p>
+            <p className="muted">Aucun sprint enregistré. Lancez votre première session.</p>
           )}
         </article>
 
         <article className="card">
-          <h2>Prochaines extensions</h2>
-          <ul className="check-list">
-            <li>Fractions et pourcentages</li>
-            <li>Mode progression par niveau</li>
-            <li>Matrices et calcul avancé</li>
-            <li>Intégrales guidées</li>
-          </ul>
+          <h2>Repères</h2>
+          <div className="insight-list">
+            <div>
+              <span>Points gagnés</span>
+              <strong>{data.summary.totalPoints}</strong>
+            </div>
+            <div>
+              <span>Dernière activité</span>
+              <strong>{formatDate(data.summary.lastPlayedAt)}</strong>
+            </div>
+            <div>
+              <span>Mode le plus joué</span>
+              <strong>{data.summary.favoriteGame ? gameLabel(data.summary.favoriteGame) : 'À découvrir'}</strong>
+            </div>
+          </div>
         </article>
       </div>
 
       <article className="card">
         <h2>Historique récent</h2>
-        {data?.recentSessions.length ? (
+        {data.recentSessions.length ? (
           <div className="session-list">
             {data.recentSessions.map((session) => (
               <div className="session-row" key={session.id}>
                 <div>
-                  <strong>{GAME_LABELS[session.game] ?? session.game}</strong>
-                  <span>{session.correctAnswers}/{session.totalQuestions} bonnes réponses</span>
+                  <strong>{gameLabel(session.game)} · {levelLabel(session.level)}</strong>
+                  <span>
+                    {session.correctAnswers}/{session.totalQuestions} bonnes réponses · série {session.bestStreak}
+                  </span>
                 </div>
                 <div className="progress-meta right-align">
-                  <span>{session.score}%</span>
+                  <span>{session.score}% · {session.points} pts</span>
                   <span>{formatDate(session.playedAt)}</span>
                 </div>
               </div>
             ))}
           </div>
         ) : (
-          <p className="muted">Votre historique apparaîtra ici après vos premières parties.</p>
+          <p className="muted">Vos sprints apparaîtront ici après vos premières parties.</p>
         )}
       </article>
     </section>

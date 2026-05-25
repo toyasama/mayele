@@ -1,206 +1,345 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../context/auth'
+import {
+  GAME_LABELS,
+  LEVEL_LABELS,
+  SESSION_SECONDS,
+  calculateAccuracy,
+  calculateQuestionPoints,
+  generateQuestion,
+  type GameLevel,
+  type GameType,
+  type Question,
+} from '../lib/game'
 import { api } from '../lib/api'
 
-type GameType = 'addition' | 'soustraction' | 'multiplication'
+type SessionStatus = 'idle' | 'running' | 'finished'
+type FeedbackTone = 'info' | 'success' | 'error'
 
-type Question = {
-  prompt: string
-  answer: number
+type SessionStats = {
+  correctAnswers: number
+  totalQuestions: number
+  points: number
+  currentStreak: number
+  bestStreak: number
 }
 
-const TOTAL_QUESTIONS = 10
-const GAME_LABELS: Record<GameType, string> = {
-  addition: 'Addition',
-  soustraction: 'Soustraction',
-  multiplication: 'Multiplication',
-}
-
-function randomBetween(min: number, max: number) {
-  return Math.floor(Math.random() * (max - min + 1)) + min
-}
-
-function generateQuestion(game: GameType): Question {
-  if (game === 'addition') {
-    const left = randomBetween(8, 60)
-    const right = randomBetween(4, 40)
-    return { prompt: `${left} + ${right}`, answer: left + right }
-  }
-
-  if (game === 'soustraction') {
-    const left = randomBetween(15, 90)
-    const right = randomBetween(3, left)
-    return { prompt: `${left} - ${right}`, answer: left - right }
-  }
-
-  const left = randomBetween(2, 12)
-  const right = randomBetween(2, 12)
-  return { prompt: `${left} × ${right}`, answer: left * right }
+const initialStats: SessionStats = {
+  correctAnswers: 0,
+  totalQuestions: 0,
+  points: 0,
+  currentStreak: 0,
+  bestStreak: 0,
 }
 
 export function GamePage() {
   const { token } = useAuth()
-  const [game, setGame] = useState<GameType>('addition')
-  const [question, setQuestion] = useState<Question>(() => generateQuestion('addition'))
+  const [game, setGame] = useState<GameType>('mixte')
+  const [level, setLevel] = useState<GameLevel>('debutant')
+  const [question, setQuestion] = useState<Question>(() => generateQuestion('mixte', 'debutant'))
   const [answer, setAnswer] = useState('')
-  const [step, setStep] = useState(1)
-  const [correctCount, setCorrectCount] = useState(0)
-  const [feedback, setFeedback] = useState('Répondez à 10 questions pour enregistrer votre session.')
-  const [finished, setFinished] = useState(false)
+  const [remainingSeconds, setRemainingSeconds] = useState(SESSION_SECONDS)
+  const [status, setStatus] = useState<SessionStatus>('idle')
+  const [stats, setStats] = useState<SessionStats>(initialStats)
+  const [feedback, setFeedback] = useState('Choisissez un mode, lancez le sprint, puis répondez le plus vite possible.')
+  const [feedbackTone, setFeedbackTone] = useState<FeedbackTone>('info')
   const [saving, setSaving] = useState(false)
-  const [summary, setSummary] = useState<{ score: number; durationSeconds: number } | null>(null)
+  const [saveError, setSaveError] = useState('')
   const inputRef = useRef<HTMLInputElement | null>(null)
+  const intervalRef = useRef<number | null>(null)
+  const timeoutRef = useRef<number | null>(null)
   const startedAtRef = useRef<number>(Date.now())
+  const statsRef = useRef<SessionStats>(initialStats)
+  const gameRef = useRef<GameType>(game)
+  const levelRef = useRef<GameLevel>(level)
+
+  statsRef.current = stats
+  gameRef.current = game
+  levelRef.current = level
+
+  const clearTimers = useCallback(() => {
+    if (intervalRef.current) {
+      window.clearInterval(intervalRef.current)
+      intervalRef.current = null
+    }
+
+    if (timeoutRef.current) {
+      window.clearTimeout(timeoutRef.current)
+      timeoutRef.current = null
+    }
+  }, [])
+
+  const saveSession = useCallback(
+    async (finalStats: SessionStats, durationSeconds: number) => {
+      if (!token || finalStats.totalQuestions === 0) {
+        return
+      }
+
+      setSaving(true)
+      setSaveError('')
+
+      try {
+        await api.saveSession(token, {
+          game: gameRef.current,
+          level: levelRef.current,
+          score: calculateAccuracy(finalStats.correctAnswers, finalStats.totalQuestions),
+          points: finalStats.points,
+          correctAnswers: finalStats.correctAnswers,
+          totalQuestions: finalStats.totalQuestions,
+          durationSeconds,
+          bestStreak: finalStats.bestStreak,
+        })
+      } catch (err) {
+        setSaveError(err instanceof Error ? err.message : 'Sauvegarde impossible.')
+      } finally {
+        setSaving(false)
+      }
+    },
+    [token],
+  )
+
+  const finishSession = useCallback(() => {
+    clearTimers()
+    const durationSeconds = Math.max(1, Math.round((Date.now() - startedAtRef.current) / 1000))
+    const finalStats = statsRef.current
+    setRemainingSeconds(0)
+    setStatus('finished')
+    setFeedback(
+      finalStats.totalQuestions > 0
+        ? 'Sprint terminé. Votre résultat est enregistré dans votre espace.'
+        : 'Sprint terminé sans réponse validée.',
+    )
+    setFeedbackTone('info')
+    void saveSession(finalStats, Math.min(durationSeconds, SESSION_SECONDS))
+  }, [clearTimers, saveSession])
 
   useEffect(() => {
-    inputRef.current?.focus()
-  }, [question, finished])
+    return () => {
+      clearTimers()
+    }
+  }, [clearTimers])
 
-  function resetSession(nextGame: GameType = game) {
+  useEffect(() => {
+    if (status === 'running') {
+      inputRef.current?.focus()
+    }
+  }, [question, status])
+
+  function prepareSession(nextGame = game, nextLevel = level) {
+    clearTimers()
     setGame(nextGame)
-    setQuestion(generateQuestion(nextGame))
+    setLevel(nextLevel)
+    setQuestion(generateQuestion(nextGame, nextLevel))
     setAnswer('')
-    setStep(1)
-    setCorrectCount(0)
-    setFinished(false)
-    setSaving(false)
-    setSummary(null)
-    setFeedback('Répondez à 10 questions pour enregistrer votre session.')
-    startedAtRef.current = Date.now()
+    setRemainingSeconds(SESSION_SECONDS)
+    setStatus('idle')
+    setStats(initialStats)
+    setFeedback('Prêt pour un nouveau sprint de 60 secondes.')
+    setFeedbackTone('info')
+    setSaveError('')
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  function startSession() {
+    const nextQuestion = generateQuestion(game, level)
+    startedAtRef.current = Date.now()
+    setQuestion(nextQuestion)
+    setAnswer('')
+    setRemainingSeconds(SESSION_SECONDS)
+    setStatus('running')
+    setStats(initialStats)
+    setFeedback('Sprint lancé.')
+    setFeedbackTone('info')
+    setSaveError('')
+
+    clearTimers()
+    intervalRef.current = window.setInterval(() => {
+      setRemainingSeconds((current) => Math.max(0, current - 1))
+    }, 1000)
+    timeoutRef.current = window.setTimeout(finishSession, SESSION_SECONDS * 1000)
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
+    if (status !== 'running') {
+      return
+    }
+
     const numericAnswer = Number(answer)
-    if (Number.isNaN(numericAnswer)) {
-      setFeedback('Entrez un nombre valide pour continuer.')
+    if (!Number.isFinite(numericAnswer)) {
+      setFeedback('Entrez un nombre valide.')
+      setFeedbackTone('error')
       return
     }
 
     const isCorrect = numericAnswer === question.answer
-    const nextCorrectCount = correctCount + (isCorrect ? 1 : 0)
-
-    if (step === TOTAL_QUESTIONS) {
-      const durationSeconds = Math.max(1, Math.round((Date.now() - startedAtRef.current) / 1000))
-      const score = Math.round((nextCorrectCount / TOTAL_QUESTIONS) * 100)
-
-      setCorrectCount(nextCorrectCount)
-      setFinished(true)
-      setSummary({ score, durationSeconds })
-      setFeedback(
-        isCorrect
-          ? 'Dernière réponse validée. Sauvegarde de la session…'
-          : `Session terminée — la bonne réponse était ${question.answer}.`,
-      )
-
-      if (token) {
-        try {
-          setSaving(true)
-          await api.saveSession(token, {
-            game,
-            score,
-            correctAnswers: nextCorrectCount,
-            totalQuestions: TOTAL_QUESTIONS,
-            durationSeconds,
-          })
-          setFeedback('Session enregistrée avec succès ✅')
-        } catch (err) {
-          setFeedback(err instanceof Error ? err.message : 'Sauvegarde impossible.')
-        } finally {
-          setSaving(false)
-        }
+    const nextStreakForFeedback = isCorrect ? stats.currentStreak + 1 : 0
+    setStats((current) => {
+      const nextStreak = isCorrect ? current.currentStreak + 1 : 0
+      const nextCorrectAnswers = current.correctAnswers + (isCorrect ? 1 : 0)
+      const nextStats = {
+        correctAnswers: nextCorrectAnswers,
+        totalQuestions: current.totalQuestions + 1,
+        points: current.points + (isCorrect ? calculateQuestionPoints(level, nextStreak) : 0),
+        currentStreak: nextStreak,
+        bestStreak: Math.max(current.bestStreak, nextStreak),
       }
 
-      return
-    }
-
-    setCorrectCount(nextCorrectCount)
-    setStep((current) => current + 1)
-    setQuestion(generateQuestion(game))
+      statsRef.current = nextStats
+      return nextStats
+    })
+    setFeedback(
+      isCorrect
+        ? `Bonne réponse. Série x${nextStreakForFeedback}.`
+        : `Réponse incorrecte. La bonne réponse était ${question.answer}.`,
+    )
+    setFeedbackTone(isCorrect ? 'success' : 'error')
+    setQuestion(generateQuestion(game, level))
     setAnswer('')
-    setFeedback(isCorrect ? 'Bonne réponse, continuez !' : `Réponse attendue : ${question.answer}`)
   }
 
+  const accuracy = calculateAccuracy(stats.correctAnswers, stats.totalQuestions)
+
   return (
-    <section className="page">
-      <div className="grid two-columns game-layout">
-        <aside className="card">
-          <span className="eyebrow">Choix du défi</span>
-          <h2>Mode de jeu</h2>
-          <div className="mode-list">
-            {(Object.keys(GAME_LABELS) as GameType[]).map((item) => (
-              <button
-                key={item}
-                type="button"
-                className={item === game ? 'mode-button active' : 'mode-button'}
-                onClick={() => resetSession(item)}
-              >
-                {GAME_LABELS[item]}
-              </button>
-            ))}
+    <section className="page game-page">
+      <div className="section-header">
+        <div>
+          <span className="eyebrow">Sprint mental</span>
+          <h1>Répondez juste, enchaînez vite.</h1>
+        </div>
+        <Link className="secondary-button" to="/dashboard">
+          Mon espace
+        </Link>
+      </div>
+
+      <div className="game-shell">
+        <aside className="card control-panel">
+          <div>
+            <span className="panel-label">Mode</span>
+            <div className="segmented-grid">
+              {(Object.keys(GAME_LABELS) as GameType[]).map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  className={item === game ? 'segment active' : 'segment'}
+                  disabled={status === 'running'}
+                  onClick={() => prepareSession(item, level)}
+                >
+                  {GAME_LABELS[item]}
+                </button>
+              ))}
+            </div>
           </div>
 
-          <div className="card subtle-card">
-            <strong>Objectif</strong>
-            <p>Obtenir le meilleur pourcentage possible sur 10 questions.</p>
+          <div>
+            <span className="panel-label">Niveau</span>
+            <div className="segmented-grid">
+              {(Object.keys(LEVEL_LABELS) as GameLevel[]).map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  className={item === level ? 'segment active' : 'segment'}
+                  disabled={status === 'running'}
+                  onClick={() => prepareSession(game, item)}
+                >
+                  {LEVEL_LABELS[item]}
+                </button>
+              ))}
+            </div>
           </div>
 
-          <Link className="secondary-button full-width" to="/dashboard">
-            Retour au dashboard
-          </Link>
+          <div className="mini-stats">
+            <div>
+              <span>Temps</span>
+              <strong>{remainingSeconds}s</strong>
+            </div>
+            <div>
+              <span>Bonnes réponses</span>
+              <strong>{stats.correctAnswers}/{stats.totalQuestions}</strong>
+            </div>
+            <div>
+              <span>Série</span>
+              <strong>{stats.currentStreak}</strong>
+            </div>
+            <div>
+              <span>Précision</span>
+              <strong>{accuracy}%</strong>
+            </div>
+          </div>
         </aside>
 
-        <article className="card quiz-card">
-          <div className="quiz-header">
+        <article className="card sprint-card">
+          <div className="sprint-topline">
             <div>
-              <span className="eyebrow">{GAME_LABELS[game]}</span>
-              <h1>Question {finished ? TOTAL_QUESTIONS : step}</h1>
+              <span className="eyebrow">
+                {GAME_LABELS[game]} · {LEVEL_LABELS[level]}
+              </span>
+              <h2>{status === 'finished' ? 'Résultat du sprint' : 'Question active'}</h2>
             </div>
-            <span className="score-pill">{correctCount} / {TOTAL_QUESTIONS}</span>
+            <div className="score-block">
+              <span>Score</span>
+              <strong>{stats.points}</strong>
+            </div>
           </div>
 
-          {!finished ? (
+          {status === 'finished' ? (
+            <div className="result-panel">
+              <div className="result-grid">
+                <div>
+                  <span>Bonnes réponses</span>
+                  <strong>{stats.correctAnswers}/{stats.totalQuestions}</strong>
+                </div>
+                <div>
+                  <span>Précision</span>
+                  <strong>{accuracy}%</strong>
+                </div>
+                <div>
+                  <span>Meilleure série</span>
+                  <strong>{stats.bestStreak}</strong>
+                </div>
+              </div>
+              <div className="button-row">
+                <button className="primary-button" type="button" onClick={startSession}>
+                  Rejouer
+                </button>
+                <Link className="secondary-button" to="/dashboard">
+                  Voir mes résultats
+                </Link>
+              </div>
+            </div>
+          ) : (
             <>
-              <p className="question-line">{question.prompt} = ?</p>
+              <p className="question-line">{question.prompt}</p>
               <form className="quiz-form" onSubmit={handleSubmit}>
                 <input
                   ref={inputRef}
                   type="number"
                   inputMode="numeric"
                   value={answer}
+                  disabled={status !== 'running'}
                   onChange={(event) => setAnswer(event.target.value)}
-                  placeholder="Votre réponse"
+                  placeholder="Réponse"
                   required
                 />
-                <button className="primary-button" type="submit">
-                  Valider
-                </button>
+                {status === 'idle' ? (
+                  <button className="primary-button" type="button" onClick={startSession}>
+                    Démarrer
+                  </button>
+                ) : (
+                  <button className="primary-button" type="submit">
+                    Valider
+                  </button>
+                )}
               </form>
             </>
-          ) : (
-            <div className="result-panel">
-              <h2>Session terminée</h2>
-              <p>
-                Score final : <strong>{summary?.score ?? 0}%</strong>
-              </p>
-              <p>
-                Temps total : <strong>{summary?.durationSeconds ?? 0} s</strong>
-              </p>
-              <div className="button-row">
-                <button className="primary-button" type="button" onClick={() => resetSession()}>
-                  Rejouer
-                </button>
-                <Link className="secondary-button" to="/dashboard">
-                  Voir la progression
-                </Link>
-              </div>
-            </div>
           )}
 
-          <p className={feedback.includes('impossible') ? 'form-error' : 'muted'}>{feedback}</p>
-          {saving ? <p className="muted">Enregistrement en cours…</p> : null}
+          <div className={saveError ? 'feedback-banner error' : `feedback-banner ${feedbackTone}`}>
+            <strong>{saveError ? 'Erreur' : feedbackTone === 'success' ? 'Correct' : feedbackTone === 'error' ? 'À corriger' : 'Info'}</strong>
+            <span>{saveError || feedback}</span>
+          </div>
+          {saving ? <p className="muted">Enregistrement en cours...</p> : null}
         </article>
       </div>
     </section>

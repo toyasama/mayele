@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../context/auth'
 
 export function LoginPage() {
   const { login } = useAuth()
@@ -29,8 +29,8 @@ export function LoginPage() {
     <section className="page narrow-page">
       <form className="card form-card" onSubmit={handleSubmit}>
         <span className="eyebrow">Connexion</span>
-        <h1>Retrouver votre progression</h1>
-        <p className="muted">Connectez-vous pour reprendre vos sessions de jeu.</p>
+        <h1>Retrouver mon espace</h1>
+        <p className="muted">Connectez-vous pour reprendre vos sprints et suivre vos records.</p>
 
         <label>
           <span>Email</span>
@@ -49,7 +49,7 @@ export function LoginPage() {
             type="password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
-            placeholder="••••••••"
+            placeholder="Votre mot de passe"
             required
           />
         </label>
@@ -57,11 +57,11 @@ export function LoginPage() {
         {error ? <p className="form-error">{error}</p> : null}
 
         <button className="primary-button full-width" type="submit" disabled={busy}>
-          {busy ? 'Connexion…' : 'Se connecter'}
+          {busy ? 'Connexion...' : 'Se connecter'}
         </button>
 
         <p className="muted centered-text">
-          Pas encore de compte ? <Link to="/inscription">Créer un compte</Link>
+          Pas encore de compte ? <Link to="/inscription">Créer un espace</Link>
         </p>
       </form>
     </section>

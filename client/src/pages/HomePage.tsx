@@ -1,18 +1,18 @@
 import { Link } from 'react-router-dom'
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../context/auth'
 
-const featureCards = [
+const habits = [
   {
-    title: 'Calcul mental rapide',
-    description: 'Addition, soustraction et multiplication dans un mode chrono simple et motivant.',
+    title: 'Un sprint court',
+    description: '60 secondes pour se concentrer, répondre vite et garder le rythme.',
   },
   {
-    title: 'Suivi de progression',
-    description: 'Chaque partie alimente votre tableau de bord personnel avec scores et historique.',
+    title: 'Un niveau adapté',
+    description: 'Débutant, intermédiaire, avancé ou expert selon l’objectif du moment.',
   },
   {
-    title: 'Évolution future',
-    description: 'La base est prête pour accueillir plus tard les matrices, dérivées et intégrales.',
+    title: 'Des résultats lisibles',
+    description: 'Record, précision et séries aident à savoir quoi améliorer au prochain essai.',
   },
 ]
 
@@ -21,43 +21,43 @@ export function HomePage() {
 
   return (
     <section className="page">
-      <div className="hero-panel card">
+      <div className="hero-panel">
         <div className="hero-copy">
-          <span className="eyebrow">Plateforme d’entraînement mathématique</span>
+          <span className="eyebrow">Entraînement mental</span>
           <h1>Mayele Maths</h1>
           <p className="lead">
-            Un site moderne, rapide et responsive pour jouer, réviser et suivre vos progrès sur PC
-            comme sur téléphone.
+            Lancez un sprint, trouvez le bon rythme et progressez à chaque session. L’objectif est
+            simple: plus de bonnes réponses, moins d’hésitation.
           </p>
 
           <div className="button-row">
-            <Link className="primary-button" to={isAuthenticated ? '/dashboard' : '/inscription'}>
-              {isAuthenticated ? 'Ouvrir le dashboard' : 'Créer mon compte'}
+            <Link className="primary-button" to={isAuthenticated ? '/jeu' : '/inscription'}>
+              {isAuthenticated ? 'Lancer un sprint' : 'Créer mon espace'}
             </Link>
-            <Link className="secondary-button" to={isAuthenticated ? '/jeu' : '/connexion'}>
-              {isAuthenticated ? 'Jouer maintenant' : 'Se connecter'}
+            <Link className="secondary-button" to={isAuthenticated ? '/dashboard' : '/connexion'}>
+              {isAuthenticated ? 'Voir mes résultats' : 'Reprendre une session'}
             </Link>
           </div>
         </div>
 
         <div className="hero-stats">
           <div className="metric-card">
-            <strong>3</strong>
-            <span>modes de jeu prêts</span>
+            <strong>60s</strong>
+            <span>par sprint</span>
           </div>
           <div className="metric-card">
-            <strong>100%</strong>
-            <span>responsive</span>
+            <strong>5</strong>
+            <span>modes d’entraînement</span>
           </div>
           <div className="metric-card">
-            <strong>SQLite</strong>
-            <span>base locale intégrée</span>
+            <strong>4</strong>
+            <span>niveaux de difficulté</span>
           </div>
         </div>
       </div>
 
       <div className="grid three-columns">
-        {featureCards.map((item) => (
+        {habits.map((item) => (
           <article className="card feature-card" key={item.title}>
             <h2>{item.title}</h2>
             <p>{item.description}</p>
@@ -65,24 +65,14 @@ export function HomePage() {
         ))}
       </div>
 
-      <div className="grid two-columns">
-        <article className="card">
-          <h2>Parcours prévu</h2>
-          <ul className="check-list">
-            <li>Calcul mental chronométré</li>
-            <li>Multiplications et quiz de rapidité</li>
-            <li>Progression par thème et niveau</li>
-            <li>Ouverture future vers matrices et intégrales</li>
-          </ul>
-        </article>
-
-        <article className="card accent-card">
-          <h2>Pourquoi cette base ?</h2>
-          <p>
-            `React + Vite` garantit une interface fluide, tandis que l’authentification et la base
-            locale permettent un vrai suivi utilisateur dès le départ.
-          </p>
-        </article>
+      <div className="focus-band">
+        <div>
+          <span className="eyebrow">Aujourd’hui</span>
+          <h2>Choisissez un mode, battez votre série, recommencez.</h2>
+        </div>
+        <Link className="primary-button" to={isAuthenticated ? '/jeu' : '/inscription'}>
+          Commencer
+        </Link>
       </div>
     </section>
   )

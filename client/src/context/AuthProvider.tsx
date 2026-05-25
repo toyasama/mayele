@@ -1,28 +1,9 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { api, type AuthResponse, type AuthUser } from '../lib/api'
-
-type AuthContextValue = {
-  user: AuthUser | null
-  token: string | null
-  loading: boolean
-  isAuthenticated: boolean
-  login: (email: string, password: string) => Promise<void>
-  register: (name: string, email: string, password: string) => Promise<void>
-  logout: () => void
-}
+import { AuthContext, type AuthContextValue } from './auth'
 
 const STORAGE_TOKEN_KEY = 'mayele-token'
 const STORAGE_USER_KEY = 'mayele-user'
-
-const AuthContext = createContext<AuthContextValue | undefined>(undefined)
 
 function readStoredUser(): AuthUser | null {
   const raw = localStorage.getItem(STORAGE_USER_KEY)
@@ -47,7 +28,7 @@ function persistAuth(response: AuthResponse) {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(() => localStorage.getItem(STORAGE_TOKEN_KEY))
   const [user, setUser] = useState<AuthUser | null>(() => readStoredUser())
-  const [loading, setLoading] = useState<boolean>(Boolean(localStorage.getItem(STORAGE_TOKEN_KEY)))
+  const [loading, setLoading] = useState<boolean>(() => Boolean(localStorage.getItem(STORAGE_TOKEN_KEY)))
 
   const logout = useCallback(() => {
     localStorage.removeItem(STORAGE_TOKEN_KEY)
@@ -66,23 +47,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!token) {
-      setLoading(false)
       return
     }
 
-    setLoading(true)
+    let active = true
+
     api
       .getMe(token)
       .then((payload) => {
+        if (!active) {
+          return
+        }
+
         setUser(payload.user)
         localStorage.setItem(STORAGE_USER_KEY, JSON.stringify(payload.user))
       })
       .catch(() => {
-        logout()
+        if (active) {
+          logout()
+        }
       })
       .finally(() => {
-        setLoading(false)
+        if (active) {
+          setLoading(false)
+        }
       })
+
+    return () => {
+      active = false
+    }
   }, [token, logout])
 
   const login = useCallback(
@@ -115,14 +108,4 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
-}
-
-export function useAuth() {
-  const context = useContext(AuthContext)
-
-  if (!context) {
-    throw new Error('useAuth must be used inside an AuthProvider')
-  }
-
-  return context
 }

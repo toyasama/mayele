@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../context/auth'
 
 export function RegisterPage() {
   const { register } = useAuth()
@@ -30,8 +30,8 @@ export function RegisterPage() {
     <section className="page narrow-page">
       <form className="card form-card" onSubmit={handleSubmit}>
         <span className="eyebrow">Inscription</span>
-        <h1>Créer un espace joueur</h1>
-        <p className="muted">Votre compte permettra de sauvegarder scores et progression.</p>
+        <h1>Créer mon espace</h1>
+        <p className="muted">Un espace personnel suffit pour enregistrer vos sprints et vos records.</p>
 
         <label>
           <span>Nom</span>
@@ -71,7 +71,7 @@ export function RegisterPage() {
         {error ? <p className="form-error">{error}</p> : null}
 
         <button className="primary-button full-width" type="submit" disabled={busy}>
-          {busy ? 'Création…' : 'Créer mon compte'}
+          {busy ? 'Création...' : 'Créer mon espace'}
         </button>
 
         <p className="muted centered-text">

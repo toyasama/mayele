@@ -1,21 +1,24 @@
 # Mayele Maths
 
-Plateforme locale de jeux mathématiques moderne en `React + Vite`, avec connexion utilisateur et suivi de progression via une base `SQLite`.
+Application d'entraînement au calcul mental avec compte joueur, sprints de 60 secondes et suivi de progression.
 
 ## Structure
-- `client/` : interface web responsive
-- `server/` : API Express + authentification + base locale
 
-## Lancer le projet
+- `client/` : interface React/Vite
+- `server/` : API Express, authentification et stockage SQLite local
 
-### 1. Backend
+## Lancer en local
+
+### Backend
+
 ```powershell
 cd server
 npm install
 npm run dev
 ```
 
-### 2. Frontend
+### Frontend
+
 ```powershell
 cd client
 npm install
@@ -23,18 +26,22 @@ npm run dev
 ```
 
 ## Accès
+
 - Local : `http://localhost:5173`
-- Téléphone : utiliser l’URL `Network` affichée par Vite, sur le même Wi‑Fi
+- API : `http://localhost:4000/api/health`
 
-## Fonctionnalités prêtes
-- accueil moderne
-- inscription / connexion
-- dashboard personnel
-- sauvegarde des sessions
-- suivi de progression
-- mini-jeux : addition, soustraction, multiplication
+## Fonctionnalités
 
-## Vérifications effectuées
-- build frontend OK
-- API locale démarrée sur `http://localhost:4000`
-- test réel d’inscription + session + dashboard validé
+- inscription et connexion
+- sprints de calcul mental de 60 secondes
+- modes addition, soustraction, multiplication et mixte
+- niveaux débutant, intermédiaire, avancé et expert
+- tableau de bord avec records, précision, points, séries et historique
+
+## Vérification
+
+```powershell
+cd client
+npm run lint
+npm run build
+```

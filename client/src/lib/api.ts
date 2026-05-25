@@ -14,25 +14,34 @@ export type AuthResponse = {
 
 export type DashboardData = {
   summary: {
-    totalGames: number
+    totalSessions: number
     bestScore: number
     totalPoints: number
-    masteredTopics: number
+    averageAccuracy: number
+    bestStreak: number
+    lastPlayedAt: string | null
+    favoriteGame: string | null
   }
-  progressByGame: Array<{
+  progressByMode: Array<{
     game: string
+    level: string
     attempts: number
     bestScore: number
     averageScore: number
+    averageAccuracy: number
+    bestStreak: number
     lastPlayedAt: string | null
   }>
   recentSessions: Array<{
     id: number
     game: string
+    level: string
     score: number
+    points: number
     correctAnswers: number
     totalQuestions: number
     durationSeconds: number
+    bestStreak: number
     playedAt: string
   }>
 }
@@ -92,10 +101,13 @@ export const api = {
     token: string,
     data: {
       game: string
+      level: string
       score: number
+      points: number
       correctAnswers: number
       totalQuestions: number
       durationSeconds: number
+      bestStreak: number
     },
   ) =>
     request<{ message: string }>('/sessions', {
