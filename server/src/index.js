@@ -14,8 +14,47 @@ const allowedOrigins = String(process.env.CORS_ORIGIN || '')
   .map((origin) => origin.trim())
   .filter(Boolean)
 
-const VALID_GAMES = new Set(['addition', 'soustraction', 'multiplication', 'mixte'])
+const DAILY_GOAL = 3
+const VALID_GAMES = new Set(['addition', 'soustraction', 'multiplication', 'division', 'mixte'])
 const VALID_LEVELS = new Set(['debutant', 'intermediaire', 'avance', 'expert'])
+const VALID_SKILLS = new Set([
+  'addition',
+  'soustraction',
+  'multiplication',
+  'division',
+  'retenues',
+  'emprunts',
+  'tables',
+  'calcul_rapide',
+  'mixte',
+])
+
+const ACHIEVEMENTS = {
+  first_sprint: {
+    label: 'Premier sprint',
+    description: 'Vous avez enregistré votre première session.',
+  },
+  accuracy_80: {
+    label: 'Précision 80%',
+    description: 'Vous avez atteint au moins 80% de réussite.',
+  },
+  perfect_sprint: {
+    label: 'Sans faute',
+    description: 'Vous avez terminé un sprint avec 100% de réussite.',
+  },
+  streak_5: {
+    label: 'Série x5',
+    description: 'Vous avez enchaîné 5 bonnes réponses.',
+  },
+  points_100: {
+    label: '100 points',
+    description: 'Vous avez marqué au moins 100 points en un sprint.',
+  },
+  daily_goal: {
+    label: 'Objectif du jour',
+    description: 'Vous avez terminé 3 sprints aujourd’hui.',
+  },
+}
 
 if (isProduction && JWT_SECRET === 'mayele-local-dev-secret') {
   throw new Error('JWT_SECRET doit être défini en production.')
@@ -33,7 +72,7 @@ app.use(
     },
   }),
 )
-app.use(express.json({ limit: '32kb' }))
+app.use(express.json({ limit: '96kb' }))
 
 function mapUser(row) {
   return {
@@ -80,14 +119,67 @@ function parseInteger(value) {
   return value
 }
 
+function todayKey() {
+  return new Date().toISOString().slice(0, 10)
+}
+
+function calculateAccuracy(correctAnswers, totalQuestions) {
+  if (totalQuestions === 0) {
+    return 0
+  }
+
+  return Math.round((correctAnswers / totalQuestions) * 100)
+}
+
+function validateAnswer(rawAnswer, sessionGame, sessionLevel) {
+  const prompt = String(rawAnswer.prompt ?? '').trim()
+  const correctAnswer = parseInteger(rawAnswer.correctAnswer)
+  const userAnswer = parseInteger(rawAnswer.userAnswer)
+  const responseTimeMs = parseInteger(rawAnswer.responseTimeMs)
+  const game = typeof rawAnswer.game === 'string' && VALID_GAMES.has(rawAnswer.game) ? rawAnswer.game : sessionGame
+  const level = typeof rawAnswer.level === 'string' && VALID_LEVELS.has(rawAnswer.level) ? rawAnswer.level : sessionLevel
+  const skill = typeof rawAnswer.skill === 'string' && VALID_SKILLS.has(rawAnswer.skill) ? rawAnswer.skill : null
+
+  if (!prompt || prompt.length > 80) {
+    return { error: 'Question invalide.' }
+  }
+
+  if (correctAnswer === null || userAnswer === null) {
+    return { error: 'Réponse invalide.' }
+  }
+
+  if (responseTimeMs === null || responseTimeMs < 0 || responseTimeMs > 600000) {
+    return { error: 'Temps de réponse invalide.' }
+  }
+
+  if (!skill) {
+    return { error: 'Compétence invalide.' }
+  }
+
+  return {
+    value: {
+      prompt,
+      correctAnswer,
+      userAnswer,
+      responseTimeMs,
+      game,
+      level,
+      skill,
+      isCorrect: userAnswer === correctAnswer,
+    },
+  }
+}
+
 function validateSessionPayload(body) {
   const game = typeof body.game === 'string' && VALID_GAMES.has(body.game) ? body.game : null
   const level = typeof body.level === 'string' && VALID_LEVELS.has(body.level) ? body.level : null
+  const practiceSkill =
+    typeof body.practiceSkill === 'string' && VALID_SKILLS.has(body.practiceSkill) ? body.practiceSkill : null
   const totalQuestions = parseInteger(body.totalQuestions)
-  const correctAnswers = parseInteger(body.correctAnswers)
   const durationSeconds = parseInteger(body.durationSeconds)
   const bestStreak = parseInteger(body.bestStreak)
   const points = parseInteger(body.points)
+  const answers = Array.isArray(body.answers) ? body.answers : null
 
   if (!game || !level) {
     return { error: 'Mode ou niveau invalide.' }
@@ -95,10 +187,6 @@ function validateSessionPayload(body) {
 
   if (!totalQuestions || totalQuestions < 1 || totalQuestions > 500) {
     return { error: 'Nombre de questions invalide.' }
-  }
-
-  if (correctAnswers === null || correctAnswers < 0 || correctAnswers > totalQuestions) {
-    return { error: 'Nombre de bonnes réponses invalide.' }
   }
 
   if (!durationSeconds || durationSeconds < 1 || durationSeconds > 3600) {
@@ -113,17 +201,130 @@ function validateSessionPayload(body) {
     return { error: 'Score de points invalide.' }
   }
 
+  if (!answers || answers.length !== totalQuestions) {
+    return { error: 'Détail des réponses requis.' }
+  }
+
+  const parsedAnswers = []
+  for (const answer of answers) {
+    const result = validateAnswer(answer, game, level)
+
+    if (result.error) {
+      return result
+    }
+
+    parsedAnswers.push(result.value)
+  }
+
+  const correctAnswers = parsedAnswers.filter((answer) => answer.isCorrect).length
+
   return {
     value: {
       game,
       level,
-      score: Math.round((correctAnswers / totalQuestions) * 100),
+      practiceSkill,
+      score: calculateAccuracy(correctAnswers, parsedAnswers.length),
       points,
       correctAnswers,
-      totalQuestions,
+      totalQuestions: parsedAnswers.length,
       durationSeconds,
       bestStreak,
+      answers: parsedAnswers,
     },
+  }
+}
+
+function insertAchievement(userId, key) {
+  const achievement = ACHIEVEMENTS[key]
+
+  if (!achievement) {
+    return null
+  }
+
+  const result = db
+    .prepare(
+      `INSERT OR IGNORE INTO achievements (user_id, achievement_key, label, description)
+       VALUES (?, ?, ?, ?)`,
+    )
+    .run(userId, key, achievement.label, achievement.description)
+
+  return result.changes ? { key, label: achievement.label } : null
+}
+
+function awardAchievements(userId, session, dailySessionsCount) {
+  const earned = []
+  const totalSessions = db.prepare('SELECT COUNT(*) AS count FROM sessions WHERE user_id = ?').get(userId).count
+
+  if (totalSessions === 1) {
+    earned.push(insertAchievement(userId, 'first_sprint'))
+  }
+
+  if (session.score >= 80) {
+    earned.push(insertAchievement(userId, 'accuracy_80'))
+  }
+
+  if (session.score === 100) {
+    earned.push(insertAchievement(userId, 'perfect_sprint'))
+  }
+
+  if (session.bestStreak >= 5) {
+    earned.push(insertAchievement(userId, 'streak_5'))
+  }
+
+  if (session.points >= 100) {
+    earned.push(insertAchievement(userId, 'points_100'))
+  }
+
+  if (dailySessionsCount >= DAILY_GOAL) {
+    earned.push(insertAchievement(userId, 'daily_goal'))
+  }
+
+  return earned.filter(Boolean)
+}
+
+function buildWeakSkills(userId) {
+  return db
+    .prepare(
+      `SELECT
+        skill,
+        COUNT(*) AS attempts,
+        SUM(is_correct) AS correctAnswers,
+        ROUND(SUM(is_correct) * 100.0 / COUNT(*)) AS accuracy
+      FROM answers
+      WHERE user_id = ?
+      GROUP BY skill
+      HAVING attempts >= 3
+      ORDER BY accuracy ASC, attempts DESC
+      LIMIT 4`,
+    )
+    .all(userId)
+}
+
+function buildPracticePlan(userId) {
+  const weakSkills = buildWeakSkills(userId)
+  const recommended = weakSkills.find((item) => item.accuracy < 80)
+  const level = db
+    .prepare(
+      `SELECT level
+       FROM sessions
+       WHERE user_id = ?
+       ORDER BY played_at DESC
+       LIMIT 1`,
+    )
+    .get(userId)
+
+  if (!recommended) {
+    return {
+      recommendedSkill: null,
+      recommendedLevel: level?.level ?? 'debutant',
+      message: 'Aucune faiblesse fiable détectée pour le moment. Continuez avec quelques sprints mixtes.',
+    }
+  }
+
+  return {
+    recommendedSkill: recommended.skill,
+    recommendedLevel: level?.level ?? 'debutant',
+    message: `Priorité: retravailler cette compétence, actuellement à ${recommended.accuracy}% de réussite.`,
   }
 }
 
@@ -184,7 +385,12 @@ app.get('/api/me', requireAuth, (req, res) => {
   res.json({ user: req.user })
 })
 
+app.get('/api/practice-plan', requireAuth, (req, res) => {
+  res.json({ practicePlan: buildPracticePlan(req.user.id) })
+})
+
 app.get('/api/dashboard', requireAuth, (req, res) => {
+  const day = todayKey()
   const summary = db
     .prepare(
       `SELECT
@@ -198,6 +404,10 @@ app.get('/api/dashboard', requireAuth, (req, res) => {
       WHERE user_id = ?`,
     )
     .get(req.user.id)
+
+  const todayStats = db
+    .prepare('SELECT sessions_count AS todaySessions FROM daily_stats WHERE user_id = ? AND day = ?')
+    .get(req.user.id, day)
 
   const favoriteGame = db
     .prepare(
@@ -234,6 +444,7 @@ app.get('/api/dashboard', requireAuth, (req, res) => {
         id,
         game,
         level,
+        practice_skill AS practiceSkill,
         score,
         points,
         correct_answers AS correctAnswers,
@@ -248,6 +459,20 @@ app.get('/api/dashboard', requireAuth, (req, res) => {
     )
     .all(req.user.id)
 
+  const achievements = db
+    .prepare(
+      `SELECT
+        achievement_key AS key,
+        label,
+        description,
+        earned_at AS earnedAt
+      FROM achievements
+      WHERE user_id = ?
+      ORDER BY earned_at DESC
+      LIMIT 8`,
+    )
+    .all(req.user.id)
+
   return res.json({
     summary: {
       totalSessions: summary.totalSessions,
@@ -257,7 +482,12 @@ app.get('/api/dashboard', requireAuth, (req, res) => {
       bestStreak: summary.bestStreak,
       lastPlayedAt: summary.lastPlayedAt,
       favoriteGame: favoriteGame?.game ?? null,
+      todaySessions: todayStats?.todaySessions ?? 0,
+      dailyGoal: DAILY_GOAL,
     },
+    practicePlan: buildPracticePlan(req.user.id),
+    weakSkills: buildWeakSkills(req.user.id),
+    achievements,
     progressByMode,
     recentSessions,
   })
@@ -271,32 +501,88 @@ app.post('/api/sessions', requireAuth, (req, res) => {
   }
 
   const session = result.value
+  const day = todayKey()
 
-  db.prepare(
-    `INSERT INTO sessions (
-      user_id,
-      game,
-      level,
-      score,
-      points,
-      correct_answers,
-      total_questions,
-      duration_seconds,
-      best_streak
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(
-    req.user.id,
-    session.game,
-    session.level,
-    session.score,
-    session.points,
-    session.correctAnswers,
-    session.totalQuestions,
-    session.durationSeconds,
-    session.bestStreak,
-  )
+  const save = db.transaction(() => {
+    const insertSession = db
+      .prepare(
+        `INSERT INTO sessions (
+          user_id,
+          game,
+          level,
+          practice_skill,
+          score,
+          points,
+          correct_answers,
+          total_questions,
+          duration_seconds,
+          best_streak
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        req.user.id,
+        session.game,
+        session.level,
+        session.practiceSkill,
+        session.score,
+        session.points,
+        session.correctAnswers,
+        session.totalQuestions,
+        session.durationSeconds,
+        session.bestStreak,
+      )
 
-  return res.status(201).json({ message: 'Session enregistrée.' })
+    const sessionId = insertSession.lastInsertRowid
+    const insertAnswer = db.prepare(
+      `INSERT INTO answers (
+        session_id,
+        user_id,
+        game,
+        level,
+        skill,
+        prompt,
+        correct_answer,
+        user_answer,
+        response_time_ms,
+        is_correct
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+
+    session.answers.forEach((answer) => {
+      insertAnswer.run(
+        sessionId,
+        req.user.id,
+        answer.game,
+        answer.level,
+        answer.skill,
+        answer.prompt,
+        answer.correctAnswer,
+        answer.userAnswer,
+        answer.responseTimeMs,
+        answer.isCorrect ? 1 : 0,
+      )
+    })
+
+    db.prepare(
+      `INSERT INTO daily_stats (user_id, day, sessions_count, points, correct_answers, total_questions)
+       VALUES (?, ?, 1, ?, ?, ?)
+       ON CONFLICT(user_id, day) DO UPDATE SET
+         sessions_count = sessions_count + 1,
+         points = points + excluded.points,
+         correct_answers = correct_answers + excluded.correct_answers,
+         total_questions = total_questions + excluded.total_questions`,
+    ).run(req.user.id, day, session.points, session.correctAnswers, session.totalQuestions)
+
+    const dailySessionsCount = db
+      .prepare('SELECT sessions_count FROM daily_stats WHERE user_id = ? AND day = ?')
+      .get(req.user.id, day).sessions_count
+
+    return awardAchievements(req.user.id, session, dailySessionsCount)
+  })
+
+  const earnedAchievements = save()
+
+  return res.status(201).json({ message: 'Session enregistrée.', earnedAchievements })
 })
 
 const clientDistPath = path.join(__dirname, '../../client/dist')

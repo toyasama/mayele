@@ -1,3 +1,5 @@
+import type { AnswerResult, SkillTag } from './game'
+
 const API_BASE = import.meta.env.VITE_API_URL ?? '/api'
 
 export type AuthUser = {
@@ -21,7 +23,26 @@ export type DashboardData = {
     bestStreak: number
     lastPlayedAt: string | null
     favoriteGame: string | null
+    todaySessions: number
+    dailyGoal: number
   }
+  practicePlan: {
+    recommendedSkill: SkillTag | null
+    recommendedLevel: string | null
+    message: string
+  }
+  weakSkills: Array<{
+    skill: SkillTag
+    attempts: number
+    correctAnswers: number
+    accuracy: number
+  }>
+  achievements: Array<{
+    key: string
+    label: string
+    description: string
+    earnedAt: string
+  }>
   progressByMode: Array<{
     game: string
     level: string
@@ -36,6 +57,7 @@ export type DashboardData = {
     id: number
     game: string
     level: string
+    practiceSkill: SkillTag | null
     score: number
     points: number
     correctAnswers: number
@@ -102,15 +124,17 @@ export const api = {
     data: {
       game: string
       level: string
+      practiceSkill: SkillTag | null
       score: number
       points: number
       correctAnswers: number
       totalQuestions: number
       durationSeconds: number
       bestStreak: number
+      answers: AnswerResult[]
     },
   ) =>
-    request<{ message: string }>('/sessions', {
+    request<{ message: string; earnedAchievements: Array<{ key: string; label: string }> }>('/sessions', {
       method: 'POST',
       token,
       body: JSON.stringify(data),

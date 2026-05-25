@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/auth'
 import { api, type DashboardData } from '../lib/api'
-import { GAME_LABELS, LEVEL_LABELS, type GameLevel, type GameType } from '../lib/game'
+import { GAME_LABELS, LEVEL_LABELS, SKILL_LABELS, type GameLevel, type GameType, type SkillTag } from '../lib/game'
 
 function formatDate(value: string | null) {
   if (!value) {
@@ -19,8 +19,20 @@ function gameLabel(value: string) {
   return GAME_LABELS[value as GameType] ?? value
 }
 
-function levelLabel(value: string) {
+function levelLabel(value: string | null) {
+  if (!value) {
+    return 'Débutant'
+  }
+
   return LEVEL_LABELS[value as GameLevel] ?? value
+}
+
+function skillLabel(value: SkillTag | null) {
+  if (!value) {
+    return 'Aucune compétence ciblée'
+  }
+
+  return SKILL_LABELS[value] ?? value
 }
 
 export function DashboardPage() {
@@ -69,6 +81,11 @@ export function DashboardPage() {
     )
   }
 
+  const dailyProgress = Math.min(100, Math.round((data.summary.todaySessions / data.summary.dailyGoal) * 100))
+  const practiceLink = data.practicePlan.recommendedSkill
+    ? `/jeu?focus=${data.practicePlan.recommendedSkill}`
+    : '/jeu'
+
   return (
     <section className="page">
       <div className="dashboard-hero">
@@ -76,16 +93,16 @@ export function DashboardPage() {
           <span className="eyebrow">Mon espace</span>
           <h1>Bonjour {user?.name}</h1>
           <p className="lead small-lead">
-            Suivez vos records, votre précision et les modes qui méritent un nouveau sprint.
+            Suivez vos records, vos compétences et les points à retravailler au prochain sprint.
           </p>
         </div>
 
         <div className="button-row">
-          <Link className="primary-button" to="/jeu">
-            Lancer un sprint
+          <Link className="primary-button" to={practiceLink}>
+            Travailler mes erreurs
           </Link>
-          <Link className="secondary-button" to="/">
-            Accueil
+          <Link className="secondary-button" to="/jeu">
+            Sprint libre
           </Link>
         </div>
       </div>
@@ -106,6 +123,56 @@ export function DashboardPage() {
         <article className="card stat-card">
           <span>Meilleure série</span>
           <strong>{data.summary.bestStreak}</strong>
+        </article>
+      </div>
+
+      <div className="grid two-columns">
+        <article className="card diagnostic-card">
+          <h2>À travailler</h2>
+          <p className="muted">{data.practicePlan.message}</p>
+          {data.weakSkills.length ? (
+            <div className="skill-list">
+              {data.weakSkills.map((item) => (
+                <div className="skill-row" key={item.skill}>
+                  <div>
+                    <strong>{skillLabel(item.skill)}</strong>
+                    <span>{item.correctAnswers}/{item.attempts} bonnes réponses</span>
+                  </div>
+                  <span>{item.accuracy}%</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="muted">Faites quelques sprints pour obtenir un diagnostic fiable.</p>
+          )}
+          <Link className="primary-button full-width" to={practiceLink}>
+            Lancer l’entraînement ciblé
+          </Link>
+        </article>
+
+        <article className="card diagnostic-card">
+          <h2>Objectif du jour</h2>
+          <div className="goal-meter">
+            <div>
+              <strong>{data.summary.todaySessions}/{data.summary.dailyGoal}</strong>
+              <span>sprints aujourd’hui</span>
+            </div>
+            <div className="goal-bar" aria-hidden="true">
+              <span style={{ width: `${dailyProgress}%` }} />
+            </div>
+          </div>
+          <div className="badge-list">
+            {data.achievements.length ? (
+              data.achievements.slice(0, 4).map((achievement) => (
+                <div className="badge-chip" key={achievement.key}>
+                  <strong>{achievement.label}</strong>
+                  <span>{achievement.description}</span>
+                </div>
+              ))
+            ) : (
+              <p className="muted">Vos premiers badges apparaîtront après les prochains sprints.</p>
+            )}
+          </div>
         </article>
       </div>
 
@@ -147,6 +214,10 @@ export function DashboardPage() {
               <span>Mode le plus joué</span>
               <strong>{data.summary.favoriteGame ? gameLabel(data.summary.favoriteGame) : 'À découvrir'}</strong>
             </div>
+            <div>
+              <span>Compétence proposée</span>
+              <strong>{skillLabel(data.practicePlan.recommendedSkill)}</strong>
+            </div>
           </div>
         </article>
       </div>
@@ -161,6 +232,7 @@ export function DashboardPage() {
                   <strong>{gameLabel(session.game)} · {levelLabel(session.level)}</strong>
                   <span>
                     {session.correctAnswers}/{session.totalQuestions} bonnes réponses · série {session.bestStreak}
+                    {session.practiceSkill ? ` · ${skillLabel(session.practiceSkill)}` : ''}
                   </span>
                 </div>
                 <div className="progress-meta right-align">

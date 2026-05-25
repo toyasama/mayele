@@ -397,7 +397,9 @@ h2 {
 
 .progress-list,
 .session-list,
-.insight-list {
+.insight-list,
+.skill-list,
+.badge-list {
   display: grid;
   gap: 12px;
   margin-top: 12px;
@@ -405,7 +407,8 @@ h2 {
 
 .progress-row,
 .session-row,
-.insight-list > div {
+.insight-list > div,
+.skill-row {
   display: flex;
   justify-content: space-between;
   gap: 12px;
@@ -415,15 +418,61 @@ h2 {
 
 .progress-row:last-child,
 .session-row:last-child,
-.insight-list > div:last-child {
+.insight-list > div:last-child,
+.skill-row:last-child {
   border-bottom: 0;
 }
 
 .progress-row strong,
 .session-row strong,
-.insight-list strong {
+.insight-list strong,
+.skill-row strong {
   display: block;
   margin-bottom: 4px;
+}
+
+.diagnostic-card {
+  display: grid;
+  gap: 14px;
+}
+
+.skill-row > span {
+  color: var(--primary-dark);
+  font-weight: 850;
+}
+
+.goal-meter {
+  display: grid;
+  gap: 12px;
+}
+
+.goal-meter strong {
+  display: block;
+  color: var(--text);
+  font-size: 2rem;
+}
+
+.goal-bar {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #edf2f7;
+}
+
+.goal-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--primary);
+}
+
+.badge-chip {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border-radius: 8px;
+  background: #f7f9fc;
+  border: 1px solid var(--border);
 }
 
 .progress-meta {
@@ -480,6 +529,19 @@ h2 {
   background: #e8f7f3;
   border-color: #8bcfc2;
   color: var(--primary-dark);
+}
+
+.focus-note {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 8px;
+  background: #eef4ff;
+  border: 1px solid #d5e4ff;
+}
+
+.focus-note strong {
+  color: var(--accent);
 }
 
 .mini-stats {
@@ -546,6 +608,12 @@ h2 {
   font-weight: 900;
 }
 
+.skill-hint {
+  margin-top: -8px;
+  color: var(--muted);
+  font-weight: 800;
+}
+
 .quiz-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -561,6 +629,49 @@ h2 {
 .result-panel {
   display: grid;
   gap: 18px;
+}
+
+.diagnostic-box,
+.error-review {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 8px;
+  background: #f7f9fc;
+  border: 1px solid var(--border);
+}
+
+.diagnostic-box h3,
+.error-review h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.pill-list {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.skill-pill {
+  padding: 7px 9px;
+  border-radius: 999px;
+  color: var(--primary-dark);
+  background: #e8f7f3;
+  border: 1px solid #b9e4db;
+  font-weight: 800;
+}
+
+.error-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.error-row strong {
+  color: var(--danger);
 }
 
 .feedback-banner {
@@ -649,6 +760,8 @@ h2 {
   .focus-band,
   .progress-row,
   .session-row,
+  .skill-row,
+  .error-row,
   .sprint-topline,
   .quiz-form {
     grid-template-columns: 1fr;

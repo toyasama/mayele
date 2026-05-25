@@ -12,7 +12,7 @@ const habits = [
   },
   {
     title: 'Des résultats lisibles',
-    description: 'Record, précision et séries aident à savoir quoi améliorer au prochain essai.',
+    description: 'Erreurs, précision et compétences faibles indiquent quoi retravailler.',
   },
 ]
 
@@ -68,7 +68,7 @@ export function HomePage() {
       <div className="focus-band">
         <div>
           <span className="eyebrow">Aujourd’hui</span>
-          <h2>Choisissez un mode, battez votre série, recommencez.</h2>
+          <h2>Choisissez un mode, corrigez vos erreurs, recommencez.</h2>
         </div>
         <Link className="primary-button" to={isAuthenticated ? '/jeu' : '/inscription'}>
           Commencer
