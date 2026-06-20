@@ -1,25 +1,27 @@
-FROM node:20-alpine AS client-builder
+FROM node:22-alpine AS builder
 
-WORKDIR /app/client
-COPY client/package*.json ./
+WORKDIR /app/server
+
+COPY server/package*.json ./
 RUN npm ci
-COPY client/ ./
+
+COPY server/ ./
 RUN npm run build
+RUN npm prune --omit=dev
 
-FROM node:20-alpine
+FROM node:22-alpine
 
-WORKDIR /app
+WORKDIR /app/server
+
 ENV NODE_ENV=production
 ENV PORT=4000
 
-COPY server/package*.json server/
-RUN cd server && npm ci --omit=dev
-
-COPY server/src server/src
-COPY --from=client-builder /app/client/dist client/dist
-
-RUN mkdir -p server/data
+COPY --from=builder /app/server/package*.json ./
+COPY --from=builder /app/server/node_modules ./node_modules
+COPY --from=builder /app/server/dist ./dist
+COPY --from=builder /app/server/prisma ./prisma
+COPY --from=builder /app/server/prisma.config.ts ./prisma.config.ts
 
 EXPOSE 4000
 
-CMD ["node", "server/src/index.js"]
+CMD ["sh", "-c", "npm run prisma:migrate:deploy && node dist/server.js"]

@@ -46,7 +46,7 @@ function parseFocusSkill(value: string | null): SkillTag | null {
 }
 
 export function GamePage() {
-  const { token } = useAuth()
+  const { getToken, isAuthenticated } = useAuth()
   const [searchParams] = useSearchParams()
   const initialFocusSkill = parseFocusSkill(searchParams.get('focus'))
   const [game, setGame] = useState<GameType>('mixte')
@@ -97,7 +97,7 @@ export function GamePage() {
 
   const saveSession = useCallback(
     async (finalStats: SessionStats, finalAnswers: AnswerResult[], durationSeconds: number) => {
-      if (!token || finalStats.totalQuestions === 0) {
+      if (!isAuthenticated || finalStats.totalQuestions === 0) {
         return
       }
 
@@ -105,7 +105,7 @@ export function GamePage() {
       setSaveError('')
 
       try {
-        await api.saveSession(token, {
+        await api.saveSession(getToken, {
           game: gameRef.current,
           level: levelRef.current,
           practiceSkill: focusSkillRef.current,
@@ -123,7 +123,7 @@ export function GamePage() {
         setSaving(false)
       }
     },
-    [token],
+    [getToken, isAuthenticated],
   )
 
   const finishSession = useCallback(() => {

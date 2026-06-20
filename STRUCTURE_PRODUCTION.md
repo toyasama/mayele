@@ -1,189 +1,73 @@
-# 📋 Résumé — Structure Production (v1.0)
+# Structure production v2
 
-Ce document résume ce qui a été mis en place pour le déploiement simple et gratuit de Mayele Maths.
+## Vue d'ensemble
 
----
-
-## ✅ Ce qui a été fait
-
-### 1. Configuration des environnements
-
-| Fichier | Destination | Rôle |
-|---------|------------|------|
-| `.env.example` | Racine (git) | Modèle de variables d'env globales |
-| `server/.env.example` | Git | Modèle variables backend |
-| `server/.env.production` | ⚠️ Ne pas commiter | Vrai JWT_SECRET pour prod |
-| `client/.env.production.local` | ⚠️ Ne pas commiter | URL API pour prod |
-
-### 2. Infrastructure Docker
-
-**Fichier** : `Dockerfile`
-- Build React client
-- Build dépendances serveur
-- Combine tout dans une image Node.js 20
-- Prêt pour Railway, Render, ou autre cloud
-
-**Fichier** : `railway.json`
-- Configuration Railway (détecte le Dockerfile)
-- Définit le port (4000) et la commande de démarrage
-
-### 3. Backend amélioré
-
-**Fichier modifié** : `server/src/index.js`
-- ✅ Sert les fichiers static du frontend (`client/dist/`)
-- ✅ Fallback pour React Router (SPA)
-- ✅ Gardé toutes les routes API intactes
-
-### 4. Scripts et outils
-
-| Fichier | Utilité |
-|---------|----------|
-| `build-prod.ps1` | Teste que tout compile avant déploiement |
-| `.gitignore` | Ignore les secrets et les node_modules |
-| `DEPLOYMENT_GUIDE_FR.md` | 📖 Guide complet pas-à-pas |
-
----
-
-## 🚀 Checklist avant déploiement
-
-- [ ] **Générer un JWT_SECRET** sécurisé (32+ caractères)
-- [ ] **Mettre à jour** `server/.env.production` avec le JWT
-- [ ] **Build localement** : `.\build-prod.ps1`
-- [ ] **Tester localement** :
-  ```bash
-  cd client && npm run build
-  cd ../server && npm start
-  # Accéder à http://localhost:4000
-  ```
-- [ ] **Commit & Push** : `git add . && git commit -m "..." && git push`
-- [ ] **Créer un compte Railway** : https://railway.app
-- [ ] **Connecter votre repo** Railway scanera automatiquement et déploiera
-- [ ] **Ajouter les variables** dans Railway Settings (JWT_SECRET, NODE_ENV)
-- [ ] **Mettre à jour** `client/.env.production.local` avec l'URL Railway
-- [ ] **Rebuild & redéployer** : `npm run build && git push`
-
----
-
-## 📂 Fichiers créés / modifiés
-
-### ✨ Créés :
-- `.env.example`
-- `server/.env.example`
-- `server/.env.production`
-- `client/.env.production.local`
-- `Dockerfile`
-- `railway.json`
-- `build-prod.ps1`
-- `DEPLOYMENT_GUIDE_FR.md` ← **À lire en premier !**
-- `STRUCTURE_PRODUCTION.md` ← vous lisez ça
-
-### 🔄 Modifiés :
-- `server/src/index.js` : sert frontend + API routes
-- `.gitignore` : ajoute les secrets & node_modules
-
----
-
-## 💾 Structure finale
-
-```
+```text
 mayele/
-├── client/
-│   ├── src/
-│   ├── dist/                    ← Build React généré
-│   ├── package.json
-│   ├── .env.example
-│   └── .env.production.local    ⚠️ SECRET
-│
-├── server/
-│   ├── src/
-│   │   ├── index.js            (✏️ maintenant sert frontend)
-│   │   ├── db.js
-│   │   └── ...
-│   ├── data/
-│   │   └── mayele.db           (persistent en prod)
-│   ├── package.json
-│   ├── .env.example
-│   └── .env.production         ⚠️ SECRET
-│
-├── Dockerfile                   ← Railway utilise ça
-├── railway.json                 ← Config Railway
-├── .gitignore                   ← Cache les secrets
-├── build-prod.ps1              ← Test avant déploiement
-├── DEPLOYMENT_GUIDE_FR.md       📖 GUIDE COMPLET
-└── STRUCTURE_PRODUCTION.md      ← vous êtes ici
+  client/                 React/Vite pour Vercel
+  server/                 API Express TypeScript pour Railway
+  server/prisma/          Schema et migrations Prisma
+  Dockerfile              Image API-only Railway
+  railway.json            Healthcheck et commande de demarrage API
 ```
 
----
+## Frontend
 
-## 🔐 Secrets à gérer
+Le client utilise `@clerk/react`.
 
-### Ne JAMAIS commiter :
-- `server/.env.production` ← JWT_SECRET
-- `client/.env.production.local` ← URLs sensibles
+- `VITE_CLERK_PUBLISHABLE_KEY` initialise Clerk.
+- `VITE_API_URL` pointe vers l'API Railway.
+- Les appels prives recuperent un token Clerk via `getToken()` et l'envoient en `Authorization: Bearer`.
+- Aucun JWT maison n'est stocke en `localStorage`.
 
-### À définir dans Railway :
-```
-NODE_ENV = production
-JWT_SECRET = your-32-char-secret-here
-PORT = 4000
-```
+## Backend
 
----
+Le serveur est en TypeScript ESM.
 
-## 🔄 Workflow quotidien
+- `src/app.ts` configure Express, CORS, JSON, Clerk et les routes.
+- `src/server.ts` lance le process HTTP.
+- `src/services/` contient la logique metier.
+- `src/schemas/` valide les payloads avec Zod.
+- `src/lib/prisma.ts` instancie Prisma avec l'adapter Postgres.
+
+Routes publiques :
+
+- `GET /api/health`
+- `GET /api/ready`
+
+Routes privees :
+
+- `GET /api/me`
+- `GET /api/dashboard`
+- `GET /api/practice-plan`
+- `POST /api/sessions`
+
+## Base de donnees
+
+Neon Postgres remplace SQLite.
+
+Tables principales :
+
+- `players`
+- `game_sessions`
+- `answers`
+- `achievements`
+- `daily_stats`
+
+Les migrations vivent dans `server/prisma/migrations`. Le serveur ne cree ni ne supprime de tables au demarrage.
+
+## Deploiement
+
+Railway execute :
 
 ```bash
-# 1. Développer en local
-npm run dev        # Frontend + Backend
-
-# 2. Avant de pousser
-./build-prod.ps1   # Vérifier que tout compile
-
-# 3. Pousser
-git add .
-git commit -m "Nouvelle feature"
-git push origin main
-
-# 4. Railway redéploie automatiquement
-#    (Vérifier les logs Railway)
+cd /app/server && npm run prisma:migrate:deploy && node dist/server.js
 ```
 
----
+Vercel build le client :
 
-## 💰 Coûts estimés
+```bash
+npm run build
+```
 
-| Service | Coût |
-|---------|------|
-| **Railway (Node.js)** | Gratuit 1 mois, puis ~$5/mois |
-| **Domaine** (optionnel) | ~$10-15/an |
-| **Total** | ~$5/mois (très abordable) |
-
----
-
-## 📈 Roadmap post-v1
-
-1. **Monitoring** : Sentry ou Logrocket
-2. **Base de données** : Migrer SQLite → PostgreSQL (gratuit sur Railway)
-3. **Domaine** : Acheter un nom personnalisé
-4. **Email** : Confirmations d'inscription (SendGrid)
-5. **Analytics** : Posthog ou Plausible
-6. **Cache** : Redis pour sessions (si besoin)
-7. **Améliorer UX** : Tailwind CSS complet, animations
-
----
-
-## 📚 Ressources
-
-- **DEPLOYMENT_GUIDE_FR.md** : Guide complet avec screenshots
-- **Railway Docs** : https://docs.railway.app
-- **Déployer manuellement** : `railway login && railway up`
-
----
-
-## ✨ C'est prêt !
-
-Votre projet est maintenant **structuré et prêt pour la production**.
-
-👉 **Prochains pas** : Lire `DEPLOYMENT_GUIDE_FR.md` et suivre les étapes.
-
-Bonne chance ! 🚀
+Le fichier `client/vercel.json` gere le fallback SPA.

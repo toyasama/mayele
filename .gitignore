@@ -1,6 +1,8 @@
 client/node_modules/
 client/dist/
 server/node_modules/
+server/dist/
+server/src/generated/
 server/data/*.db
 server/data/*.db-*
 *.log

@@ -1,0 +1,92 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Player {
+  id          String        @id @default(cuid())
+  clerkUserId String        @unique @map("clerk_user_id")
+  email       String?
+  name        String
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+  sessions    GameSession[]
+  answers     Answer[]
+  achievements Achievement[]
+  dailyStats  DailyStat[]
+
+  @@map("players")
+}
+
+model GameSession {
+  id              String   @id @default(cuid())
+  playerId        String   @map("player_id")
+  game            String
+  level           String
+  practiceSkill   String?  @map("practice_skill")
+  score           Int      @default(0)
+  points          Int      @default(0)
+  correctAnswers  Int      @default(0) @map("correct_answers")
+  totalQuestions  Int      @default(0) @map("total_questions")
+  durationSeconds Int      @default(0) @map("duration_seconds")
+  bestStreak      Int      @default(0) @map("best_streak")
+  playedAt        DateTime @default(now()) @map("played_at")
+  player          Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  answers         Answer[]
+
+  @@index([playerId, playedAt(sort: Desc)])
+  @@index([playerId, game, level])
+  @@map("game_sessions")
+}
+
+model Answer {
+  id             String      @id @default(cuid())
+  sessionId      String      @map("session_id")
+  playerId       String      @map("player_id")
+  game           String
+  level          String
+  skill          String
+  prompt         String
+  correctAnswer  Int         @map("correct_answer")
+  userAnswer     Int         @map("user_answer")
+  responseTimeMs Int         @map("response_time_ms")
+  isCorrect      Boolean     @default(false) @map("is_correct")
+  answeredAt     DateTime    @default(now()) @map("answered_at")
+  session        GameSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  player         Player      @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@index([playerId, skill])
+  @@index([sessionId])
+  @@map("answers")
+}
+
+model Achievement {
+  id             String   @id @default(cuid())
+  playerId       String   @map("player_id")
+  achievementKey String   @map("achievement_key")
+  label          String
+  description    String
+  earnedAt       DateTime @default(now()) @map("earned_at")
+  player         Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([playerId, achievementKey])
+  @@map("achievements")
+}
+
+model DailyStat {
+  id             String   @id @default(cuid())
+  playerId       String   @map("player_id")
+  day            String
+  sessionsCount  Int      @default(0) @map("sessions_count")
+  points         Int      @default(0)
+  correctAnswers Int      @default(0) @map("correct_answers")
+  totalQuestions Int      @default(0) @map("total_questions")
+  player         Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([playerId, day])
+  @@map("daily_stats")
+}

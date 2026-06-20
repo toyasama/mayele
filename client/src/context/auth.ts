@@ -1,24 +1,34 @@
-import { createContext, useContext } from 'react'
+import { useAuth as useClerkAuth, useClerk, useUser } from '@clerk/react'
 import type { AuthUser } from '../lib/api'
 
 export type AuthContextValue = {
   user: AuthUser | null
-  token: string | null
+  getToken: () => Promise<string | null>
   loading: boolean
   isAuthenticated: boolean
-  login: (email: string, password: string) => Promise<void>
-  register: (name: string, email: string, password: string) => Promise<void>
-  logout: () => void
+  logout: () => Promise<void>
 }
 
-export const AuthContext = createContext<AuthContextValue | undefined>(undefined)
-
 export function useAuth() {
-  const context = useContext(AuthContext)
+  const clerkAuth = useClerkAuth()
+  const { user } = useUser()
+  const clerk = useClerk()
 
-  if (!context) {
-    throw new Error('useAuth must be used inside an AuthProvider')
+  const fullName = user?.fullName ?? user?.username ?? user?.primaryEmailAddress?.emailAddress ?? null
+
+  return {
+    user: user
+      ? {
+          id: user.id,
+          clerkUserId: user.id,
+          name: fullName ?? 'Joueur Mayele',
+          email: user.primaryEmailAddress?.emailAddress ?? null,
+          createdAt: user.createdAt?.toISOString() ?? new Date().toISOString(),
+        }
+      : null,
+    getToken: clerkAuth.getToken,
+    loading: !clerkAuth.isLoaded,
+    isAuthenticated: Boolean(clerkAuth.isSignedIn && user),
+    logout: () => clerk.signOut(),
   }
-
-  return context
 }

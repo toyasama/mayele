@@ -13,8 +13,7 @@ function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   function handleLogout() {
-    logout()
-    setMobileMenuOpen(false)
+    void logout().finally(() => setMobileMenuOpen(false))
   }
 
   const authLinks = isAuthenticated ? (

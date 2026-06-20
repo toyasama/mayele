@@ -1,19 +1,27 @@
 # Mayele Maths
 
-Application d'entraînement au calcul mental avec compte joueur, sprints de 60 secondes et suivi de progression.
+Application d'entrainement au calcul mental avec compte joueur, sprints de 60 secondes et suivi de progression.
 
-## Structure
+## Architecture v2
 
-- `client/` : interface React/Vite
-- `server/` : API Express, authentification et stockage SQLite local
+- `client/` : React/Vite, auth Clerk, deploiement Vercel
+- `server/` : API Express TypeScript, auth Clerk, Prisma, Neon Postgres, deploiement Railway
+
+SQLite et l'auth JWT maison ne sont plus utilises.
 
 ## Lancer en local
+
+Creer les fichiers `.env.local`/`.env` necessaires a partir des exemples :
+
+- `client/.env.example`
+- `server/.env.example`
 
 ### Backend
 
 ```powershell
 cd server
 npm install
+npm run prisma:generate
 npm run dev
 ```
 
@@ -25,23 +33,32 @@ npm install
 npm run dev
 ```
 
-## Accès
+## Acces local
 
-- Local : `http://localhost:5173`
-- API : `http://localhost:4000/api/health`
+- Client : `http://localhost:5173`
+- API health : `http://localhost:4000/api/health`
+- API ready : `http://localhost:4000/api/ready`
 
-## Fonctionnalités
-
-- inscription et connexion
-- sprints de calcul mental de 60 secondes
-- modes addition, soustraction, multiplication et mixte
-- niveaux débutant, intermédiaire, avancé et expert
-- tableau de bord avec records, précision, points, séries et historique
-
-## Vérification
+## Verification
 
 ```powershell
-cd client
+.\build-prod.ps1
+```
+
+Ou separement :
+
+```powershell
+cd server
+npm run typecheck
+npm run test
+npm run build
+
+cd ../client
 npm run lint
+npm run test
 npm run build
 ```
+
+## Deploiement
+
+Lire [DEPLOYMENT_GUIDE_FR.md](DEPLOYMENT_GUIDE_FR.md).

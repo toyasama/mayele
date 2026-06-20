@@ -36,19 +36,19 @@ function skillLabel(value: SkillTag | null) {
 }
 
 export function DashboardPage() {
-  const { user, token } = useAuth()
+  const { user, getToken, isAuthenticated } = useAuth()
   const [data, setData] = useState<DashboardData | null>(null)
   const [error, setError] = useState('')
 
   useEffect(() => {
-    if (!token) {
+    if (!isAuthenticated) {
       return
     }
 
     let active = true
 
     api
-      .getDashboard(token)
+      .getDashboard(getToken)
       .then((payload) => {
         if (active) {
           setData(payload)
@@ -63,7 +63,7 @@ export function DashboardPage() {
     return () => {
       active = false
     }
-  }, [token])
+  }, [getToken, isAuthenticated])
 
   if (error) {
     return (

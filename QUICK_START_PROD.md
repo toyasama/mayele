@@ -1,101 +1,48 @@
-## 🎯 Démarrage rapide — v1.0 Production
+# Demarrage rapide production v2
 
-**Objectif** : Deployer Mayele Maths en production simple et gratuite
+## Stack
 
----
+- Frontend: Vercel, root `client/`
+- API: Railway, Dockerfile racine
+- Auth: Clerk
+- DB: Neon Postgres
+- Migrations: Prisma
 
-### 📦 Fichiers clés ajoutés
+## Checklist
 
-```
-✨ NEW:
-  - Dockerfile              (build production)
-  - railway.json            (config Railway)
-  - DEPLOYMENT_GUIDE_FR.md  (📖 LIRE CECI EN PREMIER)
-  - STRUCTURE_PRODUCTION.md (architecture overview)
-  - build-prod.ps1          (test build local)
-  - .env*.example           (templates)
+1. Creer Clerk et copier `VITE_CLERK_PUBLISHABLE_KEY`, `CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`.
+2. Creer Neon et copier `DATABASE_URL` + `DIRECT_URL`.
+3. Configurer Railway avec les variables serveur.
+4. Configurer Vercel avec les variables client.
+5. Lancer localement :
 
-🔄 MODIFIÉ:
-  - server/src/index.js     (sert frontend + API)
-  - .gitignore              (secrets)
-```
-
----
-
-### ⚡ Checklist 30 sec
-
-1. ✅ **Générer JWT_SECRET**
-   ```powershell
-   $secret = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 32 | % {[char]$_})
-   Write-Output $secret
-   ```
-
-2. ✅ **Test local**
-   ```bash
-   .\build-prod.ps1
-   ```
-
-3. ✅ **Créer Railway** : https://railway.app
-
-4. ✅ **Connecter repo** : Railway → New Project → From GitHub
-
-5. ✅ **Ajouter secret** : Railway Settings → Variables
-   - `JWT_SECRET=<votre-secret>`
-   - `NODE_ENV=production`
-
-6. ✅ **Redéployer** : `git push` (Railway redéploie auto)
-
----
-
-### 📖 Documentation complète
-
-👉 **Lire** : [DEPLOYMENT_GUIDE_FR.md](DEPLOYMENT_GUIDE_FR.md)
-
-*(10 min, tout est expliqué pas-à-pas)*
-
----
-
-### 💰 Coûts
-
-- **Mois 1** : Gratuit
-- **Après** : ~$5/mois (très abordable)
-- **Domaine** : optionnel, ~$10/an
-
----
-
-### ✨ Architecture finale
-
-```
-Browser → Railway App (Node.js)
-          ├── Sert React (static)
-          ├── API Express routes
-          └── SQLite DB (persistant)
+```powershell
+.\build-prod.ps1
 ```
 
-**Un seul déploiement = tout est en prod**
-
----
-
-### 🔐 Secrets à protéger
-
-⚠️ **Ne JAMAIS commiter** :
-- `server/.env.production` (JWT_SECRET)
-- `client/.env.production.local` (URLs)
-
-✅ **C'est dans .gitignore** : vous êtes protégé
-
----
-
-### 🚀 C'est prêt !
+6. Push sur GitHub.
+7. Verifier :
 
 ```bash
-git add .
-git commit -m "Production setup ready"
-git push origin main
+curl https://votre-api.up.railway.app/api/health
+curl https://votre-api.up.railway.app/api/ready
 ```
 
-Railway détectera le Dockerfile et déploiera.
+## Variables Railway
 
----
+```env
+NODE_ENV=production
+PORT=4000
+CLERK_PUBLISHABLE_KEY=pk_live_xxx
+CLERK_SECRET_KEY=sk_live_xxx
+DATABASE_URL=postgresql://...
+DIRECT_URL=postgresql://...
+CORS_ORIGINS=https://votre-client.vercel.app
+```
 
-**Questions ?** → Lire `DEPLOYMENT_GUIDE_FR.md` 📖
+## Variables Vercel
+
+```env
+VITE_API_URL=https://votre-api.up.railway.app/api
+VITE_CLERK_PUBLISHABLE_KEY=pk_live_xxx
+```

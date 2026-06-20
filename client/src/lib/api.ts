@@ -3,15 +3,11 @@ import type { AnswerResult, SkillTag } from './game'
 const API_BASE = import.meta.env.VITE_API_URL ?? '/api'
 
 export type AuthUser = {
-  id: number
+  id: string
+  clerkUserId: string
   name: string
-  email: string
+  email: string | null
   createdAt: string
-}
-
-export type AuthResponse = {
-  token: string
-  user: AuthUser
 }
 
 export type DashboardData = {
@@ -54,7 +50,7 @@ export type DashboardData = {
     lastPlayedAt: string | null
   }>
   recentSessions: Array<{
-    id: number
+    id: string
     game: string
     level: string
     practiceSkill: SkillTag | null
@@ -68,12 +64,19 @@ export type DashboardData = {
   }>
 }
 
+type TokenProvider = () => Promise<string | null>
+
 type RequestOptions = RequestInit & {
-  token?: string | null
+  getToken?: TokenProvider
 }
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { token, headers, ...rest } = options
+  const { getToken, headers, ...rest } = options
+  const token = getToken ? await getToken() : null
+
+  if (getToken && !token) {
+    throw new Error('Connexion requise.')
+  }
 
   const response = await fetch(`${API_BASE}${path}`, {
     ...rest,
@@ -95,32 +98,20 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 }
 
 export const api = {
-  register: (data: { name: string; email: string; password: string }) =>
-    request<AuthResponse>('/auth/register', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
-
-  login: (data: { email: string; password: string }) =>
-    request<AuthResponse>('/auth/login', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
-
-  getMe: (token: string) =>
+  getMe: (getToken: TokenProvider) =>
     request<{ user: AuthUser }>('/me', {
       method: 'GET',
-      token,
+      getToken,
     }),
 
-  getDashboard: (token: string) =>
+  getDashboard: (getToken: TokenProvider) =>
     request<DashboardData>('/dashboard', {
       method: 'GET',
-      token,
+      getToken,
     }),
 
   saveSession: (
-    token: string,
+    getToken: TokenProvider,
     data: {
       game: string
       level: string
@@ -136,7 +127,7 @@ export const api = {
   ) =>
     request<{ message: string; earnedAchievements: Array<{ key: string; label: string }> }>('/sessions', {
       method: 'POST',
-      token,
+      getToken,
       body: JSON.stringify(data),
     }),
 }
