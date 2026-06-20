@@ -29,6 +29,7 @@ body {
   min-height: 100vh;
   background: #f6f7fb;
   color: var(--text);
+  overflow-x: hidden;
 }
 
 a {
@@ -74,6 +75,7 @@ h2 {
 }
 
 .topbar {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -112,6 +114,89 @@ h2 {
   color: var(--text);
   background: #ffffff;
   border-color: var(--border);
+}
+
+.mobile-menu-button,
+.mobile-menu-overlay {
+  display: none;
+}
+
+.mobile-menu-button {
+  width: 44px;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border-radius: 8px;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.mobile-menu-button span {
+  display: block;
+  width: 18px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--text);
+}
+
+.mobile-menu-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  padding: 72px 12px 12px;
+  background: rgba(23, 32, 51, 0.36);
+}
+
+.mobile-menu-panel {
+  width: min(100%, 360px);
+  margin-left: auto;
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 10px;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+}
+
+.mobile-menu-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 2px 8px;
+  color: var(--muted);
+}
+
+.mobile-menu-heading strong {
+  color: var(--text);
+}
+
+.mobile-nav-link {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  border-radius: 8px;
+  background: #f7f9fc;
+  color: var(--text);
+  border: 1px solid var(--border);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.mobile-nav-link.active {
+  background: #e8f7f3;
+  color: var(--primary-dark);
+  border-color: #b9e4db;
+}
+
+.mobile-nav-link.danger {
+  color: var(--danger);
+  text-align: left;
 }
 
 .welcome-chip {
@@ -334,6 +419,7 @@ h2 {
 .quiz-form input {
   width: 100%;
   min-height: 48px;
+  font-size: 16px;
   padding: 12px 14px;
   border-radius: 8px;
   border: 1px solid var(--border);
@@ -498,6 +584,10 @@ h2 {
 .sprint-card {
   display: grid;
   gap: 18px;
+}
+
+.settings-panel summary {
+  display: none;
 }
 
 .panel-label {
@@ -734,6 +824,201 @@ h2 {
   }
 }
 
+@media (max-width: 720px) {
+  .app-shell {
+    width: min(100% - 20px, 1180px);
+    padding: 10px 0 28px;
+  }
+
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    flex-direction: row;
+    align-items: center;
+    padding: 8px 0 14px;
+    background: rgba(246, 247, 251, 0.96);
+    backdrop-filter: blur(10px);
+  }
+
+  .brand {
+    font-size: 1.05rem;
+  }
+
+  .nav-links,
+  .topbar-actions {
+    display: none;
+  }
+
+  .mobile-menu-button {
+    display: inline-flex;
+    flex-direction: column;
+  }
+
+  .mobile-menu-overlay {
+    display: block;
+  }
+
+  .main-content,
+  .page {
+    gap: 14px;
+  }
+
+  h1 {
+    font-size: clamp(2rem, 12vw, 3rem);
+  }
+
+  .hero-panel {
+    gap: 18px;
+    padding: 20px;
+  }
+
+  .hero-copy {
+    gap: 12px;
+  }
+
+  .hero-copy .lead {
+    font-size: 1rem;
+  }
+
+  .hero-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .metric-card {
+    min-height: 78px;
+    padding: 12px;
+  }
+
+  .metric-card strong {
+    font-size: 1.45rem;
+  }
+
+  .metric-card span {
+    font-size: 0.85rem;
+    line-height: 1.2;
+  }
+
+  .dashboard-hero {
+    order: 1;
+    gap: 14px;
+  }
+
+  .dashboard-hero h1,
+  .section-header h1 {
+    font-size: clamp(1.8rem, 9vw, 2.4rem);
+  }
+
+  .dashboard-priority-grid {
+    order: 2;
+  }
+
+  .dashboard-stats-grid {
+    order: 3;
+  }
+
+  .dashboard-detail-grid {
+    order: 4;
+  }
+
+  .dashboard-history {
+    order: 5;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .stat-card {
+    min-height: 96px;
+  }
+
+  .game-shell {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .sprint-card {
+    order: 1;
+  }
+
+  .settings-panel {
+    order: 2;
+  }
+
+  .settings-panel summary {
+    min-height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: -4px 0 2px;
+    color: var(--text);
+    font-weight: 900;
+    cursor: pointer;
+  }
+
+  .settings-panel summary::after {
+    content: '+';
+    color: var(--primary-dark);
+    font-size: 1.3rem;
+  }
+
+  .settings-panel[open] summary::after {
+    content: '−';
+  }
+
+  .segmented-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .segment {
+    min-height: 46px;
+  }
+
+  .mini-stats {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .mini-stats > div {
+    min-height: 68px;
+    padding: 8px;
+  }
+
+  .mini-stats span {
+    font-size: 0.78rem;
+  }
+
+  .mini-stats strong {
+    font-size: 1.05rem;
+  }
+
+  .sprint-topline {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+  }
+
+  .question-line {
+    min-height: 150px;
+    font-size: clamp(3.2rem, 18vw, 5.5rem);
+  }
+
+  .skill-hint {
+    margin-top: -10px;
+  }
+
+  .feedback-banner {
+    min-height: 50px;
+    gap: 6px;
+  }
+
+  .form-card {
+    padding: 18px;
+  }
+}
+
 @media (max-width: 640px) {
   .app-shell {
     width: min(100% - 24px, 1180px);
@@ -757,6 +1042,14 @@ h2 {
     width: 100%;
   }
 
+  .mobile-menu-button {
+    width: 44px;
+  }
+
+  .mobile-nav-link {
+    width: 100%;
+  }
+
   .focus-band,
   .progress-row,
   .session-row,
@@ -774,6 +1067,10 @@ h2 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .mini-stats {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
   .feedback-banner {
     grid-template-columns: 1fr;
   }
@@ -782,5 +1079,44 @@ h2 {
   .progress-meta {
     justify-items: start;
     text-align: left;
+  }
+}
+
+@media (max-width: 420px) {
+  .app-shell {
+    width: min(100% - 16px, 1180px);
+  }
+
+  .card,
+  .dashboard-hero,
+  .focus-band,
+  .hero-panel {
+    padding: 14px;
+  }
+
+  .hero-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .metric-card {
+    min-height: 64px;
+  }
+
+  .mini-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .mini-stats > div {
+    min-height: 72px;
+  }
+
+  .result-grid,
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .question-line {
+    min-height: 132px;
   }
 }

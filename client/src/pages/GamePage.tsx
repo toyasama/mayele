@@ -275,7 +275,8 @@ export function GamePage() {
       </div>
 
       <div className="game-shell">
-        <aside className="card control-panel">
+        <details className="card control-panel settings-panel" open>
+          <summary>Réglages du sprint</summary>
           <div>
             <span className="panel-label">Mode</span>
             <div className="segmented-grid">
@@ -338,7 +339,7 @@ export function GamePage() {
               <strong>{accuracy}%</strong>
             </div>
           </div>
-        </aside>
+        </details>
 
         <article className="card sprint-card">
           <div className="sprint-topline">

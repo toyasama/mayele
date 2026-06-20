@@ -107,7 +107,7 @@ export function DashboardPage() {
         </div>
       </div>
 
-      <div className="stats-grid">
+      <div className="stats-grid dashboard-stats-grid">
         <article className="card stat-card">
           <span>Sessions</span>
           <strong>{data.summary.totalSessions}</strong>
@@ -126,7 +126,7 @@ export function DashboardPage() {
         </article>
       </div>
 
-      <div className="grid two-columns">
+      <div className="grid two-columns dashboard-priority-grid">
         <article className="card diagnostic-card">
           <h2>À travailler</h2>
           <p className="muted">{data.practicePlan.message}</p>
@@ -176,7 +176,7 @@ export function DashboardPage() {
         </article>
       </div>
 
-      <div className="grid two-columns">
+      <div className="grid two-columns dashboard-detail-grid">
         <article className="card">
           <h2>Progression par entraînement</h2>
           {data.progressByMode.length ? (
@@ -222,7 +222,7 @@ export function DashboardPage() {
         </article>
       </div>
 
-      <article className="card">
+      <article className="card dashboard-history">
         <h2>Historique récent</h2>
         {data.recentSessions.length ? (
           <div className="session-list">
