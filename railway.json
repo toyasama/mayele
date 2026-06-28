@@ -4,7 +4,6 @@
     "builder": "dockerfile"
   },
   "deploy": {
-    "startCommand": "cd /app/server && npm run prisma:migrate:deploy && node dist/server.js",
     "healthcheckPath": "/api/health",
     "restartPolicyMaxRetries": 5
   }
