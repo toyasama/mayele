@@ -10,7 +10,18 @@ export function dashboardRoutes() {
     try {
       const { clerkUserId } = getRequiredAuth(req)
       const player = await getOrCreatePlayer(clerkUserId)
-      res.json(await getDashboard(player.id))
+      const dashboard = await getDashboard(player.id)
+
+      res.json({
+        player: {
+          id: player.id,
+          clerkUserId: player.clerkUserId,
+          name: player.name,
+          email: player.email,
+          createdAt: player.createdAt.toISOString(),
+        },
+        ...dashboard,
+      })
     } catch (error) {
       next(error)
     }

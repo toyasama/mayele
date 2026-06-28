@@ -1,79 +1,132 @@
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/auth'
 
-const habits = [
+const trainingPaths = [
   {
-    title: 'Un sprint court',
-    description: '60 secondes pour se concentrer, répondre vite et garder le rythme.',
+    title: 'Sprint libre',
+    meta: 'Jouer maintenant',
+    description: 'Une session mixte pour vous échauffer et chercher la meilleure série.',
+    to: '/jeu',
   },
   {
-    title: 'Un niveau adapté',
-    description: 'Débutant, intermédiaire, avancé ou expert selon l’objectif du moment.',
+    title: 'Rejouer mes erreurs',
+    meta: 'Reprendre une erreur',
+    description: 'Relancez une série sur les calculs qui vous ont fait perdre des points.',
+    to: '/dashboard',
   },
   {
-    title: 'Des résultats lisibles',
-    description: 'Erreurs, précision et compétences faibles indiquent quoi retravailler.',
+    title: 'Records',
+    meta: 'Voir mes résultats',
+    description: 'Comparez vos scores, vos séries et vos niveaux après chaque sprint.',
+    to: '/dashboard',
+  },
+]
+
+const progressionLoop = [
+  {
+    step: '01',
+    title: 'Choisir le mode',
+    text: 'Addition, soustraction, multiplication, division ou mixte.',
+  },
+  {
+    step: '02',
+    title: 'Répondre vite',
+    text: 'Chaque bonne réponse augmente la série et le score.',
+  },
+  {
+    step: '03',
+    title: 'Corriger les erreurs',
+    text: 'Les calculs ratés restent disponibles pour les retravailler.',
   },
 ]
 
 export function HomePage() {
   const { isAuthenticated } = useAuth()
 
+  const primaryTarget = isAuthenticated ? '/jeu' : '/inscription'
+  const secondaryTarget = isAuthenticated ? '/dashboard' : '/connexion'
+
   return (
-    <section className="page">
-      <div className="hero-panel">
-        <div className="hero-copy">
-          <span className="eyebrow">Entraînement mental</span>
-          <h1>Mayele Maths</h1>
+    <section className="page home-page">
+      <div className="home-hero">
+        <div className="home-hero-copy">
+          <span className="eyebrow">Mayele Maths</span>
+          <h1>Calculez vite. Progressez à chaque sprint.</h1>
           <p className="lead">
-            Lancez un sprint, trouvez le bon rythme et progressez à chaque session. L’objectif est
-            simple: plus de bonnes réponses, moins d’hésitation.
+            Choisissez un niveau, répondez en 60 secondes, puis retrouvez vos résultats dans votre espace.
           </p>
-
           <div className="button-row">
-            <Link className="primary-button" to={isAuthenticated ? '/jeu' : '/inscription'}>
-              {isAuthenticated ? 'Lancer un sprint' : 'Créer mon espace'}
+            <Link className="primary-button" to={primaryTarget}>
+              {isAuthenticated ? 'Lancer une session' : 'Créer mon profil'}
             </Link>
-            <Link className="secondary-button" to={isAuthenticated ? '/dashboard' : '/connexion'}>
-              {isAuthenticated ? 'Voir mes résultats' : 'Reprendre une session'}
+            <Link className="secondary-button" to={secondaryTarget}>
+              {isAuthenticated ? 'Voir mes progrès' : 'J’ai déjà un compte'}
             </Link>
           </div>
         </div>
 
-        <div className="hero-stats">
-          <div className="metric-card">
-            <strong>60s</strong>
-            <span>par sprint</span>
+        <div className="arena-preview" aria-label="Aperçu d’une session Mayele">
+          <div className="arena-topline">
+            <span>Session mixte</span>
+            <strong>00:37</strong>
           </div>
-          <div className="metric-card">
-            <strong>5</strong>
-            <span>modes d’entraînement</span>
+          <div className="arena-question">
+            <span>48 ÷ 6</span>
+            <strong>8</strong>
           </div>
-          <div className="metric-card">
-            <strong>4</strong>
-            <span>niveaux de difficulté</span>
+          <div className="arena-lanes">
+            <div>
+              <span>Série</span>
+              <strong>5</strong>
+            </div>
+            <div>
+              <span>Précision</span>
+              <strong>86%</strong>
+            </div>
+            <div>
+              <span>Points</span>
+              <strong>420</strong>
+            </div>
+          </div>
+          <div className="arena-feedback">
+            <span>À retravailler</span>
+            <strong>Division rapide</strong>
           </div>
         </div>
       </div>
 
-      <div className="grid three-columns">
-        {habits.map((item) => (
-          <article className="card feature-card" key={item.title}>
-            <h2>{item.title}</h2>
-            <p>{item.description}</p>
-          </article>
-        ))}
-      </div>
-
-      <div className="focus-band">
-        <div>
-          <span className="eyebrow">Aujourd’hui</span>
-          <h2>Choisissez un mode, corrigez vos erreurs, recommencez.</h2>
+      <section className="home-section">
+        <div className="section-kicker">
+          <span className="eyebrow">Modes</span>
+          <h2>Choisissez comment commencer.</h2>
         </div>
-        <Link className="primary-button" to={isAuthenticated ? '/jeu' : '/inscription'}>
-          Commencer
-        </Link>
-      </div>
+        <div className="grid three-columns home-path-grid">
+          {trainingPaths.map((path) => (
+            <Link className="card path-card" key={path.title} to={isAuthenticated ? path.to : '/inscription'}>
+              <span>{path.meta}</span>
+              <h3>{path.title}</h3>
+              <p>{path.description}</p>
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      <section className="home-section home-loop-section">
+        <div className="section-kicker">
+          <span className="eyebrow">Progression</span>
+          <h2>Une partie simple, des résultats utiles.</h2>
+        </div>
+        <div className="loop-track">
+          {progressionLoop.map((item) => (
+            <article className="loop-step" key={item.step}>
+              <span>{item.step}</span>
+              <h3>{item.title}</h3>
+              <p>{item.text}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
     </section>
   )
 }

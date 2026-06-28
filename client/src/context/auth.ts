@@ -9,12 +9,23 @@ export type AuthContextValue = {
   logout: () => Promise<void>
 }
 
+function displayNameFromEmail(email: string | null | undefined) {
+  const localPart = email?.split('@')[0]?.replace(/[._-]+/g, ' ').trim()
+
+  if (!localPart) {
+    return null
+  }
+
+  return localPart.replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
+
 export function useAuth() {
   const clerkAuth = useClerkAuth()
   const { user } = useUser()
   const clerk = useClerk()
 
-  const fullName = user?.fullName ?? user?.username ?? user?.primaryEmailAddress?.emailAddress ?? null
+  const email = user?.primaryEmailAddress?.emailAddress ?? null
+  const fullName = user?.fullName ?? user?.username ?? displayNameFromEmail(email)
 
   return {
     user: user
@@ -22,7 +33,7 @@ export function useAuth() {
           id: user.id,
           clerkUserId: user.id,
           name: fullName ?? 'Joueur Mayele',
-          email: user.primaryEmailAddress?.emailAddress ?? null,
+          email,
           createdAt: user.createdAt?.toISOString() ?? new Date().toISOString(),
         }
       : null,

@@ -11,6 +11,7 @@ export type AuthUser = {
 }
 
 export type DashboardData = {
+  player: AuthUser
   summary: {
     totalSessions: number
     bestScore: number
@@ -70,6 +71,17 @@ type RequestOptions = RequestInit & {
   getToken?: TokenProvider
 }
 
+function apiUnavailableMessage() {
+  const target = API_BASE.startsWith('http') ? API_BASE : `${window.location.origin}${API_BASE}`
+  const isLocalApi = target.includes('localhost') || target.includes('127.0.0.1')
+
+  if (isLocalApi) {
+    return `Impossible de contacter l’API locale (${target}). Lancez le serveur dans le dossier server avec npm run dev.`
+  }
+
+  return 'Impossible de contacter l’API Mayele. Réessayez dans un instant.'
+}
+
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { getToken, headers, ...rest } = options
   const token = getToken ? await getToken() : null
@@ -78,14 +90,20 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     throw new Error('Connexion requise.')
   }
 
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...rest,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(headers ?? {}),
-    },
-  })
+  let response: Response
+
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      ...rest,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(headers ?? {}),
+      },
+    })
+  } catch {
+    throw new Error(apiUnavailableMessage())
+  }
 
   const contentType = response.headers.get('content-type') ?? ''
   const payload = contentType.includes('application/json') ? await response.json() : null

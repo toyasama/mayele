@@ -1,9 +1,19 @@
 import { getClerkUser } from '../middleware/auth.js'
 import { prisma } from '../lib/prisma.js'
 
+function displayNameFromEmail(email: string | null | undefined) {
+  const localPart = email?.split('@')[0]?.replace(/[._-]+/g, ' ').trim()
+
+  if (!localPart) {
+    return null
+  }
+
+  return localPart.replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
+
 function displayNameFromClerk(user: Awaited<ReturnType<typeof getClerkUser>>) {
   const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ').trim()
-  return fullName || user.username || user.primaryEmailAddress?.emailAddress || 'Joueur Mayele'
+  return fullName || user.username || displayNameFromEmail(user.primaryEmailAddress?.emailAddress) || 'Joueur Mayele'
 }
 
 export async function getOrCreatePlayer(clerkUserId: string) {

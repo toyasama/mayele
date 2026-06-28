@@ -20,6 +20,13 @@ import {
 
 type SessionStatus = 'idle' | 'running' | 'finished'
 type FeedbackTone = 'info' | 'success' | 'error'
+type AnswerFeedback = {
+  prompt: string
+  userAnswer: number
+  correctAnswer: number
+  isCorrect: boolean
+  streak: number
+}
 
 type SessionStats = {
   correctAnswers: number
@@ -45,25 +52,34 @@ function parseFocusSkill(value: string | null): SkillTag | null {
   return Object.keys(SKILL_LABELS).includes(value) ? (value as SkillTag) : null
 }
 
+function parseGameType(value: string | null): GameType {
+  return Object.keys(GAME_LABELS).includes(value ?? '') ? (value as GameType) : 'mixte'
+}
+
+function parseGameLevel(value: string | null): GameLevel {
+  return Object.keys(LEVEL_LABELS).includes(value ?? '') ? (value as GameLevel) : 'debutant'
+}
+
 export function GamePage() {
   const { getToken, isAuthenticated } = useAuth()
   const [searchParams] = useSearchParams()
   const initialFocusSkill = parseFocusSkill(searchParams.get('focus'))
-  const [game, setGame] = useState<GameType>('mixte')
-  const [level, setLevel] = useState<GameLevel>('debutant')
+  const initialGame = parseGameType(searchParams.get('game'))
+  const initialLevel = parseGameLevel(searchParams.get('level'))
+  const [game, setGame] = useState<GameType>(initialGame)
+  const [level, setLevel] = useState<GameLevel>(initialLevel)
   const [focusSkill, setFocusSkill] = useState<SkillTag | null>(initialFocusSkill)
-  const [question, setQuestion] = useState<Question>(() => generateQuestion('mixte', 'debutant', initialFocusSkill))
+  const [question, setQuestion] = useState<Question>(() => generateQuestion(initialGame, initialLevel, initialFocusSkill))
   const [answer, setAnswer] = useState('')
   const [remainingSeconds, setRemainingSeconds] = useState(SESSION_SECONDS)
   const [status, setStatus] = useState<SessionStatus>('idle')
   const [stats, setStats] = useState<SessionStats>(initialStats)
   const [answers, setAnswers] = useState<AnswerResult[]>([])
   const [feedback, setFeedback] = useState(
-    initialFocusSkill
-      ? `Session ciblée sur ${SKILL_LABELS[initialFocusSkill]}. Lancez le sprint quand vous êtes prêt.`
-      : 'Choisissez un mode, lancez le sprint, puis répondez le plus vite possible.',
+    initialFocusSkill ? `Session ciblée sur ${SKILL_LABELS[initialFocusSkill]}.` : '',
   )
   const [feedbackTone, setFeedbackTone] = useState<FeedbackTone>('info')
+  const [answerFeedback, setAnswerFeedback] = useState<AnswerFeedback | null>(null)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
   const inputRef = useRef<HTMLInputElement | null>(null)
@@ -174,9 +190,10 @@ export function GamePage() {
     setFeedback(
       nextFocusSkill
         ? `Session ciblée sur ${SKILL_LABELS[nextFocusSkill]}.`
-        : 'Prêt pour un nouveau sprint de 60 secondes.',
+        : '',
     )
     setFeedbackTone('info')
+    setAnswerFeedback(null)
     setSaveError('')
   }
 
@@ -189,8 +206,9 @@ export function GamePage() {
     setStatus('running')
     setStats(initialStats)
     setAnswers([])
-    setFeedback(focusSkill ? `Sprint ciblé: ${SKILL_LABELS[focusSkill]}.` : 'Sprint lancé.')
+    setFeedback('')
     setFeedbackTone('info')
+    setAnswerFeedback(null)
     setSaveError('')
 
     clearTimers()
@@ -211,6 +229,7 @@ export function GamePage() {
     if (!Number.isFinite(numericAnswer)) {
       setFeedback('Entrez un nombre valide.')
       setFeedbackTone('error')
+      setAnswerFeedback(null)
       return
     }
 
@@ -247,12 +266,15 @@ export function GamePage() {
       statsRef.current = nextStats
       return nextStats
     })
-    setFeedback(
-      isCorrect
-        ? `Bonne réponse. Série x${nextStreakForFeedback}.`
-        : `Réponse incorrecte. La bonne réponse était ${question.answer}.`,
-    )
+    setFeedback('')
     setFeedbackTone(isCorrect ? 'success' : 'error')
+    setAnswerFeedback({
+      prompt: question.prompt,
+      userAnswer: numericAnswer,
+      correctAnswer: question.answer,
+      isCorrect,
+      streak: nextStreakForFeedback,
+    })
     setQuestion(nextQuestion(game, level, focusSkill))
     setAnswer('')
   }
@@ -272,6 +294,25 @@ export function GamePage() {
         <Link className="secondary-button" to="/dashboard">
           Mon espace
         </Link>
+      </div>
+
+      <div className="session-banner">
+        <div>
+          <span>Temps</span>
+          <strong>{remainingSeconds}s</strong>
+        </div>
+        <div>
+          <span>Bonnes réponses</span>
+          <strong>{stats.correctAnswers}/{stats.totalQuestions}</strong>
+        </div>
+        <div>
+          <span>Série</span>
+          <strong>{stats.currentStreak}</strong>
+        </div>
+        <div>
+          <span>Précision</span>
+          <strong>{accuracy}%</strong>
+        </div>
       </div>
 
       <div className="game-shell">
@@ -321,24 +362,9 @@ export function GamePage() {
             </div>
           ) : null}
 
-          <div className="mini-stats">
-            <div>
-              <span>Temps</span>
-              <strong>{remainingSeconds}s</strong>
-            </div>
-            <div>
-              <span>Bonnes réponses</span>
-              <strong>{stats.correctAnswers}/{stats.totalQuestions}</strong>
-            </div>
-            <div>
-              <span>Série</span>
-              <strong>{stats.currentStreak}</strong>
-            </div>
-            <div>
-              <span>Précision</span>
-              <strong>{accuracy}%</strong>
-            </div>
-          </div>
+          <button className="primary-button full-width start-session-button" type="button" disabled={status === 'running'} onClick={startSession}>
+            {status === 'finished' ? 'Rejouer' : status === 'running' ? 'Sprint en cours' : 'Démarrer'}
+          </button>
         </details>
 
         <article className="card sprint-card">
@@ -418,26 +444,47 @@ export function GamePage() {
                   value={answer}
                   disabled={status !== 'running'}
                   onChange={(event) => setAnswer(event.target.value)}
-                  placeholder="Réponse"
+                  placeholder={status === 'running' ? 'Réponse' : 'Démarrez le sprint'}
                   required
                 />
-                {status === 'idle' ? (
-                  <button className="primary-button" type="button" onClick={startSession}>
-                    Démarrer
-                  </button>
-                ) : (
-                  <button className="primary-button" type="submit">
-                    Valider
-                  </button>
-                )}
+                <button className="primary-button" type="submit" disabled={status !== 'running'}>
+                  Valider
+                </button>
               </form>
             </>
           )}
 
-          <div className={saveError ? 'feedback-banner error' : `feedback-banner ${feedbackTone}`}>
-            <strong>{saveError ? 'Erreur' : feedbackTone === 'success' ? 'Correct' : feedbackTone === 'error' ? 'À corriger' : 'Info'}</strong>
-            <span>{saveError || feedback}</span>
-          </div>
+          {saveError ? (
+            <div className="answer-feedback error">
+              <strong>Erreur</strong>
+              <span>{saveError}</span>
+            </div>
+          ) : answerFeedback ? (
+            <div className={`answer-feedback ${answerFeedback.isCorrect ? 'success' : 'error'}`}>
+              <div>
+                <strong>{answerFeedback.isCorrect ? 'Juste' : 'À reprendre'}</strong>
+                <span>{answerFeedback.prompt}</span>
+              </div>
+              <div className="answer-values">
+                <span>
+                  Votre réponse <strong>{answerFeedback.userAnswer}</strong>
+                </span>
+                <span>
+                  Réponse attendue <strong>{answerFeedback.correctAnswer}</strong>
+                </span>
+                {answerFeedback.isCorrect ? (
+                  <span>
+                    Série <strong>x{answerFeedback.streak}</strong>
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          ) : feedback ? (
+            <div className={`answer-feedback ${feedbackTone === 'error' ? 'error' : 'neutral'}`}>
+              <strong>{feedbackTone === 'error' ? 'À corriger' : 'Sprint'}</strong>
+              <span>{feedback}</span>
+            </div>
+          ) : null}
           {saving ? <p className="muted">Enregistrement en cours...</p> : null}
         </article>
       </div>
