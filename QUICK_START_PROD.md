@@ -26,8 +26,8 @@
 7. Verifier :
 
 ```bash
-curl https://votre-api.up.railway.app/api/health
-curl https://votre-api.up.railway.app/api/ready
+curl https://api.mayele-learning.com/api/health
+curl https://api.mayele-learning.com/api/ready
 ```
 
 ## Variables Railway
@@ -41,13 +41,13 @@ CLERK_PUBLISHABLE_KEY=pk_live_xxx
 CLERK_SECRET_KEY=sk_live_xxx
 DATABASE_URL=postgresql://...
 DIRECT_URL=postgresql://...
-CORS_ORIGINS=https://votre-client.vercel.app
+CORS_ORIGINS=https://mayele-learning.com,https://www.mayele-learning.com
 ```
 
 ## Variables Vercel
 
 ```env
-VITE_API_URL=https://votre-api.up.railway.app/api
+VITE_API_URL=https://api.mayele-learning.com/api
 VITE_CLERK_PUBLISHABLE_KEY=pk_live_xxx
 ```
 

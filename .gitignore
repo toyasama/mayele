@@ -16,6 +16,10 @@ server/.env.local
 server/.env.production
 client/.env.production.local
 
+# Local agent tooling
+.agents/
+skills-lock.json
+
 # IDE
 .vscode/
 .idea/

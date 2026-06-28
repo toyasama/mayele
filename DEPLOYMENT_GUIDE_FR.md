@@ -57,7 +57,7 @@ CLERK_PUBLISHABLE_KEY=pk_live_xxx
 CLERK_SECRET_KEY=sk_live_xxx
 DATABASE_URL=postgresql://...pooled...?sslmode=require
 DIRECT_URL=postgresql://...direct...?sslmode=require
-CORS_ORIGINS=https://votre-client.vercel.app
+CORS_ORIGINS=https://mayele-learning.com,https://www.mayele-learning.com
 ```
 
 `DATABASE_URL` sert au runtime API. `DIRECT_URL` sert aux migrations Prisma.
@@ -65,7 +65,7 @@ CORS_ORIGINS=https://votre-client.vercel.app
 ### Vercel client
 
 ```env
-VITE_API_URL=https://votre-api.up.railway.app/api
+VITE_API_URL=https://api.mayele-learning.com/api
 VITE_CLERK_PUBLISHABLE_KEY=pk_live_xxx
 ```
 
@@ -88,8 +88,8 @@ Cela applique les migrations Prisma puis lance l'API.
 Endpoints a verifier :
 
 ```bash
-curl https://votre-api.up.railway.app/api/health
-curl https://votre-api.up.railway.app/api/ready
+curl https://api.mayele-learning.com/api/health
+curl https://api.mayele-learning.com/api/ready
 ```
 
 `/api/health` verifie le process API. `/api/ready` verifie la connexion Postgres.
@@ -107,7 +107,7 @@ Le fichier `client/vercel.json` redirige les routes SPA vers `index.html`.
 
 ## 5. Verification fonctionnelle
 
-1. Ouvrir l'URL Vercel.
+1. Ouvrir `https://mayele-learning.com`.
 2. Creer un compte via Clerk.
 3. Lancer un sprint.
 4. Verifier que `/api/sessions` retourne `201`.
