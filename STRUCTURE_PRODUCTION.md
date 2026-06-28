@@ -46,6 +46,11 @@ Routes privees :
 
 Neon Postgres remplace SQLite.
 
+Branches Neon :
+
+- `dev` : developpement local, donnees jetables.
+- `production` : API Railway, donnees utilisateur en ligne.
+
 Tables principales :
 
 - `players`
@@ -58,10 +63,10 @@ Les migrations vivent dans `server/prisma/migrations`. Le serveur ne cree ni ne 
 
 ## Deploiement
 
-Railway execute :
+Railway build le `Dockerfile` racine et execute le `CMD` de l'image :
 
 ```bash
-cd /app/server && npm run prisma:migrate:deploy && node dist/server.js
+npm run prisma:migrate:deploy && node dist/server.js
 ```
 
 Vercel build le client :

@@ -15,13 +15,40 @@ SQLite n'est plus utilise en production. Les donnees applicatives vivent dans Ne
 ## 1. Creer les services cloud
 
 1. Creer une app Clerk.
-2. Creer une base Neon Postgres.
+2. Creer une base Neon Postgres avec deux branches :
+   - `production` pour Railway.
+   - `dev` pour le developpement local.
 3. Creer un service Railway depuis le repo GitHub.
 4. Creer un projet Vercel avec `client/` comme root directory.
 
 ## 2. Variables d'environnement
 
+### Local development
+
+`client/.env.local` :
+
+```env
+VITE_API_URL=http://localhost:4000/api
+VITE_CLERK_PUBLISHABLE_KEY=pk_test_xxx
+```
+
+`server/.env.local` :
+
+```env
+NODE_ENV=development
+PORT=4000
+CLERK_PUBLISHABLE_KEY=pk_test_xxx
+CLERK_SECRET_KEY=sk_test_xxx
+DATABASE_URL=postgresql://...dev...
+DIRECT_URL=postgresql://...dev...
+CORS_ORIGINS=http://localhost:5173
+```
+
+Le local utilise la branche Neon `dev`. Ne pas utiliser la branche `production` pour les tests locaux.
+
 ### Railway API
+
+Railway utilise la branche Neon `production`.
 
 ```env
 NODE_ENV=production
@@ -44,14 +71,16 @@ VITE_CLERK_PUBLISHABLE_KEY=pk_live_xxx
 
 Ne jamais exposer `CLERK_SECRET_KEY`, `DATABASE_URL` ou `DIRECT_URL` dans Vercel client.
 
+Pour `vercel dev`, `VITE_API_URL` peut rester sur `http://localhost:4000/api`. Pour `production`, il doit pointer vers Railway.
+
 ## 3. Deploiement Railway API
 
 Railway utilise le `Dockerfile` racine. L'image build uniquement le serveur TypeScript.
 
-Au demarrage du container :
+Au demarrage du container, Railway laisse le `CMD` du `Dockerfile` executer :
 
 ```bash
-cd /app/server && npm run prisma:migrate:deploy && node dist/server.js
+npm run prisma:migrate:deploy && node dist/server.js
 ```
 
 Cela applique les migrations Prisma puis lance l'API.
@@ -107,6 +136,8 @@ Railway deploie l'API. Vercel deploie le client.
 
 - Les migrations Prisma sont versionnees dans `server/prisma/migrations`.
 - Ne jamais modifier la DB au demarrage hors `prisma migrate deploy`.
-- Garder des environnements Clerk/Neon separes pour preview et production.
+- Garder des environnements Clerk/Neon separes pour local, preview et production.
+- Le local pointe vers Neon `dev`.
+- Railway production pointe vers Neon `production`.
 - Restreindre `CORS_ORIGINS` aux domaines Vercel autorises.
 - Ajouter un monitoring d'erreurs avant d'ouvrir l'app a de vrais utilisateurs.
