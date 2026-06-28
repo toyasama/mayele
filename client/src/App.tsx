@@ -144,8 +144,8 @@ function App() {
       <main className="main-content">
         <Routes>
           <Route path="/" element={<HomePage />} />
-          <Route path="/connexion" element={<LoginPage />} />
-          <Route path="/inscription" element={<RegisterPage />} />
+          <Route path="/connexion/*" element={<LoginPage />} />
+          <Route path="/inscription/*" element={<RegisterPage />} />
           <Route
             path="/dashboard"
             element={
