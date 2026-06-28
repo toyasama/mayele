@@ -1,4 +1,4 @@
-import { useSignIn } from '@clerk/react'
+import { useSignIn } from '@clerk/react/legacy'
 import { type FormEvent, useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/auth'
@@ -6,58 +6,40 @@ import { clerkErrorMessage } from '../lib/clerkErrors'
 
 export function LoginPage() {
   const { isAuthenticated, loading } = useAuth()
-  const { fetchStatus, signIn } = useSignIn()
+  const { isLoaded, setActive, signIn } = useSignIn()
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
-  const clerkBusy = fetchStatus === 'fetching'
+  const clerkBusy = !isLoaded
   const canSubmit = !clerkBusy && !submitting && email.trim().length > 3 && password.length > 0
 
   if (!loading && isAuthenticated) {
     return <Navigate replace to="/dashboard" />
   }
 
-  async function finalizeSignIn() {
-    const { error: finalizeError } = await signIn.finalize({
-      navigate: ({ decorateUrl }) => {
-        const destination = decorateUrl('/dashboard')
-
-        if (destination.startsWith('http')) {
-          window.location.href = destination
-          return
-        }
-
-        navigate(destination)
-      },
-    })
-
-    if (finalizeError) {
-      setError(clerkErrorMessage(finalizeError, 'Connexion impossible.'))
-    }
-  }
-
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+
+    if (!isLoaded || !signIn || !setActive) {
+      setError('Connexion indisponible pour le moment. Réessayez dans quelques secondes.')
+      return
+    }
 
     setSubmitting(true)
     setError('')
 
     try {
-      const { error: passwordError } = await signIn.password({
-        emailAddress: email.trim(),
+      const result = await signIn.create({
+        identifier: email.trim(),
         password,
       })
 
-      if (passwordError) {
-        setError(clerkErrorMessage(passwordError, 'Connexion impossible.'))
-        return
-      }
-
-      if (signIn.status === 'complete') {
-        await finalizeSignIn()
+      if (result.status === 'complete') {
+        await setActive({ session: result.createdSessionId })
+        navigate('/dashboard', { replace: true })
         return
       }
 

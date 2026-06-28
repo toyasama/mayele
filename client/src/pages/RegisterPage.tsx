@@ -1,4 +1,4 @@
-import { useSignUp } from '@clerk/react'
+import { useSignUp } from '@clerk/react/legacy'
 import { type FormEvent, useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/auth'
@@ -24,7 +24,7 @@ const initialForm: RegisterForm = {
 
 export function RegisterPage() {
   const { isAuthenticated, loading } = useAuth()
-  const { fetchStatus, signUp } = useSignUp()
+  const { isLoaded, setActive, signUp } = useSignUp()
   const navigate = useNavigate()
   const [form, setForm] = useState(initialForm)
   const [step, setStep] = useState<RegisterStep>('details')
@@ -37,7 +37,7 @@ export function RegisterPage() {
     { label: '8 caractères minimum', valid: form.password.length >= 8 },
     { label: 'Les deux mots de passe correspondent', valid: Boolean(form.password) && form.password === form.confirmPassword },
   ]
-  const clerkBusy = fetchStatus === 'fetching'
+  const clerkBusy = !isLoaded
   const passwordsMismatch = form.confirmPassword.length > 0 && form.password !== form.confirmPassword
   const canCreateAccount =
     !clerkBusy &&
@@ -57,27 +57,13 @@ export function RegisterPage() {
     setError('')
   }
 
-  async function finalizeSignUp() {
-    const { error: finalizeError } = await signUp.finalize({
-      navigate: ({ decorateUrl }) => {
-        const destination = decorateUrl('/dashboard')
-
-        if (destination.startsWith('http')) {
-          window.location.href = destination
-          return
-        }
-
-        navigate(destination)
-      },
-    })
-
-    if (finalizeError) {
-      setError(clerkErrorMessage(finalizeError, 'Impossible de terminer l’inscription.'))
-    }
-  }
-
   async function handleRegister(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+
+    if (!isLoaded || !signUp || !setActive) {
+      setError('Inscription indisponible pour le moment. Réessayez dans quelques secondes.')
+      return
+    }
 
     if (form.password !== form.confirmPassword) {
       setError('Les deux mots de passe ne correspondent pas.')
@@ -88,30 +74,20 @@ export function RegisterPage() {
     setError('')
 
     try {
-      const { error: passwordError } = await signUp.password({
+      const result = await signUp.create({
         emailAddress: form.email.trim(),
         password: form.password,
         firstName: form.firstName.trim(),
         lastName: form.lastName.trim() || undefined,
       })
 
-      if (passwordError) {
-        setError(clerkErrorMessage(passwordError, 'Impossible de terminer l’inscription.'))
+      if (result.status === 'complete') {
+        await setActive({ session: result.createdSessionId })
+        navigate('/dashboard', { replace: true })
         return
       }
 
-      if (signUp.status === 'complete') {
-        await finalizeSignUp()
-        return
-      }
-
-      const { error: verificationError } = await signUp.verifications.sendEmailCode()
-
-      if (verificationError) {
-        setError(clerkErrorMessage(verificationError, 'Impossible de terminer l’inscription.'))
-        return
-      }
-
+      await signUp.prepareEmailAddressVerification({ strategy: 'email_code' })
       setSubmittedEmail(form.email.trim())
       setStep('verify')
     } catch (caughtError) {
@@ -124,21 +100,22 @@ export function RegisterPage() {
   async function handleVerify(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
+    if (!isLoaded || !signUp || !setActive) {
+      setError('Validation indisponible pour le moment. Réessayez dans quelques secondes.')
+      return
+    }
+
     setSubmitting(true)
     setError('')
 
     try {
-      const { error: verificationError } = await signUp.verifications.verifyEmailCode({
+      const result = await signUp.attemptEmailAddressVerification({
         code: verificationCode.trim(),
       })
 
-      if (verificationError) {
-        setError(clerkErrorMessage(verificationError, 'Impossible de terminer l’inscription.'))
-        return
-      }
-
-      if (signUp.status === 'complete') {
-        await finalizeSignUp()
+      if (result.status === 'complete') {
+        await setActive({ session: result.createdSessionId })
+        navigate('/dashboard', { replace: true })
         return
       }
 
