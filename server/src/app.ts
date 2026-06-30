@@ -20,6 +20,11 @@ function corsOrigin(origin: string | undefined, callback: (error: Error | null, 
     return
   }
 
+  if (!env.isProduction && isLocalDevOrigin(origin)) {
+    callback(null, true)
+    return
+  }
+
   if (!env.isProduction && env.corsOrigins.length === 0) {
     callback(null, true)
     return
@@ -31,6 +36,26 @@ function corsOrigin(origin: string | undefined, callback: (error: Error | null, 
   }
 
   callback(new ApiError(403, 'Origin non autorisée.', 'cors_origin_denied'))
+}
+
+function isLocalDevOrigin(origin: string) {
+  try {
+    const { hostname, protocol } = new URL(origin)
+
+    if (protocol !== 'http:' && protocol !== 'https:') {
+      return false
+    }
+
+    return (
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname.startsWith('192.168.') ||
+      hostname.startsWith('10.') ||
+      /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname)
+    )
+  } catch {
+    return false
+  }
 }
 
 export function createApp(options: CreateAppOptions = {}) {
@@ -45,7 +70,7 @@ export function createApp(options: CreateAppOptions = {}) {
       methods: ['GET', 'POST', 'OPTIONS'],
     }),
   )
-  app.use(express.json({ limit: '96kb' }))
+  app.use(express.json({ limit: '512kb' }))
 
   app.use('/api', healthRoutes())
   app.use(options.clerkMiddlewareOverride ?? clerkMiddleware())

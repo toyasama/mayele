@@ -9,6 +9,7 @@ import {
   SKILL_LABELS,
   calculateAccuracy,
   calculateQuestionPoints,
+  calculateRemainingSessionSeconds,
   generateQuestion,
   summarizeSkillPerformance,
   type AnswerResult,
@@ -86,6 +87,8 @@ export function GamePage() {
   const intervalRef = useRef<number | null>(null)
   const timeoutRef = useRef<number | null>(null)
   const startedAtRef = useRef<number>(Date.now())
+  const endsAtRef = useRef<number>(Date.now() + SESSION_SECONDS * 1000)
+  const finishedRef = useRef(true)
   const questionStartedAtRef = useRef<number>(Date.now())
   const statsRef = useRef<SessionStats>(initialStats)
   const answersRef = useRef<AnswerResult[]>([])
@@ -143,6 +146,11 @@ export function GamePage() {
   )
 
   const finishSession = useCallback(() => {
+    if (finishedRef.current) {
+      return
+    }
+
+    finishedRef.current = true
     clearTimers()
     const durationSeconds = Math.max(1, Math.round((Date.now() - startedAtRef.current) / 1000))
     const finalStats = statsRef.current
@@ -170,6 +178,29 @@ export function GamePage() {
     }
   }, [question, status])
 
+  useEffect(() => {
+    function syncRemainingSeconds() {
+      if (status !== 'running') {
+        return
+      }
+
+      const nextRemainingSeconds = calculateRemainingSessionSeconds(endsAtRef.current)
+      setRemainingSeconds(nextRemainingSeconds)
+
+      if (nextRemainingSeconds <= 0) {
+        finishSession()
+      }
+    }
+
+    window.addEventListener('focus', syncRemainingSeconds)
+    document.addEventListener('visibilitychange', syncRemainingSeconds)
+
+    return () => {
+      window.removeEventListener('focus', syncRemainingSeconds)
+      document.removeEventListener('visibilitychange', syncRemainingSeconds)
+    }
+  }, [finishSession, status])
+
   function nextQuestion(nextGame = game, nextLevel = level, nextFocusSkill = focusSkill) {
     const generatedQuestion = generateQuestion(nextGame, nextLevel, nextFocusSkill)
     questionStartedAtRef.current = Date.now()
@@ -178,6 +209,7 @@ export function GamePage() {
 
   function prepareSession(nextGame = game, nextLevel = level, nextFocusSkill: SkillTag | null = focusSkill) {
     clearTimers()
+    finishedRef.current = true
     setGame(nextGame)
     setLevel(nextLevel)
     setFocusSkill(nextFocusSkill)
@@ -199,7 +231,10 @@ export function GamePage() {
 
   function startSession() {
     const generatedQuestion = nextQuestion(game, level, focusSkill)
-    startedAtRef.current = Date.now()
+    const startedAt = Date.now()
+    startedAtRef.current = startedAt
+    endsAtRef.current = startedAt + SESSION_SECONDS * 1000
+    finishedRef.current = false
     setQuestion(generatedQuestion)
     setAnswer('')
     setRemainingSeconds(SESSION_SECONDS)
@@ -213,9 +248,14 @@ export function GamePage() {
 
     clearTimers()
     intervalRef.current = window.setInterval(() => {
-      setRemainingSeconds((current) => Math.max(0, current - 1))
+      const nextRemainingSeconds = calculateRemainingSessionSeconds(endsAtRef.current)
+      setRemainingSeconds(nextRemainingSeconds)
+
+      if (nextRemainingSeconds <= 0) {
+        finishSession()
+      }
     }, 1000)
-    timeoutRef.current = window.setTimeout(finishSession, SESSION_SECONDS * 1000)
+    timeoutRef.current = window.setTimeout(finishSession, SESSION_SECONDS * 1000 + 250)
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -285,7 +325,7 @@ export function GamePage() {
   const recentErrors = answers.filter((item) => !item.isCorrect).slice(-3).reverse()
 
   return (
-    <section className="page game-page">
+    <section className={`page game-page ${status === 'running' ? 'session-active' : ''}`}>
       <div className="section-header">
         <div>
           <span className="eyebrow">Sprint mental</span>
@@ -439,8 +479,10 @@ export function GamePage() {
               <form className="quiz-form" onSubmit={handleSubmit}>
                 <input
                   ref={inputRef}
-                  type="number"
+                  type="text"
                   inputMode="numeric"
+                  enterKeyHint="done"
+                  pattern="[0-9]*"
                   value={answer}
                   disabled={status !== 'running'}
                   onChange={(event) => setAnswer(event.target.value)}

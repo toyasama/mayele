@@ -1379,8 +1379,8 @@ h3 {
 
 @media (max-width: 720px) {
   .app-shell {
-    width: min(100% - 20px, 1180px);
-    padding: 10px 0 28px;
+    width: min(calc(100% - 20px), 1180px);
+    padding: 6px 0 24px;
   }
 
   .topbar {
@@ -1389,7 +1389,7 @@ h3 {
     z-index: 20;
     flex-direction: row;
     align-items: center;
-    padding: 8px 0 14px;
+    padding: 6px 0 10px;
     background: rgba(246, 247, 251, 0.96);
     backdrop-filter: blur(10px);
   }
@@ -1485,6 +1485,15 @@ h3 {
     font-size: clamp(1.8rem, 9vw, 2.4rem);
   }
 
+  .game-page {
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .game-page .section-header {
+    display: none;
+  }
+
   .dashboard-priority-grid {
     order: 2;
   }
@@ -1516,25 +1525,38 @@ h3 {
   .game-shell {
     display: flex;
     flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+    min-width: 0;
   }
 
   .sprint-card {
-    order: 1;
+    order: 2;
+    width: 100%;
+    min-width: 0;
   }
 
   .settings-panel {
-    order: 2;
+    order: 1;
+    width: 100%;
+    gap: 8px;
+    min-width: 0;
+    overflow: hidden;
+    background: #ffffff;
+    border-color: #c9d9eb;
+    box-shadow: 0 12px 28px rgba(20, 31, 55, 0.07);
+  }
+
+  .game-page .settings-panel > div:not(.focus-note) {
+    display: grid;
+    grid-template-columns: 48px minmax(0, 1fr);
+    gap: 8px;
+    align-items: center;
+    min-width: 0;
   }
 
   .settings-panel summary {
-    min-height: 48px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin: -4px 0 2px;
-    color: var(--text);
-    font-weight: 900;
-    cursor: pointer;
+    display: none;
   }
 
   .settings-panel summary::after {
@@ -1548,30 +1570,72 @@ h3 {
   }
 
   .segmented-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    display: flex;
+    gap: 7px;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scroll-snap-type: x proximity;
   }
 
   .segment {
-    min-height: 46px;
+    min-width: max-content;
+    min-height: 32px;
+    padding: 6px 9px;
+    white-space: nowrap;
+    scroll-snap-align: start;
+    font-size: 0.84rem;
+  }
+
+  .panel-label {
+    margin-bottom: 0;
+    font-size: 0.62rem;
+    letter-spacing: 0;
+    text-transform: uppercase;
+  }
+
+  .start-session-button {
+    min-height: 40px;
   }
 
   .session-banner {
+    display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 6px;
-    padding: 6px;
+    gap: 5px;
+    padding: 5px;
+    width: 100%;
+    min-width: 0;
   }
 
   .session-banner > div {
-    min-height: 68px;
-    padding: 8px;
+    min-width: 0;
+    min-height: 40px;
+    padding: 5px;
   }
 
   .session-banner span {
-    font-size: 0.78rem;
+    font-size: 0.62rem;
+    line-height: 1.05;
+  }
+
+  .game-page .session-banner > div:nth-child(2) span,
+  .game-page .session-banner > div:nth-child(4) span {
+    font-size: 0;
+  }
+
+  .game-page .session-banner > div:nth-child(2) span::after {
+    content: 'Justes';
+    font-size: 0.62rem;
+  }
+
+  .game-page .session-banner > div:nth-child(4) span::after {
+    content: 'Prec.';
+    font-size: 0.62rem;
   }
 
   .session-banner strong {
-    font-size: 1.05rem;
+    font-size: 0.9rem;
   }
 
   .sprint-topline {
@@ -1596,8 +1660,8 @@ h3 {
 
 @media (max-width: 640px) {
   .app-shell {
-    width: min(100% - 24px, 1180px);
-    padding: 12px 0 32px;
+    width: min(calc(100% - 24px), 1180px);
+    padding: 8px 0 28px;
   }
 
   .card,
@@ -1605,6 +1669,26 @@ h3 {
   .focus-band,
   .home-loop-section {
     padding: 18px;
+  }
+
+  .game-page .settings-panel {
+    padding: 8px;
+  }
+
+  .game-page.session-active .settings-panel {
+    display: none;
+  }
+
+  .game-page .sprint-card {
+    padding: 14px;
+  }
+
+  .game-page .session-banner > div {
+    min-width: 0;
+  }
+
+  .game-page .session-banner span {
+    overflow-wrap: anywhere;
   }
 
   .hero-panel {
@@ -1654,13 +1738,25 @@ h3 {
   }
 
   .session-banner {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    width: calc(100vw - 24px);
+    max-width: 100%;
   }
 
   .score-block,
   .progress-meta {
     justify-items: start;
     text-align: left;
+  }
+
+  .game-page .score-block {
+    justify-items: end;
+    text-align: right;
+  }
+
+  .game-page .sprint-topline {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
   }
 
   .level-metrics {
@@ -1670,7 +1766,7 @@ h3 {
 
 @media (max-width: 420px) {
   .app-shell {
-    width: min(100% - 16px, 1180px);
+    width: min(calc(100% - 16px), 1180px);
   }
 
   .card,
@@ -1679,6 +1775,33 @@ h3 {
   .home-loop-section,
   .hero-panel {
     padding: 14px;
+  }
+
+  .game-page .settings-panel {
+    padding: 9px;
+  }
+
+  .game-page .sprint-card {
+    padding: 12px;
+  }
+
+  .game-page .segment {
+    min-height: 30px;
+    padding: 5px 8px;
+    font-size: 0.8rem;
+  }
+
+  .game-page .start-session-button {
+    min-height: 38px;
+  }
+
+  .game-page .session-banner {
+    width: calc(100vw - 16px);
+  }
+
+  .game-page .session-banner > div {
+    min-height: 38px;
+    padding: 5px;
   }
 
   .home-hero-copy h1 {

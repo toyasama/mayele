@@ -1,5 +1,4 @@
 import { ACHIEVEMENTS, DAILY_GOAL } from '../domain/constants.js'
-import type { Prisma } from '../generated/prisma/client.js'
 import { prisma } from '../lib/prisma.js'
 import type { SessionPayload } from '../schemas/sessionSchema.js'
 
@@ -13,28 +12,6 @@ function calculateAccuracy(correctAnswers: number, totalQuestions: number) {
   }
 
   return Math.round((correctAnswers / totalQuestions) * 100)
-}
-
-async function insertAchievement(tx: Prisma.TransactionClient, playerId: string, key: keyof typeof ACHIEVEMENTS) {
-  const achievement = ACHIEVEMENTS[key]
-
-  try {
-    await tx.achievement.create({
-      data: {
-        playerId,
-        achievementKey: key,
-        label: achievement.label,
-        description: achievement.description,
-      },
-    })
-    return { key, label: achievement.label }
-  } catch (error) {
-    if (typeof error === 'object' && error && 'code' in error && error.code === 'P2002') {
-      return null
-    }
-
-    throw error
-  }
 }
 
 export async function saveSession(playerId: string, payload: SessionPayload) {
@@ -107,13 +84,29 @@ export async function saveSession(playerId: string, payload: SessionPayload) {
     if (payload.points >= 100) achievementKeys.push('points_100')
     if (dailyStat.sessionsCount >= DAILY_GOAL) achievementKeys.push('daily_goal')
 
-    const earnedAchievements = []
-    for (const key of achievementKeys) {
-      const earned = await insertAchievement(tx, playerId, key)
-      if (earned) {
-        earnedAchievements.push(earned)
-      }
+    const existingAchievements = achievementKeys.length
+      ? await tx.achievement.findMany({
+          where: {
+            playerId,
+            achievementKey: { in: achievementKeys },
+          },
+          select: { achievementKey: true },
+        })
+      : []
+    const existingAchievementKeys = new Set(existingAchievements.map((achievement) => achievement.achievementKey))
+    const newAchievementKeys = achievementKeys.filter((key) => !existingAchievementKeys.has(key))
+
+    if (newAchievementKeys.length) {
+      await tx.achievement.createMany({
+        data: newAchievementKeys.map((key) => ({
+          playerId,
+          achievementKey: key,
+          label: ACHIEVEMENTS[key].label,
+          description: ACHIEVEMENTS[key].description,
+        })),
+      })
     }
+    const earnedAchievements = newAchievementKeys.map((key) => ({ key, label: ACHIEVEMENTS[key].label }))
 
     return { message: 'Session enregistrée.', earnedAchievements }
   })

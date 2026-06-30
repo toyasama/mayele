@@ -230,6 +230,10 @@ export function calculateAccuracy(correctAnswers: number, totalQuestions: number
   return Math.round((correctAnswers / totalQuestions) * 100)
 }
 
+export function calculateRemainingSessionSeconds(endsAtMs: number, nowMs = Date.now()) {
+  return Math.max(0, Math.ceil((endsAtMs - nowMs) / 1000))
+}
+
 export function summarizeSkillPerformance(answers: AnswerResult[]): SkillPerformance[] {
   const bySkill = new Map<SkillTag, { attempts: number; correctAnswers: number }>()
 

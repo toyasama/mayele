@@ -1,6 +1,30 @@
 import type { AnswerResult, SkillTag } from './game'
 
-const API_BASE = import.meta.env.VITE_API_URL ?? '/api'
+const LOCAL_API_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]'])
+
+function currentPageHostname() {
+  return typeof window === 'undefined' ? 'localhost' : window.location.hostname
+}
+
+export function resolveApiBase(configuredApiBase: string | undefined, pageHostname = currentPageHostname()) {
+  if (!configuredApiBase) {
+    return '/api'
+  }
+
+  try {
+    const apiUrl = new URL(configuredApiBase)
+
+    if (LOCAL_API_HOSTS.has(apiUrl.hostname) && !LOCAL_API_HOSTS.has(pageHostname)) {
+      return '/api'
+    }
+  } catch {
+    return configuredApiBase
+  }
+
+  return configuredApiBase
+}
+
+const API_BASE = resolveApiBase(import.meta.env.VITE_API_URL)
 
 export type AuthUser = {
   id: string

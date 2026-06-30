@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   calculateAccuracy,
   calculateQuestionPoints,
+  calculateRemainingSessionSeconds,
   generateQuestion,
   summarizeSkillPerformance,
   type AnswerResult,
@@ -51,6 +52,12 @@ describe('scoring and diagnostics', () => {
     expect(calculateAccuracy(7, 10)).toBe(70)
     expect(calculateAccuracy(0, 0)).toBe(0)
     expect(calculateQuestionPoints('avance', 4)).toBe(26)
+  })
+
+  it('calculates remaining sprint time from the wall clock', () => {
+    expect(calculateRemainingSessionSeconds(70_000, 21_500)).toBe(49)
+    expect(calculateRemainingSessionSeconds(70_000, 70_000)).toBe(0)
+    expect(calculateRemainingSessionSeconds(70_000, 80_000)).toBe(0)
   })
 
   it('sorts skill performance from weakest to strongest', () => {

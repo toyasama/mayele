@@ -18,4 +18,12 @@ describe('app', () => {
 
     await request(app).get('/api/dashboard').expect(401)
   })
+
+  it('allows private network origins in local development', async () => {
+    const app = createApp({ clerkMiddlewareOverride: noopClerk, authMiddlewareOverride: rejectAuth })
+
+    const response = await request(app).get('/api/health').set('Origin', 'http://192.168.1.14:5173').expect(200)
+
+    expect(response.headers['access-control-allow-origin']).toBe('http://192.168.1.14:5173')
+  })
 })
