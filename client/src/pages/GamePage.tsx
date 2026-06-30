@@ -356,8 +356,7 @@ export function GamePage() {
       </div>
 
       <div className="game-shell">
-        <details className="card control-panel settings-panel" open>
-          <summary>Réglages du sprint</summary>
+        <aside className="card control-panel settings-panel">
           <div>
             <span className="panel-label">Mode</span>
             <div className="segmented-grid">
@@ -405,7 +404,7 @@ export function GamePage() {
           <button className="primary-button full-width start-session-button" type="button" disabled={status === 'running'} onClick={startSession}>
             {status === 'finished' ? 'Rejouer' : status === 'running' ? 'Sprint en cours' : 'Démarrer'}
           </button>
-        </details>
+        </aside>
 
         <article className="card sprint-card">
           <div className="sprint-topline">
