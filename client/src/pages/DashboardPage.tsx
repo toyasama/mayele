@@ -5,6 +5,7 @@ import { api, type DashboardData } from '../lib/api'
 import { GAME_LABELS, LEVEL_LABELS, SKILL_LABELS, type GameLevel, type GameType, type SkillTag } from '../lib/game'
 
 type ProgressItem = DashboardData['progressByMode'][number]
+type DashboardMobileTab = 'today' | 'levels' | 'progress' | 'history'
 
 const LEVEL_ORDER: GameLevel[] = ['debutant', 'intermediaire', 'avance', 'expert']
 const GAME_ORDER: GameType[] = ['addition', 'soustraction', 'multiplication', 'division', 'mixte']
@@ -156,6 +157,7 @@ export function DashboardPage() {
   const cachedDashboard = useMemo(() => (cacheKey ? readCachedDashboard(cacheKey) : null), [cacheKey])
   const [liveDashboard, setLiveDashboard] = useState<{ cacheKey: string; payload: DashboardData } | null>(null)
   const [error, setError] = useState('')
+  const [activeMobileTab, setActiveMobileTab] = useState<DashboardMobileTab>('today')
   const data = liveDashboard?.cacheKey === cacheKey ? liveDashboard.payload : cachedDashboard
 
   useEffect(() => {
@@ -299,6 +301,12 @@ export function DashboardPage() {
       action: 'Tenter',
     },
   ]
+  const mobileTabs: Array<{ key: DashboardMobileTab; label: string }> = [
+    { key: 'today', label: "Aujourd'hui" },
+    { key: 'levels', label: 'Niveaux' },
+    { key: 'progress', label: 'Progres' },
+    { key: 'history', label: 'Historique' },
+  ]
 
   return (
     <section className="page dashboard-page">
@@ -331,7 +339,21 @@ export function DashboardPage() {
         </article>
       </div>
 
-      <section className="dashboard-section">
+      <nav className="dashboard-mobile-tabs" aria-label="Sections de mon espace">
+        {mobileTabs.map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            className={activeMobileTab === tab.key ? 'active' : ''}
+            aria-pressed={activeMobileTab === tab.key}
+            onClick={() => setActiveMobileTab(tab.key)}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </nav>
+
+      <section className={`dashboard-section dashboard-mobile-panel ${activeMobileTab === 'today' ? 'active' : ''}`}>
         <div className="section-kicker">
           <span className="eyebrow">Objectif du jour</span>
           <h2>À faire maintenant.</h2>
@@ -357,7 +379,7 @@ export function DashboardPage() {
         </div>
       </section>
 
-      <section className="dashboard-section">
+      <section className={`dashboard-section dashboard-mobile-panel ${activeMobileTab === 'levels' ? 'active' : ''}`}>
         <div className="section-kicker">
           <span className="eyebrow">Niveaux</span>
           <h2>Suivez séparément les niveaux joués.</h2>
@@ -414,7 +436,11 @@ export function DashboardPage() {
         </div>
       </section>
 
-      <div className={`grid ${data.achievements.length ? 'two-columns' : ''} dashboard-focus-grid`}>
+      <div
+        className={`grid ${data.achievements.length ? 'two-columns' : ''} dashboard-focus-grid dashboard-mobile-panel ${
+          activeMobileTab === 'progress' ? 'active' : ''
+        }`}
+      >
         <article className="card diagnostic-card">
           <h2>À corriger</h2>
           <p className="muted">{data.practicePlan.message}</p>
@@ -453,7 +479,7 @@ export function DashboardPage() {
         ) : null}
       </div>
 
-      <article className="card dashboard-history">
+      <article className={`card dashboard-history dashboard-mobile-panel ${activeMobileTab === 'history' ? 'active' : ''}`}>
         <div className="section-header compact-header">
           <h2>Historique récent</h2>
           <Link className="secondary-button" to="/jeu">

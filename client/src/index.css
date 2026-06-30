@@ -784,6 +784,10 @@ h3 {
   padding: 14px 16px;
 }
 
+.dashboard-mobile-tabs {
+  display: none;
+}
+
 .skeleton-card {
   overflow: hidden;
 }
@@ -1477,12 +1481,76 @@ h3 {
 
   .dashboard-hero {
     order: 1;
-    gap: 14px;
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .dashboard-page .dashboard-hero {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
   }
 
   .dashboard-hero h1,
   .section-header h1 {
     font-size: clamp(1.8rem, 9vw, 2.4rem);
+  }
+
+  .dashboard-page {
+    gap: 10px;
+  }
+
+  .dashboard-page .dashboard-hero h1 {
+    margin-top: 4px;
+    font-size: 1.15rem;
+    line-height: 1.1;
+  }
+
+  .dashboard-page .lead {
+    display: none;
+  }
+
+  .dashboard-mobile-tabs {
+    position: sticky;
+    top: 64px;
+    z-index: 12;
+    order: 4;
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding: 4px 0 6px;
+    background: rgba(246, 247, 251, 0.96);
+    backdrop-filter: blur(10px);
+  }
+
+  .dashboard-mobile-tabs button {
+    min-width: max-content;
+    min-height: 32px;
+    padding: 6px 9px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: #ffffff;
+    color: var(--muted);
+    font-size: 0.85rem;
+    font-weight: 850;
+    cursor: pointer;
+  }
+
+  .dashboard-mobile-tabs button.active {
+    background: #e8f7f3;
+    border-color: #8bcfc2;
+    color: var(--primary-dark);
+  }
+
+  .dashboard-mobile-panel {
+    order: 5;
+    display: none;
+  }
+
+  .dashboard-mobile-panel.active,
+  .dashboard-focus-grid.dashboard-mobile-panel.active {
+    display: grid;
   }
 
   .game-page {
@@ -1514,12 +1582,110 @@ h3 {
     min-height: auto;
   }
 
+  .dashboard-page .mission-grid,
+  .dashboard-page .level-ladder {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .dashboard-page .mission-card,
+  .dashboard-page .level-card,
+  .dashboard-page .diagnostic-card,
+  .dashboard-page .dashboard-history {
+    gap: 8px;
+    padding: 12px;
+  }
+
+  .dashboard-page .mission-card {
+    min-height: auto;
+  }
+
+  .dashboard-page .mission-card p,
+  .dashboard-page .diagnostic-card p {
+    min-height: auto;
+    font-size: 0.88rem;
+  }
+
+  .dashboard-page .mission-topline strong {
+    font-size: 1.15rem;
+  }
+
+  .dashboard-page .mission-card h3,
+  .dashboard-page .level-card h3,
+  .dashboard-page .diagnostic-card h2 {
+    font-size: 1rem;
+  }
+
+  .dashboard-page .mission-card .secondary-button,
+  .dashboard-page .level-card .secondary-button,
+  .dashboard-page .diagnostic-card .primary-button {
+    min-height: 38px;
+    padding-block: 7px;
+    font-size: 0.9rem;
+  }
+
+  .dashboard-page .level-metrics > div {
+    min-height: 58px;
+    padding: 8px;
+  }
+
+  .dashboard-page .level-metrics strong {
+    font-size: 1.08rem;
+  }
+
+  .dashboard-page .mode-chip-list,
+  .dashboard-page .session-tags {
+    gap: 6px;
+  }
+
+  .dashboard-page .mode-chip,
+  .dashboard-page .session-tags span {
+    min-height: 30px;
+    padding: 5px 7px;
+    font-size: 0.84rem;
+  }
+
   .stats-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
   }
 
   .stat-card {
-    min-height: 96px;
+    min-height: 56px;
+    gap: 4px;
+    padding: 8px;
+  }
+
+  .stat-card span {
+    font-size: 0.72rem;
+    line-height: 1.05;
+  }
+
+  .stat-card strong {
+    font-size: 1.2rem;
+  }
+
+  .dashboard-stats-grid .stat-card:nth-child(3) span,
+  .dashboard-stats-grid .stat-card:nth-child(4) span {
+    font-size: 0;
+  }
+
+  .dashboard-stats-grid .stat-card:nth-child(3) span::after {
+    content: 'Precis.';
+    font-size: 0.72rem;
+  }
+
+  .dashboard-stats-grid .stat-card:nth-child(4) span::after {
+    content: 'Serie';
+    font-size: 0.72rem;
+  }
+
+  .dashboard-page .section-kicker {
+    gap: 6px;
+  }
+
+  .dashboard-page .section-kicker h2 {
+    font-size: 1.05rem;
   }
 
   .game-shell {
@@ -1843,6 +2009,30 @@ h3 {
   .result-grid,
   .stats-grid {
     grid-template-columns: 1fr;
+  }
+
+  .dashboard-page .dashboard-stats-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 5px;
+  }
+
+  .dashboard-page .stat-card {
+    min-height: 50px;
+    padding: 7px 5px;
+  }
+
+  .dashboard-page .stat-card span {
+    font-size: 0.62rem;
+  }
+
+  .dashboard-page .stat-card strong {
+    font-size: 0.98rem;
+  }
+
+  .dashboard-page .dashboard-mobile-tabs button {
+    min-height: 30px;
+    padding: 5px 8px;
+    font-size: 0.78rem;
   }
 
   .question-line {
