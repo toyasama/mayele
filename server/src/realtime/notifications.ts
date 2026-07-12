@@ -141,6 +141,23 @@ const ACTIVE_REALTIME_HEARTBEAT_STATUSES = new Set(['pending', 'accepted', 'read
 const TEMPO_TIMEOUT_GRACE_MS = 250
 const REALTIME_RATE_WINDOW_MS = 60 * 1000
 const REALTIME_DEFAULT_COMMAND_LIMIT = 180
+const REALTIME_COMMAND_ACK_WARN_MS = 5_000
+const REALTIME_COMMAND_EVENTS = new Set([
+  'room:join',
+  'match:update-config',
+  'match:create-invitation',
+  'match:accept-invitation',
+  'match:decline-invitation',
+  'match:propose',
+  'match:decline-proposal',
+  'match:accept-proposal',
+  'match:forfeit',
+  'match:request-rematch',
+  'match:leave',
+  'match:update-progress',
+  'match:submit-result',
+  'match:submit-tempo-answer',
+])
 const REALTIME_COMMAND_LIMITS: Record<string, number> = {
   'room:join': 120,
   'match:update-config': 120,
@@ -192,6 +209,68 @@ function commandIdFromValue(value: unknown) {
 
   const clientCommandId = (value as { clientCommandId?: unknown }).clientCommandId
   return typeof clientCommandId === 'string' && clientCommandId.trim() ? clientCommandId : null
+}
+
+function realtimeCommandError(message: string, status: number, code: string): RealtimeCommandAck<unknown> {
+  return { ok: false, error: { message, status, code } }
+}
+
+function ackFromPacket(packet: unknown[]) {
+  const maybeAck = packet.at(-1)
+  return typeof maybeAck === 'function' ? maybeAck as (response: RealtimeCommandAck<unknown>) => void : null
+}
+
+function wrapRealtimeCommandAck(packet: unknown[], context: {
+  playerId: string
+  eventName: string
+  commandId: string | null
+  startedAtMs: number
+}) {
+  const ackIndex = packet.length - 1
+  const originalAck = packet[ackIndex]
+
+  if (typeof originalAck !== 'function') {
+    return
+  }
+
+  let acked = false
+  const warnTimeout = setTimeout(() => {
+    if (acked) {
+      return
+    }
+
+    logger.warn('realtime_command_ack_slow', {
+      playerId: context.playerId,
+      eventName: context.eventName,
+      commandId: context.commandId,
+      durationMs: Date.now() - context.startedAtMs,
+    })
+  }, REALTIME_COMMAND_ACK_WARN_MS)
+  warnTimeout.unref()
+
+  packet[ackIndex] = (response: RealtimeCommandAck<unknown>) => {
+    if (acked) {
+      return
+    }
+
+    acked = true
+    clearTimeout(warnTimeout)
+    const durationMs = Date.now() - context.startedAtMs
+    const ok = Boolean(response?.ok)
+    const error = ok ? null : (response as Extract<RealtimeCommandAck<unknown>, { ok: false }> | undefined)?.error
+
+    logger[ok ? 'info' : 'warn']('realtime_command_ack', {
+      playerId: context.playerId,
+      eventName: context.eventName,
+      commandId: context.commandId,
+      durationMs,
+      ok,
+      status: error?.status,
+      code: error?.code,
+    })
+
+    ;(originalAck as (response: RealtimeCommandAck<unknown>) => void)(response)
+  }
 }
 
 function ackDuplicateMatchCommand(
@@ -638,16 +717,24 @@ function persistMatchSnapshotInBackground(
   context: Record<string, unknown>,
   onPersisted?: (snapshot: SerializedMatch) => void,
 ) {
+  const startedAtMs = Date.now()
   void enqueueMatchPersistence(matchId, persist)
     .then((match) => {
       const snapshot = serializeMatch(match as MatchView)
       cacheMatchSnapshot(snapshot)
       onPersisted?.(snapshot)
+      logger.info('realtime_persistence_completed', {
+        ...context,
+        matchId,
+        durationMs: Date.now() - startedAtMs,
+        status: snapshot.status,
+      })
     })
     .catch((error) => {
       logger.error('Persistance salon multijoueur impossible.', {
         ...context,
         matchId,
+        durationMs: Date.now() - startedAtMs,
         message: error instanceof Error ? error.message : String(error),
       })
     })
@@ -916,13 +1003,30 @@ export function initRealtime(httpServer: HttpServer, options: InitRealtimeOption
 
     socket.join(playerRoom(playerId))
     socket.emit('realtime:ready', { playerId, at: new Date().toISOString() })
-    socket.use(([eventName], next) => {
-      if (typeof eventName !== 'string' || isRealtimeCommandAllowed(playerId, eventName)) {
+    socket.use((packet, next) => {
+      const eventName = packet[0]
+
+      if (typeof eventName !== 'string' || !REALTIME_COMMAND_EVENTS.has(eventName)) {
         next()
         return
       }
 
-      logger.warn('realtime_rate_limited', { playerId, eventName })
+      const commandId = commandIdFromValue(packet[1])
+      const startedAtMs = Date.now()
+      logger.info('realtime_command_received', {
+        playerId,
+        eventName,
+        commandId,
+      })
+
+      if (isRealtimeCommandAllowed(playerId, eventName, startedAtMs)) {
+        wrapRealtimeCommandAck(packet, { playerId, eventName, commandId, startedAtMs })
+        next()
+        return
+      }
+
+      logger.warn('realtime_rate_limited', { playerId, eventName, commandId })
+      ackFromPacket(packet)?.(realtimeCommandError('Trop de commandes temps reel. Reessayez dans un instant.', 429, 'realtime_rate_limited'))
       next(new Error('rate_limit_exceeded'))
     })
     socket.on('disconnect', (reason) => {

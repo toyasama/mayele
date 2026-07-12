@@ -1,6 +1,6 @@
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { useRealtimeEvents } from './useRealtimeEvents'
+import { realtimeCommandTimeoutMs, useRealtimeEvents } from './useRealtimeEvents'
 
 type Handler = (...args: unknown[]) => void
 
@@ -146,5 +146,15 @@ describe('useRealtimeEvents', () => {
     })
 
     expect(onMatchTempoAnswerRecorded).toHaveBeenCalledWith(payload)
+  })
+
+  it('utilise un timeout plus long pour les commandes persistantes', () => {
+    expect(realtimeCommandTimeoutMs('match:create-invitation')).toBe(12_000)
+    expect(realtimeCommandTimeoutMs('match:propose')).toBe(12_000)
+  })
+
+  it('garde un timeout court pour les commandes purement runtime', () => {
+    expect(realtimeCommandTimeoutMs('room:join')).toBe(4_000)
+    expect(realtimeCommandTimeoutMs('match:update-progress')).toBe(4_000)
   })
 })

@@ -148,6 +148,38 @@ function persistInvitationDeclineNotificationsInBackground(
   })
 }
 
+function persistInvitationCreatedNotificationInBackground(
+  snapshot: SerializedMatch,
+  playerId: string,
+  notificationId: string,
+  context: MatchCommandContext,
+) {
+  const opponent = snapshot.participants.find((participant) => participant.player.id !== playerId)?.player ?? null
+
+  if (!opponent) {
+    return
+  }
+
+  void createNotification({
+    id: notificationId,
+    playerId: opponent.id,
+    actorPlayerId: playerId,
+    type: 'match_invite_received',
+    title: `${snapshot.createdBy.name} vous a defie.`,
+    href: `/jeu/multijoueur?match=${snapshot.id}`,
+    dedupeKey: matchInviteNotificationKey(snapshot.id),
+  }).then((notification) => {
+    context.emitNotificationCreated(opponent.id, 'notification_created', serializeNotification(notification))
+  }).catch((error) => {
+    logger.error('Notification invitation impossible a creer.', {
+      matchId: snapshot.id,
+      playerId,
+      opponentPlayerId: opponent.id,
+      message: error instanceof Error ? error.message : String(error),
+    })
+  })
+}
+
 export function registerMatchCommandHandlers(socket: Socket, context: MatchCommandContext) {
   const { playerId } = context
 
@@ -242,57 +274,31 @@ export function registerMatchCommandHandlers(socket: Socket, context: MatchComma
         context.publishMatchRuntimeEvent(optimisticSnapshot, 'match_created', commandId)
       }
 
-      const createPersistedInvitation = async (createPersistedNotification: boolean) => {
-        const match = await createChallenge(playerId, command, {
+      const createPersistedInvitation = () =>
+        createChallenge(playerId, command, {
           matchId,
           roomId,
           creatorParticipantId,
           opponentParticipantId,
         })
-        const opponent = match.participants.find((participant) => participant.player.id !== playerId)?.player ?? null
-
-        if (opponent && createPersistedNotification) {
-          const notification = await createNotification({
-            id: notificationId,
-            playerId: opponent.id,
-            actorPlayerId: playerId,
-            type: 'match_invite_received',
-            title: `${match.createdBy.name} vous a defie.`,
-            href: `/jeu/multijoueur?match=${match.id}`,
-            dedupeKey: matchInviteNotificationKey(match.id),
-          })
-          context.emitNotificationCreated(opponent.id, 'notification_created', serializeNotification(notification))
-        }
-
-        return match
-      }
 
       if (optimisticSnapshot) {
-        context.persistMatchSnapshotInBackground(matchId, () => createPersistedInvitation(true), { playerId, command: 'match:create-invitation' })
+        context.persistMatchSnapshotInBackground(
+          matchId,
+          createPersistedInvitation,
+          { playerId, command: 'match:create-invitation' },
+          (snapshot) => persistInvitationCreatedNotificationInBackground(snapshot, playerId, notificationId, context),
+        )
         ack?.({ ok: true, data: { match: optimisticSnapshot } })
         return
       }
 
-      const match = await createPersistedInvitation(false)
+      const match = await createPersistedInvitation()
       const serializedMatch = serializeMatch(match)
-      const opponent = match.participants.find((participant) => participant.player.id !== playerId)?.player ?? null
 
       context.publishMatchRuntimeEvent(serializedMatch, 'match_created', commandId)
-
-      if (opponent) {
-        const notification = await createNotification({
-          id: notificationId,
-          playerId: opponent.id,
-          actorPlayerId: playerId,
-          type: 'match_invite_received',
-          title: `${match.createdBy.name} vous a defie.`,
-          href: `/jeu/multijoueur?match=${match.id}`,
-          dedupeKey: matchInviteNotificationKey(match.id),
-        })
-        context.emitNotificationCreated(opponent.id, 'notification_created', serializeNotification(notification))
-      }
-
       ack?.({ ok: true, data: { match: serializedMatch } })
+      persistInvitationCreatedNotificationInBackground(serializedMatch, playerId, notificationId, context)
     } catch (error) {
       if (optimisticSnapshot) {
         context.deleteCachedMatch(optimisticSnapshot.id)

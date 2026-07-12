@@ -103,8 +103,24 @@ type RealtimeCommandResponse<T> =
   | { ok: true; data: T }
   | { ok: false; error: { message: string; status: number; code: string | null } }
 
-const REALTIME_COMMAND_TIMEOUT_MS = 2_000
 const REALTIME_CONNECT_GRACE_MS = 5_000
+const REALTIME_FAST_COMMAND_TIMEOUT_MS = 4_000
+const REALTIME_DEFAULT_COMMAND_TIMEOUT_MS = 12_000
+const REALTIME_LONG_COMMAND_TIMEOUT_MS = 20_000
+
+export function realtimeCommandTimeoutMs(eventName: string) {
+  switch (eventName) {
+    case 'room:join':
+    case 'match:update-config':
+    case 'match:update-progress':
+    case 'match:submit-tempo-answer':
+      return REALTIME_FAST_COMMAND_TIMEOUT_MS
+    case 'match:submit-result':
+      return REALTIME_LONG_COMMAND_TIMEOUT_MS
+    default:
+      return REALTIME_DEFAULT_COMMAND_TIMEOUT_MS
+  }
+}
 
 type RealtimeHandlers = {
   onSocialChanged?: (payload: RealtimePayload) => void
@@ -384,7 +400,7 @@ export function useRealtimeEvents({
         : payload
 
     return new Promise<T>((resolve, reject) => {
-      socket.timeout(REALTIME_COMMAND_TIMEOUT_MS).emit(
+      socket.timeout(realtimeCommandTimeoutMs(eventName)).emit(
         eventName,
         commandPayload,
         (timeoutError: Error | null, response?: RealtimeCommandResponse<T>) => {
