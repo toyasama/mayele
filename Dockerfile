@@ -25,4 +25,4 @@ COPY --from=builder /app/server/scripts ./scripts
 
 EXPOSE 4000
 
-CMD ["sh", "-c", "npm run db:check-domain && npm run prisma:migrate:deploy && node dist/server.js"]
+CMD ["sh", "-c", "npm run prisma:migrate:deploy && npm run db:check-domain && node dist/server.js"]
