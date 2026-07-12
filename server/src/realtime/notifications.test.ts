@@ -7,6 +7,7 @@ import {
   closeRealtime,
   emitMatchSnapshot,
   emitSocialChanged,
+  getRealtimeHealth,
   getPendingRealtimeHeartbeatSnapshot,
   initRealtime,
   waitForRealtimePersistenceIdle,
@@ -329,6 +330,22 @@ describe('realtime notifications', () => {
       await closeServer(httpServer)
       httpServer = null
     }
+  })
+
+  it("expose l'etat de readiness Socket.IO", async () => {
+    expect(getRealtimeHealth()).toMatchObject({ initialized: false, connectedSockets: 0, onlinePlayers: 0 })
+
+    httpServer = createServer()
+    initRealtime(httpServer, {
+      authenticateToken: async (token) => (token === 'token_a' ? { clerkUserId: 'clerk_a', playerId: 'player_a' } : null),
+    })
+
+    expect(getRealtimeHealth()).toMatchObject({ initialized: true, connectedSockets: 0, onlinePlayers: 0 })
+
+    const port = await listen(httpServer)
+    await connectClient(port, 'token_a')
+
+    expect(getRealtimeHealth()).toMatchObject({ initialized: true, connectedSockets: 1, onlinePlayers: 0 })
   })
 
   it('envoie les evenements sociaux uniquement aux rooms des joueurs cibles', async () => {

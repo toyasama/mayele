@@ -67,6 +67,8 @@ jobs:
 
       - name: Client build
         working-directory: client
+        env:
+          VITE_API_URL: https://api.mayele-learning.com/api
         run: npm run build
 
       - name: Install Playwright browser

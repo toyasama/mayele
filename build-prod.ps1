@@ -60,6 +60,11 @@ finally {
 
 Push-Location client
 try {
+    $previousViteApiUrl = $env:VITE_API_URL
+    if ([string]::IsNullOrWhiteSpace($env:VITE_API_URL)) {
+        $env:VITE_API_URL = "https://api.mayele-learning.com/api"
+    }
+
     Invoke-Step "Audit frontend" { npm audit --audit-level=moderate }
     Invoke-Step "Lint frontend" { npm run lint }
     Invoke-Step "Tests frontend" { npm run test }
@@ -68,6 +73,13 @@ try {
     Invoke-Step "E2E responsive frontend" { npm run test:responsive }
 }
 finally {
+    if ($null -eq $previousViteApiUrl) {
+        Remove-Item Env:\VITE_API_URL -ErrorAction SilentlyContinue
+    }
+    else {
+        $env:VITE_API_URL = $previousViteApiUrl
+    }
+
     Pop-Location
 }
 

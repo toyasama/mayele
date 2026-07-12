@@ -436,6 +436,8 @@ Le premier jalon multijoueur apres les amis doit etre:
 - La regle de victoire est: bonnes reponses, puis temps de reponse cumule, puis heure de fin. Egalite possible si tout est identique.
 - Le mode `tempo` impose maintenant 10 secondes par question cote client et le serveur rejette les reponses qui depassent cette fenetre avec marge reseau.
 - Le client charge les pages de jeu, dashboard, amis et auth en chunks separes; Socket.IO est importe dynamiquement uniquement quand le temps reel est utilise.
+- En production, le client derive l'origine Socket.IO depuis `VITE_API_URL`; `VITE_REALTIME_URL` reste uniquement un override explicite si le realtime est deplace hors de l'API Express.
+- `/api/ready` verifie Postgres et l'initialisation Socket.IO, afin d'eviter une production consideree saine alors que le multijoueur temps reel est indisponible.
 
 Limites restantes:
 

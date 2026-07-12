@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite --host",
     "dev:e2e": "vite --host 127.0.0.1 --mode e2e",
-    "build": "tsc -b && vite build",
+    "check:runtime-config": "node scripts/check-runtime-config.mjs",
+    "build": "npm run check:runtime-config && tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview --host",
     "test": "vitest run",

@@ -1,33 +1,10 @@
 import { waitForAuthToken } from './authToken'
 import type { AnswerResult, SkillTag } from './game'
+import { resolveApiBase } from './runtimeConfig'
 
 export type PresenceStatus = 'online' | 'away' | 'busy' | 'offline'
 
-const LOCAL_API_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]'])
-
-function currentPageHostname() {
-  return typeof window === 'undefined' ? 'localhost' : window.location.hostname
-}
-
-export function resolveApiBase(configuredApiBase: string | undefined, pageHostname = currentPageHostname()) {
-  if (!configuredApiBase) {
-    return '/api'
-  }
-
-  try {
-    const apiUrl = new URL(configuredApiBase)
-
-    if (LOCAL_API_HOSTS.has(apiUrl.hostname) && !LOCAL_API_HOSTS.has(pageHostname)) {
-      return '/api'
-    }
-  } catch {
-    return configuredApiBase
-  }
-
-  return configuredApiBase
-}
-
-const API_BASE = resolveApiBase(import.meta.env.VITE_API_URL)
+const API_BASE = resolveApiBase(import.meta.env.VITE_API_URL, undefined, { isProduction: import.meta.env.PROD })
 
 export class ApiRequestError extends Error {
   declare readonly status: number

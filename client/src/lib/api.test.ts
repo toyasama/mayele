@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { resolveApiBase } from './api'
+import { resolveApiBase } from './runtimeConfig'
 
 describe('resolveApiBase', () => {
   it('uses the Vite proxy when a local API URL is opened from another device', () => {
@@ -11,8 +11,18 @@ describe('resolveApiBase', () => {
   })
 
   it('keeps production API URLs', () => {
-    expect(resolveApiBase('https://api.mayele-learning.com/api', 'mayele-learning.com')).toBe(
+    expect(resolveApiBase('https://api.mayele-learning.com/api', 'mayele-learning.com', { isProduction: true })).toBe(
       'https://api.mayele-learning.com/api',
+    )
+  })
+
+  it('fails fast when the production API URL is missing', () => {
+    expect(() => resolveApiBase(undefined, 'mayele-learning.com', { isProduction: true })).toThrow('VITE_API_URL')
+  })
+
+  it('fails fast when the production API URL does not target /api', () => {
+    expect(() => resolveApiBase('https://api.mayele-learning.com', 'mayele-learning.com', { isProduction: true })).toThrow(
+      '/api',
     )
   })
 })

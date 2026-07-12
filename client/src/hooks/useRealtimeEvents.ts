@@ -5,6 +5,7 @@ import { ApiRequestError, type ChallengeMode, type MatchData, type NotificationD
 import { waitForAuthToken } from '../lib/authToken'
 import { createClientCommandId } from '../lib/clientCommandId'
 import type { SkillTag } from '../lib/game'
+import { resolveRealtimeBase } from '../lib/runtimeConfig'
 
 type TokenProvider = () => Promise<string | null>
 
@@ -140,7 +141,11 @@ let sharedConnectionAttempt = 0
 let sharedReadyWaiters: ReadyWaiter[] = []
 
 function realtimeUrl() {
-  return import.meta.env.VITE_REALTIME_URL || window.location.origin
+  return resolveRealtimeBase({
+    configuredRealtimeBase: import.meta.env.VITE_REALTIME_URL,
+    configuredApiBase: import.meta.env.VITE_API_URL,
+    isProduction: import.meta.env.PROD,
+  })
 }
 
 function realtimeUnavailableError() {

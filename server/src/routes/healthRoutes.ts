@@ -1,5 +1,7 @@
 import { Router } from 'express'
+import { env } from '../config/env.js'
 import { prisma } from '../lib/prisma.js'
+import { getRealtimeHealth } from '../realtime/notifications.js'
 
 export function healthRoutes() {
   const router = Router()
@@ -11,7 +13,14 @@ export function healthRoutes() {
   router.get('/ready', async (_req, res, next) => {
     try {
       await prisma.$queryRaw`SELECT 1`
-      res.json({ status: 'ready' })
+      const realtime = getRealtimeHealth()
+
+      if (env.isProduction && !realtime.initialized) {
+        res.status(503).json({ status: 'not_ready', realtime })
+        return
+      }
+
+      res.json({ status: 'ready', realtime })
     } catch (error) {
       next(error)
     }

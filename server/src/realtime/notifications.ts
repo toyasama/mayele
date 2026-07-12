@@ -159,6 +159,14 @@ const REALTIME_COMMAND_LIMITS: Record<string, number> = {
 }
 const realtimeRateBuckets = new Map<string, { startedAtMs: number; count: number }>()
 
+export function getRealtimeHealth() {
+  return {
+    initialized: Boolean(io),
+    connectedSockets: io?.sockets.sockets.size ?? 0,
+    onlinePlayers: onlinePlayers.size,
+  }
+}
+
 function playerRoom(playerId: string) {
   return `player:${playerId}`
 }
@@ -698,6 +706,18 @@ function isAllowedOrigin(origin: string | undefined) {
   return isAllowedCorsOrigin(origin, { isProduction: env.isProduction, allowedOrigins: env.corsOrigins })
 }
 
+function requestTransportName(requestUrl: string | undefined) {
+  if (!requestUrl) {
+    return null
+  }
+
+  try {
+    return new URL(requestUrl, 'http://localhost').searchParams.get('transport')
+  } catch {
+    return null
+  }
+}
+
 async function authenticateToken(token: string): Promise<RealtimeIdentity | null> {
   if (!env.isProduction && env.e2eAuthBypass && token.startsWith('e2e:')) {
     const clerkUserId = token.slice('e2e:'.length).trim()
@@ -805,9 +825,28 @@ export function initRealtime(httpServer: HttpServer, options: InitRealtimeOption
   onlinePlayers.clear()
 
   const socketServer = new Server(httpServer, {
+    allowRequest: (request, callback) => {
+      const origin = request.headers.origin
+      const allowed = isAllowedOrigin(origin)
+
+      if (!allowed) {
+        logger.warn('realtime_origin_denied', {
+          origin,
+          transport: requestTransportName(request.url),
+        })
+      }
+
+      callback(null, allowed)
+    },
     cors: {
       origin: (origin, callback) => {
-        callback(null, isAllowedOrigin(origin))
+        const allowed = isAllowedOrigin(origin)
+
+        if (!allowed) {
+          logger.warn('realtime_cors_denied', { origin })
+        }
+
+        callback(null, allowed)
       },
       methods: ['GET', 'POST'],
     },
@@ -820,6 +859,11 @@ export function initRealtime(httpServer: HttpServer, options: InitRealtimeOption
       const token = tokenFromSocket(socket)
 
       if (!token) {
+        logger.warn('realtime_auth_failed', {
+          reason: 'missing_token',
+          origin: socket.handshake.headers.origin,
+          transport: socket.conn.transport.name,
+        })
         next(new Error('unauthorized'))
         return
       }
@@ -827,6 +871,11 @@ export function initRealtime(httpServer: HttpServer, options: InitRealtimeOption
       const identity = await resolveIdentity(token)
 
       if (!identity) {
+        logger.warn('realtime_auth_failed', {
+          reason: 'invalid_token_or_player',
+          origin: socket.handshake.headers.origin,
+          transport: socket.conn.transport.name,
+        })
         next(new Error('unauthorized'))
         return
       }
@@ -835,7 +884,13 @@ export function initRealtime(httpServer: HttpServer, options: InitRealtimeOption
       socket.data.playerId = identity.playerId
       socket.data.publicPlayer = identity.player
       next()
-    } catch {
+    } catch (error) {
+      logger.warn('realtime_auth_failed', {
+        reason: 'auth_exception',
+        origin: socket.handshake.headers.origin,
+        transport: socket.conn.transport.name,
+        message: error instanceof Error ? error.message : String(error),
+      })
       next(new Error('unauthorized'))
     }
   })
@@ -852,6 +907,13 @@ export function initRealtime(httpServer: HttpServer, options: InitRealtimeOption
       rememberOnlinePlayer(playerId, socket.id, socket.data.publicPlayer as RealtimePublicPlayer)
     }
 
+    logger.info('realtime_connected', {
+      playerId,
+      socketId: socket.id,
+      origin: socket.handshake.headers.origin,
+      transport: socket.conn.transport.name,
+    })
+
     socket.join(playerRoom(playerId))
     socket.emit('realtime:ready', { playerId, at: new Date().toISOString() })
     socket.use(([eventName], next) => {
@@ -863,8 +925,13 @@ export function initRealtime(httpServer: HttpServer, options: InitRealtimeOption
       logger.warn('realtime_rate_limited', { playerId, eventName })
       next(new Error('rate_limit_exceeded'))
     })
-    socket.on('disconnect', () => {
+    socket.on('disconnect', (reason) => {
       forgetOnlinePlayer(playerId, socket.id)
+      logger.info('realtime_disconnected', {
+        playerId,
+        socketId: socket.id,
+        reason,
+      })
     })
 
     socket.on('room:join', (value: unknown, ack?: (response: RealtimeCommandAck<{ joined: true }>) => void) => {
@@ -1102,5 +1169,7 @@ export function closeRealtime() {
     }
   }
   tempoMatchRuntimes.clear()
+  onlinePlayers.clear()
+  realtimeRateBuckets.clear()
   clearRoomRuntimeState()
 }

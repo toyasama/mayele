@@ -71,7 +71,13 @@ VITE_CLERK_PUBLISHABLE_KEY=pk_live_xxx
 
 Ne jamais exposer `CLERK_SECRET_KEY`, `DATABASE_URL` ou `DIRECT_URL` dans Vercel client.
 
-Pour `vercel dev`, `VITE_API_URL` peut rester sur `http://localhost:4000/api`. Pour `production`, il doit pointer vers Railway.
+`VITE_API_URL` est une configuration publique du client. Pour `production`, elle doit pointer vers Railway avec le chemin `/api`.
+
+Le websocket Socket.IO est derive de `VITE_API_URL`. Avec `VITE_API_URL=https://api.mayele-learning.com/api`, le client se connecte a `https://api.mayele-learning.com/socket.io`.
+
+`VITE_REALTIME_URL` est optionnel et ne doit etre ajoute que si le temps reel est deplace sur une origine differente de l'API. Dans ce cas, la valeur doit etre une origine HTTPS sans chemin.
+
+Pour `vercel dev`, `VITE_API_URL` peut rester sur `http://localhost:4000/api`.
 
 ## 3. Deploiement Railway API
 
@@ -80,10 +86,10 @@ Railway utilise le `Dockerfile` racine. L'image build uniquement le serveur Type
 Au demarrage du container, Railway laisse le `CMD` du `Dockerfile` executer :
 
 ```bash
-npm run prisma:migrate:deploy && node dist/server.js
+npm run prisma:migrate:deploy && npm run db:check-domain && node dist/server.js
 ```
 
-Cela applique les migrations Prisma puis lance l'API.
+Cela applique les migrations Prisma, verifie les contraintes de domaine, puis lance l'API.
 
 Endpoints a verifier :
 
@@ -92,7 +98,7 @@ curl https://api.mayele-learning.com/api/health
 curl https://api.mayele-learning.com/api/ready
 ```
 
-`/api/health` verifie le process API. `/api/ready` verifie la connexion Postgres.
+`/api/health` verifie le process API. `/api/ready` verifie la connexion Postgres et l'initialisation Socket.IO en production.
 
 ## 4. Deploiement Vercel client
 
@@ -112,7 +118,8 @@ Le fichier `client/vercel.json` redirige les routes SPA vers `index.html`.
 3. Lancer un sprint.
 4. Verifier que `/api/sessions` retourne `201`.
 5. Ouvrir le dashboard.
-6. Verifier dans Neon que `players`, `game_sessions`, `answers`, `daily_stats` sont alimentes.
+6. Ouvrir la page multijoueur et verifier que le statut temps reel est connecte.
+7. Verifier dans Neon que `players`, `game_sessions`, `answers`, `daily_stats` sont alimentes.
 
 ## 6. Workflow de livraison
 
