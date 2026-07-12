@@ -1,0 +1,193 @@
+﻿@keyframes multiplayerWinnerGlow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 1px rgba(10, 159, 143, 0.18), 0 12px 28px rgba(10, 159, 143, 0.08);
+  }
+
+  50% {
+    box-shadow: 0 0 0 4px rgba(10, 159, 143, 0.12), 0 18px 42px rgba(10, 159, 143, 0.18);
+  }
+}
+
+.multiplayer-result-panel {
+  display: grid;
+  gap: 22px;
+}
+
+.multiplayer-waiting-panel {
+  display: grid;
+  gap: 18px;
+  padding: clamp(18px, 3vw, 28px);
+  border: 1px solid rgba(10, 159, 143, 0.28);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.multiplayer-waiting-panel > strong {
+  color: var(--text);
+  font-size: clamp(1.35rem, 3vw, 1.85rem);
+}
+
+.multiplayer-waiting-panel p {
+  margin: 0;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.multiplayer-waiting-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.multiplayer-waiting-stats span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.multiplayer-waiting-stats strong {
+  color: var(--text);
+  font-size: clamp(1.6rem, 4vw, 2.1rem);
+  line-height: 1;
+}
+
+.multiplayer-waiting-stats small {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.multiplayer-result-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(18px, 4vw, 34px);
+}
+
+.multiplayer-result-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.multiplayer-result-grid > div {
+  min-height: auto;
+  display: grid;
+  align-content: center;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid transparent;
+  border-radius: 18px;
+  background: transparent;
+  box-shadow: none;
+}
+
+.multiplayer-result-player.is-winner {
+  border-color: rgba(10, 159, 143, 0.72);
+  animation: multiplayerWinnerGlow 2.2s ease-in-out infinite;
+}
+
+.multiplayer-result-player.is-loser {
+  border-color: rgba(255, 91, 66, 0.62);
+  box-shadow: 0 0 0 1px rgba(255, 91, 66, 0.1);
+}
+
+.multiplayer-result-player.is-neutral {
+  border-color: rgba(180, 212, 218, 0.58);
+}
+
+.multiplayer-result-grid span,
+.multiplayer-result-grid small {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.multiplayer-result-grid strong {
+  color: var(--text);
+  font-size: clamp(1.65rem, 4vw, 2.2rem);
+}
+
+.multiplayer-result-player-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.multiplayer-result-player-line small {
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: rgba(22, 160, 133, 0.1);
+  color: var(--primary);
+  font-size: 0.78rem;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.multiplayer-result-forfeit-badge {
+  width: fit-content;
+  padding: 7px 12px;
+  border: 1px solid rgba(255, 91, 66, 0.36);
+  border-radius: 8px;
+  background: rgba(255, 91, 66, 0.08);
+  color: #b93528;
+  font-size: 0.78rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.multiplayer-result-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(16px, 4vw, 34px);
+  align-items: start;
+  text-align: center;
+}
+
+.multiplayer-result-stats strong {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  font-size: clamp(1.65rem, 4vw, 2.2rem);
+  line-height: 1;
+}
+
+.multiplayer-result-stats strong small {
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.7rem;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.multiplayer-scoreboard {
+  padding: 12px;
+  border-radius: 8px;
+  background: #f7f9fc;
+  border: 1px solid var(--border);
+}
+
+.multiplayer-scoreboard span {
+  color: var(--muted);
+  font-weight: 850;
+}
+
+.multiplayer-scoreboard strong {
+  color: var(--primary-dark);
+  font-size: 1.4rem;
+}
+
+.multiplayer-scoreboard small {
+  min-width: 44px;
+  min-height: 32px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  color: #7c2d12;
+  background: #ffedd5;
+  font-weight: 950;
+}
+

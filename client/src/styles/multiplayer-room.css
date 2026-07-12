@@ -1,0 +1,368 @@
+﻿.multiplayer-room-grid {
+  width: min(100%, 1240px);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(250px, 320px);
+  grid-template-areas:
+    'control player'
+    'control opponent';
+  gap: 18px 36px;
+  align-items: stretch;
+}
+
+.multiplayer-player-card,
+.multiplayer-opponent-column {
+  display: grid;
+  gap: 12px;
+}
+
+.multiplayer-room-grid > .multiplayer-player-card {
+  grid-area: player;
+}
+
+.multiplayer-player-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  justify-items: stretch;
+  text-align: left;
+  min-height: 0;
+  align-content: center;
+  padding: 16px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.multiplayer-player-card.is-room-master {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.multiplayer-room-grid > .multiplayer-player-card {
+  padding-left: 26px;
+  border-left: 1px solid rgba(180, 212, 218, 0.68);
+}
+
+.multiplayer-player-card.has-hand::before {
+  content: 'Maitre du salon';
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  padding: 6px 9px;
+  border-radius: 999px;
+  color: #166534;
+  background: #dcfce7;
+  font-weight: 850;
+  font-size: 0.78rem;
+}
+
+.multiplayer-player-main {
+  min-width: 0;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.multiplayer-player-room-stats {
+  min-width: 74px;
+  display: grid;
+  gap: 8px;
+  padding-left: 14px;
+  border-left: 1px solid rgba(180, 212, 218, 0.62);
+}
+
+.multiplayer-player-room-stats span {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.multiplayer-player-room-stats strong {
+  color: var(--text);
+  font-family: inherit;
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
+.multiplayer-avatar {
+  width: 82px;
+  height: 82px;
+  border-radius: 999px;
+  object-fit: cover;
+  display: grid;
+  place-items: center;
+  background: #eef4ff;
+  color: var(--accent);
+  border: 1px solid var(--border);
+  font-weight: 900;
+  font-size: 1.4rem;
+}
+
+.multiplayer-avatar.empty-slot {
+  border-style: dashed;
+  color: var(--muted);
+}
+
+.multiplayer-player-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  color: #0f766e;
+  background: rgba(20, 184, 166, 0.12);
+  font-size: 0.8rem;
+  font-weight: 850;
+}
+
+.multiplayer-control-card {
+  grid-area: control;
+  position: relative;
+  display: grid;
+  align-content: start;
+  gap: 28px;
+  min-height: 0;
+  overflow: visible;
+  padding: clamp(4px, 1vw, 10px);
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.multiplayer-control-card::before {
+  content: none;
+}
+
+.multiplayer-control-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.multiplayer-control-card .control-group {
+  display: grid;
+  gap: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.multiplayer-control-card .panel-label {
+  color: var(--challenge-muted, var(--muted));
+  font-size: 0.82rem;
+  font-weight: 950;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.multiplayer-control-card .segmented-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  flex-wrap: wrap;
+  overflow: visible;
+}
+
+.multiplayer-control-card .segment {
+  min-height: 44px;
+  justify-content: center;
+  border: 1px solid rgba(180, 212, 218, 0.65);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.42);
+  color: var(--arena-ink);
+  box-shadow: none;
+}
+
+.multiplayer-control-card .segment.active {
+  color: #ffffff;
+  border-color: transparent;
+  background: var(--challenge-primary, var(--primary));
+  box-shadow: 0 10px 22px rgba(10, 159, 143, 0.14);
+}
+
+.multiplayer-control-card .segment.active.blue-segment {
+  background: linear-gradient(135deg, #06324f, #0c8d86);
+  box-shadow: inset 0 -4px 0 #021629, 0 16px 30px rgba(6, 50, 79, 0.18);
+}
+
+.multiplayer-control-card .segment.peer-choice:not(.active) {
+  border-color: rgba(100, 116, 139, 0.28);
+  background: rgba(100, 116, 139, 0.1);
+  color: var(--muted);
+}
+
+.multiplayer-control-card .segment.active.peer-choice {
+  box-shadow:
+    inset 0 0 0 2px rgba(100, 116, 139, 0.36),
+    0 10px 22px rgba(10, 159, 143, 0.14);
+}
+
+.multiplayer-control-card .control-group:first-of-type .segmented-grid {
+  width: fit-content;
+  max-width: 100%;
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid rgba(180, 212, 218, 0.65);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.42);
+}
+
+.multiplayer-control-card .control-group:first-of-type .segment {
+  min-width: 118px;
+  min-height: 42px;
+  padding: 8px 18px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  box-shadow: none;
+}
+
+.multiplayer-control-card .control-group:first-of-type .segment.active {
+  background: var(--challenge-primary, var(--primary));
+  color: #ffffff;
+}
+
+.multiplayer-control-card > .primary-button.full-width,
+.multiplayer-control-card > .secondary-button.full-width {
+  width: auto;
+  justify-self: start;
+  min-height: 48px;
+  padding-inline: 20px;
+  border-radius: 999px;
+}
+
+.multiplayer-control-card > .primary-button.full-width {
+  background: linear-gradient(135deg, var(--arena-ink), #064b60 46%, var(--arena-mint));
+  box-shadow: inset 0 -4px 0 rgba(0, 0, 0, 0.28), 0 18px 34px rgba(7, 20, 38, 0.16);
+}
+
+.multiplayer-room-state {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.multiplayer-room-state strong {
+  color: var(--text);
+}
+
+.multiplayer-room-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.multiplayer-room-actions .secondary-button {
+  min-height: 38px;
+  padding: 8px 14px;
+  border-radius: 999px;
+}
+
+.multiplayer-danger-button {
+  border-color: rgba(220, 38, 38, 0.34);
+  background: #dc2626;
+  color: #ffffff;
+}
+
+.multiplayer-danger-button:hover {
+  background: #b91c1c;
+}
+
+.multiplayer-challenge-list .multiplayer-room-state {
+  min-height: 30px;
+  padding-bottom: 8px;
+}
+
+.multiplayer-challenge-list .multiplayer-room-state .eyebrow {
+  min-height: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.multiplayer-rule-panel label {
+  display: grid;
+  grid-template-columns: minmax(84px, auto) minmax(180px, 360px);
+  align-items: center;
+  gap: 16px;
+  color: var(--challenge-ink, var(--text));
+  font-weight: 950;
+}
+
+.multiplayer-rule-panel input,
+.multiplayer-rule-panel select {
+  min-height: 54px;
+  padding: 12px 16px;
+  border: 1px solid rgba(180, 212, 218, 0.65);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.42);
+  font: inherit;
+  font-weight: 900;
+}
+
+.multiplayer-invite-actions,
+.multiplayer-scoreboard {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.multiplayer-invite-actions > button {
+  flex: 1;
+}
+
+.multiplayer-opponent-column {
+  grid-area: opponent;
+  align-content: start;
+  padding-left: 26px;
+  border-left: 1px solid rgba(180, 212, 218, 0.68);
+}
+
+.multiplayer-opponent-column > .primary-button.full-width {
+  width: auto;
+  justify-self: stretch;
+  min-height: 42px;
+  border-radius: 999px;
+}
+
+.friend-picker-panel {
+  display: grid;
+  gap: 8px;
+}
+
+.friend-picker-panel button {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--text);
+  text-align: left;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.friend-picker-panel button span {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+

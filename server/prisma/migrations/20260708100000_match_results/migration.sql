@@ -1,0 +1,5 @@
+ALTER TABLE "match_participants"
+ADD COLUMN "correct_answers" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN "total_questions" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN "total_response_time_ms" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN "best_streak" INTEGER NOT NULL DEFAULT 0;

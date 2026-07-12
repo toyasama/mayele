@@ -35,9 +35,9 @@ export const ACHIEVEMENTS = {
     label: 'Série x5',
     description: 'Vous avez enchaîné 5 bonnes réponses.',
   },
-  points_100: {
-    label: '100 points',
-    description: 'Vous avez marqué au moins 100 points en un sprint.',
+  xp_250: {
+    label: '250 XP',
+    description: 'Vous avez gagné au moins 250 XP en un sprint.',
   },
   daily_goal: {
     label: 'Objectif du jour',

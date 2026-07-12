@@ -1,0 +1,340 @@
+﻿.play-mode-tabs {
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 auto;
+  display: inline-flex;
+  gap: 10px;
+  padding: 0 2px 2px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.play-mode-tabs button {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 18px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.48);
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 850;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.play-mode-tabs button.active {
+  border-color: transparent;
+  background: var(--primary);
+  color: #ffffff;
+  box-shadow: 0 10px 22px rgba(10, 159, 143, 0.14);
+}
+
+.play-mode-tabs button:not(.active):hover {
+  background: rgba(255, 255, 255, 0.74);
+  color: var(--text);
+}
+
+.play-mode-tabs button:focus-visible {
+  outline: 3px solid rgba(10, 159, 143, 0.24);
+  outline-offset: 3px;
+}
+
+.play-mode-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(5, 20, 35, 0.28);
+  backdrop-filter: blur(6px);
+}
+
+.play-mode-dialog {
+  width: min(100%, 420px);
+  display: grid;
+  gap: 12px;
+  padding: 24px;
+}
+
+.play-mode-dialog h2 {
+  margin: 0;
+  font-size: 1.35rem;
+  line-height: 1.15;
+}
+
+.play-mode-dialog p {
+  margin: 0;
+}
+
+.play-mode-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.multiplayer-page {
+  width: min(100%, 1480px);
+  margin: 0 auto;
+  gap: 12px;
+  --arena-ink: #071426;
+  --arena-mint: #14b8a6;
+  --arena-lime: #88d85f;
+  --arena-coral: #ff6b4a;
+  --arena-gold: #f4c84a;
+}
+
+.multiplayer-page.multiplayer-view-lobby {
+  width: min(100%, 840px);
+}
+
+.multiplayer-page .multiplayer-hero {
+  padding-inline: 2px;
+  align-items: start;
+}
+
+.multiplayer-page .multiplayer-hero .eyebrow {
+  min-height: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.multiplayer-page .multiplayer-hero h1 {
+  max-width: 100%;
+  margin-top: 6px;
+  font-size: clamp(2rem, 4.2vw, 3rem);
+  line-height: 1;
+}
+
+.multiplayer-lobby-grid {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(250px, 320px);
+  gap: clamp(22px, 4vw, 34px);
+  align-items: start;
+  margin-top: 4px;
+}
+
+.multiplayer-lobby-card {
+  width: min(100%, 420px);
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 2px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.multiplayer-lobby-title-row {
+  width: 100%;
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.multiplayer-lobby-card h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: clamp(1.55rem, 3vw, 2.15rem);
+  line-height: 1.04;
+}
+
+.multiplayer-lobby-card .primary-button {
+  flex: 0 0 auto;
+  width: auto;
+  min-height: 42px;
+  padding: 9px 18px;
+  border-radius: 999px;
+  box-shadow: 0 10px 22px rgba(10, 159, 143, 0.14);
+}
+
+.multiplayer-direct-challenges {
+  width: min(100%, 420px);
+  display: grid;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.multiplayer-direct-heading {
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.multiplayer-direct-heading strong {
+  color: var(--text);
+  font-size: 0.92rem;
+}
+
+.multiplayer-direct-heading span {
+  color: var(--primary-dark);
+  font-weight: 950;
+}
+
+.multiplayer-direct-list {
+  max-height: 250px;
+  display: grid;
+  gap: 8px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
+}
+
+.multiplayer-direct-list button {
+  width: 100%;
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.5);
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.multiplayer-direct-list button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.multiplayer-direct-list button:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.multiplayer-direct-avatar {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  object-fit: cover;
+  background: #eef4ff;
+  border: 1px solid var(--border);
+  color: var(--primary-dark);
+  font-size: 0.78rem;
+  font-weight: 950;
+}
+
+.multiplayer-direct-list button > span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.multiplayer-direct-list button strong,
+.multiplayer-direct-list button em {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.multiplayer-direct-list button strong {
+  color: var(--text);
+  font-size: 0.92rem;
+}
+
+.multiplayer-direct-list button em {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-style: normal;
+  font-weight: 750;
+}
+
+.multiplayer-direct-list button small {
+  color: var(--primary-dark);
+  font-size: 0.8rem;
+  font-weight: 950;
+}
+
+.multiplayer-challenge-list {
+  display: grid;
+  gap: 12px;
+  padding: 72px 2px 2px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.multiplayer-challenge-list .muted {
+  padding-top: 2px;
+  color: var(--muted);
+  font-weight: 750;
+}
+
+.multiplayer-invitation-item {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.multiplayer-invitation-open {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.5);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.multiplayer-invitation-open:hover {
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.multiplayer-invitation-open strong {
+  font-size: 0.98rem;
+}
+
+.multiplayer-invitation-open span {
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.multiplayer-invitation-decline {
+  min-width: 88px;
+  padding: 10px 12px;
+  border: 1px solid rgba(220, 38, 38, 0.24);
+  border-radius: 8px;
+  background: rgba(254, 242, 242, 0.74);
+  color: #b91c1c;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 950;
+}
+
+.multiplayer-invitation-decline:hover:not(:disabled) {
+  background: #dc2626;
+  color: #ffffff;
+}
+
+.multiplayer-invitation-decline:disabled {
+  cursor: wait;
+  opacity: 0.64;
+}
+

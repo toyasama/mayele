@@ -12,14 +12,163 @@ model Player {
   clerkUserId String        @unique @map("clerk_user_id")
   email       String?
   name        String
+  firstName   String?       @map("first_name")
+  lastName    String?       @map("last_name")
+  birthDate   DateTime?     @map("birth_date") @db.Date
+  username    String?       @unique
+  avatarUrl   String?       @map("avatar_url")
+  timeZone    String        @default("Europe/Paris") @map("time_zone")
+  presenceStatus String     @default("online") @map("presence_status")
+  presenceUpdatedAt DateTime @default(now()) @map("presence_updated_at")
+  totalXp     Int           @default(0) @map("total_xp")
   createdAt   DateTime      @default(now()) @map("created_at")
   updatedAt   DateTime      @updatedAt @map("updated_at")
   sessions    GameSession[]
   answers     Answer[]
   achievements Achievement[]
   dailyStats  DailyStat[]
+  missionCompletions MissionCompletion[]
+  sentFriendRequests FriendRequest[] @relation("SentFriendRequests")
+  receivedFriendRequests FriendRequest[] @relation("ReceivedFriendRequests")
+  friendshipsAsA Friendship[] @relation("FriendshipA")
+  friendshipsAsB Friendship[] @relation("FriendshipB")
+  createdMatches Match[] @relation("CreatedMatches")
+  matchParticipants MatchParticipant[]
+  matchQuestionAnswers MatchQuestionAnswer[]
+  notifications Notification[] @relation("PlayerNotifications")
+  triggeredNotifications Notification[] @relation("ActorNotifications")
 
   @@map("players")
+}
+
+model Notification {
+  id          String   @id @default(cuid())
+  playerId    String   @map("player_id")
+  actorPlayerId String? @map("actor_player_id")
+  type        String
+  status      String   @default("active")
+  title       String
+  body        String?
+  href        String?
+  dedupeKey   String   @map("dedupe_key")
+  createdAt   DateTime @default(now()) @map("created_at")
+  readAt      DateTime? @map("read_at")
+  dismissedAt DateTime? @map("dismissed_at")
+  player      Player   @relation("PlayerNotifications", fields: [playerId], references: [id], onDelete: Cascade)
+  actorPlayer Player?  @relation("ActorNotifications", fields: [actorPlayerId], references: [id], onDelete: SetNull)
+
+  @@unique([playerId, dedupeKey])
+  @@index([playerId, status, createdAt(sort: Desc)])
+  @@map("notifications")
+}
+
+model FriendRequest {
+  id          String   @id @default(cuid())
+  senderId    String   @map("sender_id")
+  receiverId  String   @map("receiver_id")
+  status      String   @default("pending")
+  createdAt   DateTime @default(now()) @map("created_at")
+  respondedAt DateTime? @map("responded_at")
+  sender      Player   @relation("SentFriendRequests", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver    Player   @relation("ReceivedFriendRequests", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@unique([senderId, receiverId])
+  @@index([receiverId, status])
+  @@index([senderId, status])
+  @@map("friend_requests")
+}
+
+model Friendship {
+  id        String   @id @default(cuid())
+  playerAId String   @map("player_a_id")
+  playerBId String   @map("player_b_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  playerA   Player   @relation("FriendshipA", fields: [playerAId], references: [id], onDelete: Cascade)
+  playerB   Player   @relation("FriendshipB", fields: [playerBId], references: [id], onDelete: Cascade)
+
+  @@unique([playerAId, playerBId])
+  @@index([playerBId])
+  @@map("friendships")
+}
+
+model Match {
+  id              String   @id @default(cuid())
+  roomId          String?  @map("room_id")
+  type            String
+  challengeMode   String?  @map("challenge_mode")
+  status          String   @default("pending")
+  game            String?
+  level           String?
+  practiceSkill   String?  @map("practice_skill")
+  durationSeconds Int      @default(60) @map("duration_seconds")
+  questionCount   Int?     @map("question_count")
+  perQuestionTimeLimitSeconds Int? @map("per_question_time_limit_seconds")
+  questionSeed    String?  @map("question_seed")
+  configVersion   Int      @default(0) @map("config_version")
+  createdById     String   @map("created_by_id")
+  winnerPlayerId  String?  @map("winner_player_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  expiresAt       DateTime @default(dbgenerated("CURRENT_TIMESTAMP + interval '30 minutes'")) @map("expires_at")
+  hostActiveAt    DateTime? @map("host_active_at")
+  startedAt       DateTime? @map("started_at")
+  finishedAt      DateTime? @map("finished_at")
+  createdBy       Player   @relation("CreatedMatches", fields: [createdById], references: [id], onDelete: Cascade)
+  participants    MatchParticipant[]
+  questionAnswers MatchQuestionAnswer[]
+
+  @@index([roomId, createdAt(sort: Desc)])
+  @@index([createdById, createdAt(sort: Desc)])
+  @@index([status, createdAt(sort: Desc)])
+  @@map("matches")
+}
+
+model MatchParticipant {
+  id          String   @id @default(cuid())
+  matchId     String   @map("match_id")
+  playerId    String   @map("player_id")
+  status      String   @default("invited")
+  preferredChallengeMode String? @map("preferred_challenge_mode")
+  preferredGame String? @map("preferred_game")
+  preferredLevel String? @map("preferred_level")
+  score       Int?
+  scorePoints Int @default(0) @map("score_points")
+  xp          Int?
+  correctAnswers Int @default(0) @map("correct_answers")
+  totalQuestions Int @default(0) @map("total_questions")
+  totalResponseTimeMs Int @default(0) @map("total_response_time_ms")
+  bestStreak Int @default(0) @map("best_streak")
+  sessionId   String?  @unique @map("session_id")
+  joinedAt    DateTime? @map("joined_at")
+  finishedAt  DateTime? @map("finished_at")
+  forfeitedAt DateTime? @map("forfeited_at")
+  rematchRequestedAt DateTime? @map("rematch_requested_at")
+  resultDismissedAt DateTime? @map("result_dismissed_at")
+  match       Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  player      Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  session     GameSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+
+  @@unique([matchId, playerId])
+  @@index([playerId, status])
+  @@map("match_participants")
+}
+
+model MatchQuestionAnswer {
+  id             String   @id @default(cuid())
+  matchId        String   @map("match_id")
+  playerId       String   @map("player_id")
+  questionIndex  Int      @map("question_index")
+  prompt         String
+  correctAnswer  Int      @map("correct_answer")
+  userAnswer     Int?     @map("user_answer")
+  responseTimeMs Int      @map("response_time_ms")
+  skill          String
+  answeredAt     DateTime @default(now()) @map("answered_at")
+  match          Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  player         Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([matchId, playerId, questionIndex])
+  @@index([matchId, questionIndex])
+  @@map("match_question_answers")
 }
 
 model GameSession {
@@ -29,7 +178,8 @@ model GameSession {
   level           String
   practiceSkill   String?  @map("practice_skill")
   score           Int      @default(0)
-  points          Int      @default(0)
+  scorePoints     Int      @default(0) @map("score_points")
+  xp              Int      @default(0)
   correctAnswers  Int      @default(0) @map("correct_answers")
   totalQuestions  Int      @default(0) @map("total_questions")
   durationSeconds Int      @default(0) @map("duration_seconds")
@@ -37,6 +187,7 @@ model GameSession {
   playedAt        DateTime @default(now()) @map("played_at")
   player          Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
   answers         Answer[]
+  matchParticipant MatchParticipant?
 
   @@index([playerId, playedAt(sort: Desc)])
   @@index([playerId, game, level])
@@ -52,7 +203,7 @@ model Answer {
   skill          String
   prompt         String
   correctAnswer  Int         @map("correct_answer")
-  userAnswer     Int         @map("user_answer")
+  userAnswer     Int?        @map("user_answer")
   responseTimeMs Int         @map("response_time_ms")
   isCorrect      Boolean     @default(false) @map("is_correct")
   answeredAt     DateTime    @default(now()) @map("answered_at")
@@ -60,6 +211,7 @@ model Answer {
   player         Player      @relation(fields: [playerId], references: [id], onDelete: Cascade)
 
   @@index([playerId, skill])
+  @@index([playerId, game, level, isCorrect, responseTimeMs])
   @@index([sessionId])
   @@map("answers")
 }
@@ -82,11 +234,25 @@ model DailyStat {
   playerId       String   @map("player_id")
   day            String
   sessionsCount  Int      @default(0) @map("sessions_count")
-  points         Int      @default(0)
+  xp             Int      @default(0)
   correctAnswers Int      @default(0) @map("correct_answers")
   totalQuestions Int      @default(0) @map("total_questions")
   player         Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
 
   @@unique([playerId, day])
   @@map("daily_stats")
+}
+
+model MissionCompletion {
+  id          String   @id @default(cuid())
+  playerId    String   @map("player_id")
+  missionKey  String   @map("mission_key")
+  scopeKey    String   @default("lifetime") @map("scope_key")
+  xpAwarded   Int      @default(0) @map("xp_awarded")
+  completedAt DateTime @default(now()) @map("completed_at")
+  player      Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([playerId, missionKey, scopeKey])
+  @@index([playerId, completedAt(sort: Desc)])
+  @@map("mission_completions")
 }

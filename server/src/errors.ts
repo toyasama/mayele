@@ -1,5 +1,7 @@
 import type { NextFunction, Request, Response } from 'express'
 import { ZodError } from 'zod'
+import { logger } from './lib/logger.js'
+import { captureException } from './lib/sentry.js'
 
 export class ApiError extends Error {
   constructor(
@@ -27,7 +29,7 @@ function isPayloadTooLarge(error: unknown) {
   )
 }
 
-export function errorHandler(error: unknown, _req: Request, res: Response, _next: NextFunction) {
+export function errorHandler(error: unknown, req: Request, res: Response, _next: NextFunction) {
   if (error instanceof ApiError) {
     return res.status(error.statusCode).json({ message: error.message, code: error.code })
   }
@@ -40,6 +42,16 @@ export function errorHandler(error: unknown, _req: Request, res: Response, _next
     return res.status(400).json({ message: 'Payload invalide.', code: 'validation_error', issues: error.issues })
   }
 
-  console.error(error)
+  logger.error('Unhandled server error', {
+    requestId: req.requestId,
+    name: error instanceof Error ? error.name : 'Unknown',
+    message: error instanceof Error ? error.message : String(error),
+    stack: error instanceof Error ? error.stack : undefined,
+  })
+  captureException(error, {
+    requestId: req.requestId,
+    method: req.method,
+    path: req.originalUrl,
+  })
   return res.status(500).json({ message: 'Erreur serveur.', code: 'internal_error' })
 }

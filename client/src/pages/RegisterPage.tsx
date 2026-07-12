@@ -1,30 +1,60 @@
-import { useSignUp } from '@clerk/react/legacy'
+import { useClerk } from '@clerk/react'
 import { type FormEvent, useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/auth'
+import { api } from '../lib/api'
 import { clerkErrorMessage } from '../lib/clerkErrors'
+import { dateInputLimit, isValidBirthDate, USERNAME_PATTERN } from '../lib/profile'
+import { DEFAULT_TIME_ZONE, detectBrowserTimeZone, isValidTimeZone } from '../lib/timeZone'
 
 type RegisterStep = 'details' | 'verify'
 
 type RegisterForm = {
   firstName: string
   lastName: string
+  birthDate: string
+  username: string
   email: string
   password: string
   confirmPassword: string
 }
 
+type TokenProvider = () => Promise<string | null>
+
 const initialForm: RegisterForm = {
   firstName: '',
   lastName: '',
+  birthDate: '',
+  username: '',
   email: '',
   password: '',
   confirmPassword: '',
 }
 
+async function waitForActiveSessionToken(getToken: TokenProvider) {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const token = await getToken()
+
+    if (token) {
+      return
+    }
+
+    await new Promise((resolve) => window.setTimeout(resolve, 120))
+  }
+
+  throw new Error('Session Mayele indisponible.')
+}
+
+function detectedSignupTimeZone() {
+  const timeZone = detectBrowserTimeZone()
+  return isValidTimeZone(timeZone) ? timeZone : DEFAULT_TIME_ZONE
+}
+
 export function RegisterPage() {
-  const { isAuthenticated, loading } = useAuth()
-  const { isLoaded, setActive, signUp } = useSignUp()
+  const { isAuthenticated, loading, getToken } = useAuth()
+  const clerk = useClerk()
+  const signUp = clerk.client.signUp
+  const setActive = clerk.setActive
   const navigate = useNavigate()
   const [form, setForm] = useState(initialForm)
   const [step, setStep] = useState<RegisterStep>('details')
@@ -33,28 +63,61 @@ export function RegisterPage() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
+  const isLoaded = Boolean(signUp && setActive)
+  const clerkBusy = !isLoaded
+  const passwordsMismatch = form.confirmPassword.length > 0 && form.password !== form.confirmPassword
   const passwordChecks = [
     { label: '8 caractères minimum', valid: form.password.length >= 8 },
     { label: 'Les deux mots de passe correspondent', valid: Boolean(form.password) && form.password === form.confirmPassword },
   ]
-  const clerkBusy = !isLoaded
-  const passwordsMismatch = form.confirmPassword.length > 0 && form.password !== form.confirmPassword
   const canCreateAccount =
     !clerkBusy &&
     !submitting &&
     form.firstName.trim().length >= 2 &&
+    form.lastName.trim().length >= 2 &&
+    USERNAME_PATTERN.test(form.username.trim()) &&
+    isValidBirthDate(form.birthDate) &&
     form.email.trim().length > 3 &&
     form.password.length >= 8 &&
     form.password === form.confirmPassword
   const canVerify = !clerkBusy && !submitting && verificationCode.trim().length >= 6
 
-  if (!loading && isAuthenticated) {
+  if (!loading && isAuthenticated && !submitting) {
     return <Navigate replace to="/dashboard" />
   }
 
   function updateForm(field: keyof RegisterForm, value: string) {
     setForm((current) => ({ ...current, [field]: value }))
     setError('')
+  }
+
+  function profileDraft() {
+    return {
+      firstName: form.firstName.trim(),
+      lastName: form.lastName.trim(),
+      birthDate: form.birthDate,
+      username: form.username.trim().toLowerCase(),
+      timeZone: detectedSignupTimeZone(),
+    }
+  }
+
+  async function activateAccountAndCreateProfile(sessionId: string | null) {
+    if (!setActive) {
+      throw new Error('Inscription indisponible pour le moment.')
+    }
+
+    await setActive({ session: sessionId })
+    await waitForActiveSessionToken(getToken)
+
+    try {
+      await api.updateProfile(getToken, profileDraft())
+      navigate('/dashboard', { replace: true })
+    } catch {
+      navigate('/profil/configuration', {
+        replace: true,
+        state: { profileDraft: profileDraft() },
+      })
+    }
   }
 
   async function handleRegister(event: FormEvent<HTMLFormElement>) {
@@ -82,8 +145,7 @@ export function RegisterPage() {
       })
 
       if (result.status === 'complete') {
-        await setActive({ session: result.createdSessionId })
-        navigate('/dashboard', { replace: true })
+        await activateAccountAndCreateProfile(result.createdSessionId)
         return
       }
 
@@ -114,8 +176,7 @@ export function RegisterPage() {
       })
 
       if (result.status === 'complete') {
-        await setActive({ session: result.createdSessionId })
-        navigate('/dashboard', { replace: true })
+        await activateAccountAndCreateProfile(result.createdSessionId)
         return
       }
 
@@ -165,8 +226,6 @@ export function RegisterPage() {
           ) : (
             <>
               <span className="eyebrow">Inscription</span>
-              <h1>Créer mon espace</h1>
-              <p className="muted">Commencez avec un profil lisible, puis Mayele suivra vos sprints et vos progrès.</p>
               <form className="stacked-form" onSubmit={handleRegister}>
                 <div className="form-grid two-fields">
                   <label>
@@ -175,7 +234,7 @@ export function RegisterPage() {
                       autoComplete="given-name"
                       value={form.firstName}
                       onChange={(event) => updateForm('firstName', event.target.value)}
-                      placeholder="Emery"
+                      placeholder="bob"
                     />
                   </label>
                   <label>
@@ -184,7 +243,30 @@ export function RegisterPage() {
                       autoComplete="family-name"
                       value={form.lastName}
                       onChange={(event) => updateForm('lastName', event.target.value)}
-                      placeholder="Optionnel"
+                      placeholder="smith"
+                    />
+                  </label>
+                </div>
+
+                <div className="form-grid two-fields">
+                  <label>
+                    Date de naissance
+                    <input
+                      autoComplete="bday"
+                      type="date"
+                      min={dateInputLimit('min')}
+                      max={dateInputLimit('max')}
+                      value={form.birthDate}
+                      onChange={(event) => updateForm('birthDate', event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Nom d’utilisateur
+                    <input
+                      autoComplete="username"
+                      value={form.username}
+                      onChange={(event) => updateForm('username', event.target.value)}
+                      placeholder="bobsmith"
                     />
                   </label>
                 </div>
@@ -196,7 +278,7 @@ export function RegisterPage() {
                     type="email"
                     value={form.email}
                     onChange={(event) => updateForm('email', event.target.value)}
-                    placeholder="vous@exemple.com"
+                    placeholder="bobsmith@exemple.com"
                   />
                 </label>
 

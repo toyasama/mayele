@@ -1,0 +1,107 @@
+﻿@media (max-width: 1080px) {
+  .multiplayer-room-grid {
+    width: min(100%, 760px);
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      'player'
+      'opponent'
+      'control';
+  }
+
+  .multiplayer-opponent-column {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .multiplayer-room-grid > .multiplayer-player-card {
+    padding-left: 16px;
+    border-left: 0;
+  }
+
+  .multiplayer-control-card {
+    grid-column: auto;
+    order: initial;
+  }
+}
+
+@media (max-width: 720px) {
+  .play-mode-tabs {
+    width: 100%;
+  }
+
+  .play-mode-tabs button {
+    flex: 1;
+  }
+
+  .play-mode-dialog-actions {
+    flex-direction: column-reverse;
+  }
+
+  .multiplayer-lobby-grid,
+  .multiplayer-room-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .multiplayer-metric-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .multiplayer-arena,
+  .multiplayer-control-card .segmented-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .multiplayer-metric-grid > div {
+    min-height: 88px;
+  }
+
+  .multiplayer-play-card .quiz-form {
+    grid-template-columns: 1fr;
+  }
+
+  .multiplayer-lobby-title-row {
+    min-height: 0;
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .multiplayer-challenge-list {
+    padding-top: 2px;
+  }
+
+  .multiplayer-room-grid {
+    grid-template-areas:
+      'player'
+      'opponent'
+      'control';
+  }
+
+  .multiplayer-control-card {
+    order: initial;
+    padding: 16px;
+  }
+
+  .multiplayer-rule-panel label {
+    grid-template-columns: 1fr;
+  }
+
+  .multiplayer-room-state,
+  .multiplayer-scoreboard {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .multiplayer-room-actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .multiplayer-room-actions .secondary-button {
+    flex: 1 1 180px;
+  }
+
+  .multiplayer-result-grid {
+    grid-template-columns: 1fr;
+  }
+}
+

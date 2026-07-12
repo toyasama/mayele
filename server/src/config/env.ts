@@ -25,6 +25,8 @@ export const env = {
   clerkSecretKey: process.env.CLERK_SECRET_KEY ?? '',
   clerkPublishableKey: process.env.CLERK_PUBLISHABLE_KEY ?? '',
   corsOrigins: parseOrigins(process.env.CORS_ORIGINS),
+  e2eAuthBypass: process.env.E2E_AUTH_BYPASS === 'true',
+  sentryDsn: process.env.SENTRY_DSN ?? '',
 }
 
 export function assertProductionEnv() {

@@ -5,8 +5,9 @@ import { badRequest } from '../errors.js'
 const answerSchema = z.object({
   prompt: z.string().trim().min(1).max(80),
   correctAnswer: z.number().int(),
-  userAnswer: z.number().int(),
-  responseTimeMs: z.number().int().min(0).max(600000),
+  userAnswer: z.number().int().nullable(),
+  // Max 90 s (session de 60 s + marge réseau de 30 s)
+  responseTimeMs: z.number().int().min(0).max(90_000),
   game: z.enum(VALID_GAMES).optional(),
   level: z.enum(VALID_LEVELS).optional(),
   skill: z.enum(VALID_SKILLS),
@@ -16,11 +17,11 @@ const sessionSchema = z.object({
   game: z.enum(VALID_GAMES),
   level: z.enum(VALID_LEVELS),
   practiceSkill: z.enum(VALID_SKILLS).nullable(),
-  points: z.number().int().min(0).max(100000),
-  totalQuestions: z.number().int().min(1).max(500),
+  // 120 questions max : sprint de 60 s tempo ~2 questions/s
+  totalQuestions: z.number().int().min(1).max(120),
   durationSeconds: z.number().int().min(1).max(3600),
-  bestStreak: z.number().int().min(0).max(500),
-  answers: z.array(answerSchema).min(1).max(500),
+  bestStreak: z.number().int().min(0).max(120),
+  answers: z.array(answerSchema).min(1).max(120),
 })
 
 export type SessionPayload = z.infer<typeof sessionSchema>

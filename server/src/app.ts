@@ -1,11 +1,27 @@
 import { clerkMiddleware } from '@clerk/express'
 import cors from 'cors'
 import express, { type RequestHandler } from 'express'
+import helmet from 'helmet'
 import { env } from './config/env.js'
+import { isAllowedCorsOrigin } from './config/origin.js'
 import { errorHandler, ApiError } from './errors.js'
 import { requireClerkUser } from './middleware/auth.js'
+import {
+  matchHeartbeatRateLimit,
+  matchMutationRateLimit,
+  notificationMutationRateLimit,
+  profileMutationRateLimit,
+  searchRateLimit,
+  sessionRateLimit,
+  socialMutationRateLimit,
+} from './middleware/rateLimits.js'
+import { requestContext } from './middleware/requestContext.js'
 import { dashboardRoutes } from './routes/dashboardRoutes.js'
+import { e2eRoutes } from './routes/e2eRoutes.js'
+import { friendRoutes } from './routes/friendRoutes.js'
 import { healthRoutes } from './routes/healthRoutes.js'
+import { matchRoutes } from './routes/matchRoutes.js'
+import { notificationRoutes } from './routes/notificationRoutes.js'
 import { profileRoutes } from './routes/profileRoutes.js'
 import { sessionRoutes } from './routes/sessionRoutes.js'
 
@@ -15,22 +31,7 @@ type CreateAppOptions = {
 }
 
 function corsOrigin(origin: string | undefined, callback: (error: Error | null, allowed?: boolean) => void) {
-  if (!origin) {
-    callback(null, true)
-    return
-  }
-
-  if (!env.isProduction && isLocalDevOrigin(origin)) {
-    callback(null, true)
-    return
-  }
-
-  if (!env.isProduction && env.corsOrigins.length === 0) {
-    callback(null, true)
-    return
-  }
-
-  if (env.corsOrigins.includes(origin)) {
+  if (isAllowedCorsOrigin(origin, { isProduction: env.isProduction, allowedOrigins: env.corsOrigins })) {
     callback(null, true)
     return
   }
@@ -38,45 +39,39 @@ function corsOrigin(origin: string | undefined, callback: (error: Error | null, 
   callback(new ApiError(403, 'Origin non autorisée.', 'cors_origin_denied'))
 }
 
-function isLocalDevOrigin(origin: string) {
-  try {
-    const { hostname, protocol } = new URL(origin)
-
-    if (protocol !== 'http:' && protocol !== 'https:') {
-      return false
-    }
-
-    return (
-      hostname === 'localhost' ||
-      hostname === '127.0.0.1' ||
-      hostname.startsWith('192.168.') ||
-      hostname.startsWith('10.') ||
-      /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname)
-    )
-  } catch {
-    return false
-  }
-}
-
 export function createApp(options: CreateAppOptions = {}) {
   const app = express()
   const authMiddleware = options.authMiddlewareOverride ?? requireClerkUser
 
   app.disable('x-powered-by')
+  app.use(helmet({ crossOriginResourcePolicy: false }))
+  app.use(requestContext)
   app.use(
     cors({
       origin: corsOrigin,
-      allowedHeaders: ['Content-Type', 'Authorization'],
-      methods: ['GET', 'POST', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id'],
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     }),
   )
   app.use(express.json({ limit: '512kb' }))
 
   app.use('/api', healthRoutes())
+  if (!env.isProduction && env.e2eAuthBypass) {
+    app.use('/api', e2eRoutes())
+  }
   app.use(options.clerkMiddlewareOverride ?? clerkMiddleware())
+  app.use('/api/players/search', authMiddleware, searchRateLimit)
+  app.use('/api/me', authMiddleware, profileMutationRateLimit)
+  app.use('/api/friends', authMiddleware, socialMutationRateLimit)
+  app.use('/api/matches/:matchId/heartbeat', authMiddleware, matchHeartbeatRateLimit)
+  app.use('/api/matches', authMiddleware, matchMutationRateLimit)
+  app.use('/api/notifications', authMiddleware, notificationMutationRateLimit)
   app.use('/api', authMiddleware, profileRoutes())
+  app.use('/api', authMiddleware, friendRoutes())
+  app.use('/api', authMiddleware, matchRoutes())
+  app.use('/api', authMiddleware, notificationRoutes())
   app.use('/api', authMiddleware, dashboardRoutes())
-  app.use('/api', authMiddleware, sessionRoutes())
+  app.use('/api', authMiddleware, sessionRateLimit, sessionRoutes())
   app.use(errorHandler)
 
   return app

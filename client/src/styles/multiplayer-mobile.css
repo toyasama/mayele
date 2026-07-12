@@ -1,0 +1,861 @@
+/* Mobile-only multiplayer redesign. Desktop and tablet landscape keep the existing room layout. */
+.multiplayer-mobile-room-nav {
+  display: none;
+}
+
+.friend-picker-backdrop,
+.friend-picker-header {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .multiplayer-page {
+    gap: 12px;
+    scroll-behavior: smooth;
+  }
+
+  .multiplayer-page .play-mode-tabs {
+    width: 100%;
+    gap: 8px;
+  }
+
+  .multiplayer-page .play-mode-tabs button {
+    min-height: 44px;
+    padding-inline: 12px;
+  }
+
+  .multiplayer-lobby-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .multiplayer-mobile-room-nav {
+    position: sticky;
+    top: calc(var(--app-topbar-height) + 8px);
+    z-index: 18;
+    display: grid;
+    gap: 10px;
+    padding: 10px;
+    border: 1px solid rgba(180, 212, 218, 0.78);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.88);
+    box-shadow: 0 16px 34px rgba(0, 48, 72, 0.1);
+    backdrop-filter: blur(18px);
+  }
+
+  .multiplayer-mobile-room-summary {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 2px 10px;
+    align-items: center;
+  }
+
+  .multiplayer-mobile-room-summary span {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--primary-dark);
+    font-size: 0.68rem;
+    font-weight: 950;
+    letter-spacing: 0.1em;
+    text-overflow: ellipsis;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .multiplayer-mobile-room-summary strong {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text);
+    font-size: 0.96rem;
+    line-height: 1.15;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .multiplayer-mobile-room-summary small,
+  .multiplayer-mobile-invite-button {
+    grid-row: 1 / span 2;
+    grid-column: 2;
+    max-width: 118px;
+    overflow: hidden;
+    font-size: 0.76rem;
+    font-weight: 850;
+    text-align: right;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .multiplayer-mobile-room-summary small {
+    color: var(--muted);
+  }
+
+  .multiplayer-mobile-invite-button {
+    min-height: 34px;
+    padding: 7px 12px;
+    border: 1px solid rgba(180, 212, 218, 0.78);
+    border-radius: 999px;
+    background: rgba(246, 251, 250, 0.94);
+    color: var(--text);
+    cursor: pointer;
+    text-align: center;
+  }
+
+  .multiplayer-mobile-invite-button:not(:disabled) {
+    border-color: transparent;
+    background: linear-gradient(135deg, var(--primary), var(--mint));
+    color: #ffffff;
+  }
+
+  .multiplayer-mobile-invite-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.58;
+  }
+
+  .multiplayer-mobile-room-jump {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
+    gap: 7px;
+  }
+
+  .multiplayer-mobile-room-jump button {
+    min-width: 0;
+    min-height: 38px;
+    padding: 8px 10px;
+    border: 1px solid rgba(180, 212, 218, 0.72);
+    border-radius: 999px;
+    background: rgba(246, 251, 250, 0.9);
+    color: var(--text);
+    cursor: pointer;
+    font-size: 0.78rem;
+    font-weight: 950;
+  }
+
+  .multiplayer-mobile-room-jump button[aria-pressed="true"] {
+    border-color: transparent;
+    background: linear-gradient(135deg, var(--primary), var(--mint));
+    color: #ffffff;
+  }
+
+  .multiplayer-lobby-card,
+  .multiplayer-challenge-list {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid rgba(180, 212, 218, 0.72);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.62);
+    box-shadow: 0 14px 32px rgba(0, 48, 72, 0.08);
+  }
+
+  .multiplayer-lobby-title-row {
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+    padding: 4px 4px 12px;
+    border-bottom: 1px solid rgba(180, 212, 218, 0.62);
+  }
+
+  .multiplayer-lobby-card h2 {
+    font-size: 1.08rem;
+    line-height: 1.05;
+  }
+
+  .multiplayer-lobby-card .primary-button {
+    min-height: 40px;
+    padding: 8px 14px;
+    border-radius: 999px;
+  }
+
+  .multiplayer-direct-challenges {
+    width: 100%;
+    gap: 8px;
+    margin-top: 0;
+    padding-top: 10px;
+  }
+
+  .multiplayer-direct-heading {
+    min-height: 0;
+    padding: 0;
+    border-bottom: 0;
+  }
+
+  .multiplayer-direct-heading strong {
+    font-size: 0.82rem;
+  }
+
+  .multiplayer-direct-heading span {
+    min-width: 28px;
+    min-height: 28px;
+    display: inline-grid;
+    place-items: center;
+    border-radius: 999px;
+    background: rgba(222, 245, 240, 0.9);
+    color: var(--primary-dark);
+    font-size: 0.8rem;
+  }
+
+  .multiplayer-direct-list {
+    max-height: none;
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    padding: 2px 2px 6px;
+    scroll-padding-inline: 2px;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+  }
+
+  .multiplayer-direct-list::-webkit-scrollbar {
+    display: none;
+  }
+
+  .multiplayer-direct-list button {
+    width: 126px;
+    min-width: 126px;
+    min-height: 118px;
+    grid-template-columns: 1fr;
+    justify-items: start;
+    align-content: start;
+    gap: 7px;
+    padding: 10px;
+    border-color: rgba(180, 212, 218, 0.72);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.72);
+    scroll-snap-align: start;
+  }
+
+  .multiplayer-direct-avatar {
+    width: 40px;
+    height: 40px;
+  }
+
+  .multiplayer-direct-list button > span {
+    width: 100%;
+  }
+
+  .multiplayer-direct-list button strong {
+    font-size: 0.82rem;
+  }
+
+  .multiplayer-direct-list button em {
+    font-size: 0.72rem;
+  }
+
+  .multiplayer-direct-list button small {
+    width: 100%;
+    min-height: 24px;
+    display: inline-grid;
+    place-items: center;
+    margin-top: auto;
+    border-radius: 999px;
+    background: rgba(222, 245, 240, 0.85);
+    font-size: 0.72rem;
+    text-align: center;
+  }
+
+  .multiplayer-invitation-open,
+  .multiplayer-invitation-decline {
+    border-radius: 14px;
+  }
+
+  .multiplayer-challenge-list {
+    gap: 8px;
+  }
+
+  .multiplayer-challenge-list .multiplayer-room-state {
+    min-height: 0;
+    padding: 0 0 2px;
+    border: 0;
+    background: transparent;
+  }
+
+  .multiplayer-challenge-list .multiplayer-room-state .eyebrow {
+    font-size: 0.72rem;
+  }
+
+  .multiplayer-challenge-list .multiplayer-room-state strong {
+    min-width: 28px;
+    min-height: 28px;
+    display: inline-grid;
+    place-items: center;
+    border-radius: 999px;
+    background: rgba(222, 245, 240, 0.9);
+    color: var(--primary-dark);
+    font-size: 0.85rem;
+  }
+
+  .multiplayer-challenge-list .muted {
+    min-height: 44px;
+    display: grid;
+    align-items: center;
+    padding: 10px 12px;
+    border: 1px dashed rgba(180, 212, 218, 0.8);
+    border-radius: 14px;
+    background: rgba(246, 251, 250, 0.7);
+    font-size: 0.84rem;
+  }
+
+  .multiplayer-invitation-item {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+  }
+
+  .multiplayer-invitation-open {
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.72);
+  }
+
+  .multiplayer-invitation-decline {
+    min-width: 76px;
+    padding-inline: 10px;
+  }
+
+  .multiplayer-room-grid {
+    width: 100%;
+    grid-template-columns: 1fr;
+    grid-template-areas: 'control';
+    gap: 12px;
+    align-items: start;
+  }
+
+  .multiplayer-room-grid[data-mobile-room-view="primary"] > .multiplayer-player-card,
+  .multiplayer-room-grid[data-mobile-room-view="primary"] > .multiplayer-opponent-column {
+    display: none;
+  }
+
+  .multiplayer-room-grid[data-mobile-room-view="players"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas: 'player opponent';
+  }
+
+  .multiplayer-room-grid[data-mobile-room-view="players"] > .multiplayer-control-card {
+    display: none;
+  }
+
+  .multiplayer-room-grid[data-mobile-room-view="players"] > .multiplayer-player-card {
+    grid-area: player;
+  }
+
+  .multiplayer-room-grid[data-mobile-room-view="players"] > .multiplayer-opponent-column {
+    grid-area: opponent;
+  }
+
+  #multiplayer-room-controls,
+  #multiplayer-room-players,
+  .multiplayer-opponent-column {
+    scroll-margin-top: calc(var(--app-topbar-height) + 118px);
+  }
+
+  .multiplayer-room-grid > .multiplayer-player-card,
+  .multiplayer-opponent-column {
+    padding: 0;
+    border-left: 0;
+  }
+
+  .multiplayer-opponent-column {
+    display: grid;
+    gap: 10px;
+  }
+
+  .multiplayer-player-card {
+    min-width: 0;
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid rgba(180, 212, 218, 0.72);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.5);
+  }
+
+  .multiplayer-player-card.has-hand::before {
+    content: 'Main';
+    top: 8px;
+    right: 8px;
+    padding: 4px 8px;
+    font-size: 0.65rem;
+  }
+
+  .multiplayer-player-main {
+    display: grid;
+    grid-template-columns: 42px minmax(0, 1fr);
+    gap: 3px 10px;
+    justify-items: stretch;
+    text-align: left;
+  }
+
+  .multiplayer-player-main .eyebrow {
+    grid-column: 1 / -1;
+    width: fit-content;
+    min-height: 24px;
+    padding: 4px 8px;
+    font-size: 0.62rem;
+    line-height: 1;
+  }
+
+  .multiplayer-avatar {
+    grid-row: 2 / span 3;
+    width: 42px;
+    height: 42px;
+    font-size: 0.82rem;
+  }
+
+  .multiplayer-player-main strong {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text);
+    font-size: 0.9rem;
+    line-height: 1.15;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .multiplayer-player-main > span:not(.eyebrow):not(.multiplayer-avatar) {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 0.76rem;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .multiplayer-player-status {
+    width: fit-content;
+    min-height: 22px;
+    padding: 3px 8px;
+    font-size: 0.68rem;
+  }
+
+  .multiplayer-player-room-stats {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px;
+    padding: 8px 0 0;
+    border-top: 1px solid rgba(180, 212, 218, 0.62);
+    border-left: 0;
+  }
+
+  .multiplayer-player-room-stats span {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    gap: 2px;
+    font-size: 0.58rem;
+    letter-spacing: 0.04em;
+  }
+
+  .multiplayer-player-room-stats strong {
+    font-size: 0.94rem;
+  }
+
+  .multiplayer-control-card {
+    grid-area: control;
+    grid-column: 1 / -1;
+    width: 100%;
+    justify-self: stretch;
+    gap: 18px;
+    padding: 0;
+  }
+
+  .multiplayer-control-card > *,
+  .multiplayer-control-card .control-group,
+  .multiplayer-control-card .segmented-grid,
+  .multiplayer-rule-panel {
+    width: 100%;
+  }
+
+  .multiplayer-room-state {
+    align-items: center;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 12px;
+    border: 1px solid rgba(180, 212, 218, 0.72);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.58);
+  }
+
+  .multiplayer-room-state .eyebrow {
+    min-height: 28px;
+    padding: 5px 9px;
+    font-size: 0.67rem;
+    line-height: 1;
+  }
+
+  .multiplayer-room-state > strong {
+    font-size: 0.92rem;
+  }
+
+  .multiplayer-room-actions {
+    width: auto;
+    min-width: 0;
+    display: inline-flex;
+    flex: 1 1 auto;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .multiplayer-room-actions button,
+  .multiplayer-room-actions .secondary-button,
+  .multiplayer-room-actions .multiplayer-stop-button {
+    width: auto;
+    min-height: 36px;
+    flex: 0 1 auto;
+    padding: 7px 12px;
+    border-radius: 999px;
+    font-size: 0.76rem;
+    line-height: 1;
+    box-shadow: none;
+  }
+
+  .multiplayer-danger-button {
+    border-color: rgba(220, 38, 38, 0.26);
+    background: rgba(254, 242, 242, 0.84);
+    color: #b91c1c;
+  }
+
+  .multiplayer-danger-button:hover {
+    background: #dc2626;
+    color: #ffffff;
+  }
+
+  .multiplayer-stop-button.multiplayer-stop-button-inline {
+    background: #f97316;
+    color: #ffffff;
+  }
+
+  .multiplayer-control-card .control-group {
+    gap: 10px;
+  }
+
+  .multiplayer-control-card .panel-label {
+    font-size: 0.72rem;
+    letter-spacing: 0.16em;
+  }
+
+  .multiplayer-config-board {
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid rgba(180, 212, 218, 0.72);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.54);
+  }
+
+  .multiplayer-config-board .multiplayer-config-row {
+    display: grid;
+    grid-template-columns: 76px minmax(0, 1fr);
+    gap: 8px;
+    align-items: center;
+    padding: 0;
+  }
+
+  .multiplayer-config-board .panel-label {
+    align-self: center;
+    font-size: 0.66rem;
+    letter-spacing: 0.1em;
+    line-height: 1.15;
+  }
+
+  .multiplayer-config-board .segmented-grid,
+  .multiplayer-config-board .challenge-choice-grid {
+    width: 100%;
+    min-width: 0;
+    display: flex;
+    gap: 7px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    padding: 1px 2px 5px;
+    scroll-padding-inline: 2px;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+  }
+
+  .multiplayer-config-board .segmented-grid::-webkit-scrollbar,
+  .multiplayer-config-board .challenge-choice-grid::-webkit-scrollbar {
+    display: none;
+  }
+
+  .multiplayer-config-board .segment,
+  .multiplayer-config-board .challenge-choice-tile {
+    flex: 0 0 auto;
+    min-width: 100px;
+    min-height: 42px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 8px 12px;
+    border-radius: 999px;
+    line-height: 1;
+    scroll-snap-align: start;
+    white-space: nowrap;
+  }
+
+  .multiplayer-config-board .multiplayer-config-mode .segment {
+    min-width: 94px;
+  }
+
+  .multiplayer-config-board .multiplayer-config-operation .challenge-choice-grid {
+    gap: 8px;
+  }
+
+  .multiplayer-config-board .multiplayer-config-operation .challenge-choice-tile {
+    width: 44px;
+    min-width: 44px;
+    min-height: 40px;
+    padding: 0;
+  }
+
+  .multiplayer-config-board .multiplayer-config-operation .challenge-choice-symbol + span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .multiplayer-config-board .multiplayer-config-level .challenge-choice-tile {
+    min-width: 118px;
+  }
+
+  .multiplayer-config-board .challenge-choice-symbol {
+    font-size: 1rem;
+    line-height: 1;
+  }
+
+  .multiplayer-config-board .challenge-level-dots {
+    margin: 0;
+    transform: scale(0.88);
+    transform-origin: center;
+  }
+
+  .multiplayer-control-card .segmented-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .multiplayer-control-card .segment {
+    min-height: 52px;
+    padding: 9px 10px;
+    border-radius: 16px;
+    line-height: 1.15;
+  }
+
+  .multiplayer-control-card .control-group:first-of-type .segmented-grid {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4px;
+  }
+
+  .multiplayer-control-card .control-group:first-of-type .segment {
+    min-width: 0;
+    width: 100%;
+    padding-inline: 10px;
+  }
+
+  .multiplayer-rule-panel {
+    display: grid;
+    gap: 10px;
+  }
+
+  .multiplayer-config-rules {
+    padding-top: 10px;
+    border-top: 1px solid rgba(180, 212, 218, 0.62);
+  }
+
+  .multiplayer-rule-panel label {
+    grid-template-columns: 1fr;
+    gap: 7px;
+  }
+
+  .multiplayer-rule-panel input,
+  .multiplayer-rule-panel select {
+    min-height: 48px;
+    border-radius: 14px;
+  }
+
+  .multiplayer-control-card > .primary-button.full-width,
+  .multiplayer-control-card > .secondary-button.full-width,
+  .multiplayer-invite-actions > button {
+    width: 100%;
+    min-height: 50px;
+    border-radius: 16px;
+  }
+
+  .multiplayer-control-card > .primary-room-action[data-room-action="invite"] {
+    display: none;
+  }
+
+  .multiplayer-opponent-column > .primary-button.full-width {
+    display: none;
+  }
+
+  .multiplayer-invite-actions {
+    width: 100%;
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .friend-picker-panel {
+    position: fixed;
+    right: max(10px, env(safe-area-inset-right));
+    bottom: calc(var(--mobile-bottom-nav-height) + env(safe-area-inset-bottom) + 18px);
+    left: max(10px, env(safe-area-inset-left));
+    z-index: 29;
+    display: grid;
+    gap: 8px;
+    padding: 10px;
+    border-radius: 16px;
+    max-height: min(420px, 52dvh);
+    overflow: auto;
+    border: 1px solid rgba(180, 212, 218, 0.88);
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow: 0 22px 54px rgba(7, 18, 38, 0.22);
+    backdrop-filter: blur(18px);
+  }
+
+  .friend-picker-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 28;
+    display: block;
+    background: rgba(7, 18, 38, 0.28);
+    cursor: pointer;
+  }
+
+  .friend-picker-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 2px 2px 8px;
+    border-bottom: 1px solid rgba(180, 212, 218, 0.62);
+  }
+
+  .friend-picker-header strong {
+    color: var(--text);
+    font-size: 0.96rem;
+  }
+
+  .friend-picker-header button {
+    width: 34px;
+    height: 34px;
+    display: inline-grid;
+    place-items: center;
+    border-radius: 999px;
+    background: rgba(217, 231, 236, 0.8);
+    color: var(--muted);
+    cursor: pointer;
+    font-weight: 950;
+  }
+
+  .multiplayer-status-in_progress .multiplayer-room-grid {
+    gap: 10px;
+  }
+
+  .multiplayer-status-in_progress .multiplayer-control-card {
+    gap: 12px;
+  }
+
+  .multiplayer-status-in_progress .challenge-arena {
+    width: 100%;
+    margin-top: 2px;
+  }
+
+  .multiplayer-status-in_progress .challenge-run-meta {
+    margin-top: 0;
+  }
+
+  .multiplayer-status-in_progress .challenge-clock {
+    transform: scale(0.9);
+    transform-origin: center;
+  }
+
+  .multiplayer-status-in_progress .challenge-metrics {
+    margin-top: 0;
+  }
+
+  .multiplayer-status-in_progress .challenge-question-zone {
+    gap: 12px;
+    margin-top: 8px;
+  }
+
+  .multiplayer-status-in_progress .challenge-question-zone .question-line {
+    min-height: 76px;
+    font-size: clamp(3.2rem, 16vw, 4.4rem);
+  }
+
+  .multiplayer-status-in_progress .challenge-answer-form input {
+    min-height: 62px;
+  }
+
+  .multiplayer-status-in_progress .challenge-answer-form button {
+    min-height: 50px;
+  }
+}
+
+@media (max-width: 420px) {
+  .multiplayer-lobby-card,
+  .multiplayer-challenge-list,
+  .multiplayer-room-state,
+  .multiplayer-player-card {
+    border-radius: 16px;
+  }
+
+  .multiplayer-lobby-title-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+  }
+
+  .multiplayer-lobby-card .primary-button {
+    width: auto;
+  }
+
+  .multiplayer-room-grid {
+    gap: 10px;
+  }
+
+  .multiplayer-player-card {
+    padding: 10px;
+  }
+
+  .multiplayer-player-main {
+    grid-template-columns: 38px minmax(0, 1fr);
+    column-gap: 8px;
+  }
+
+  .multiplayer-avatar {
+    width: 38px;
+    height: 38px;
+  }
+
+  .multiplayer-room-actions {
+    justify-content: flex-start;
+  }
+
+  .multiplayer-config-board .multiplayer-config-row {
+    grid-template-columns: 68px minmax(0, 1fr);
+  }
+
+  .multiplayer-config-board .segment,
+  .multiplayer-config-board .challenge-choice-tile {
+    min-width: 92px;
+    padding-inline: 10px;
+  }
+
+  .multiplayer-config-board .multiplayer-config-operation .challenge-choice-tile {
+    width: 42px;
+    min-width: 42px;
+  }
+}

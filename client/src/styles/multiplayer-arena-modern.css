@@ -1,0 +1,169 @@
+﻿.multiplayer-arena {
+  width: 100%;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 12px 18px;
+}
+
+.multiplayer-timer-ring {
+  width: auto;
+  height: auto;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0;
+  border-radius: 0;
+  background: transparent !important;
+  box-shadow: none;
+}
+
+.multiplayer-timer-ring::before {
+  content: none;
+}
+
+.multiplayer-timer-ring strong,
+.multiplayer-timer-ring span {
+  position: static;
+  grid-area: auto;
+  margin: 0;
+}
+
+.multiplayer-timer-ring strong {
+  color: var(--arena-ink);
+  font-size: clamp(2.8rem, 6.5vw, 4.3rem);
+  line-height: 0.9;
+}
+
+.multiplayer-timer-ring span {
+  color: #405b6d;
+  font-size: 1rem;
+  font-weight: 950;
+}
+
+.multiplayer-timer-ring.critical strong {
+  color: var(--arena-coral);
+  animation: mayeleCountdownBlink 0.72s ease-in-out infinite;
+}
+
+.multiplayer-metric-grid {
+  width: min(100%, 340px);
+  margin: 18px auto 0;
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  justify-content: center;
+  gap: clamp(24px, 5vw, 48px);
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.multiplayer-metric-grid > div {
+  min-height: auto;
+  padding: 0;
+  background: transparent;
+}
+
+.multiplayer-metric-grid .metric-symbol {
+  display: none;
+}
+
+.multiplayer-metric-grid strong {
+  color: var(--arena-ink);
+  font-size: 1.5rem;
+}
+
+.multiplayer-metric-grid span:last-child {
+  color: #405b6d;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.16em;
+}
+
+.multiplayer-play-card {
+  margin-top: 58px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.multiplayer-play-card .question-line {
+  width: 100%;
+  min-height: 136px;
+  padding: 0;
+  background: transparent;
+  color: var(--arena-ink);
+  box-shadow: none;
+  text-shadow: none;
+  font-size: clamp(4.6rem, 12vw, 8rem);
+}
+
+.multiplayer-play-card.answer-correct .question-line {
+  animation: mayeleCorrectPulse 0.34s ease;
+}
+
+.multiplayer-play-card.answer-wrong .question-line {
+  animation: mayeleWrongShake 0.36s ease;
+}
+
+.multiplayer-play-card .quiz-form {
+  width: min(100%, 600px);
+  grid-template-columns: 1fr;
+}
+
+.multiplayer-play-card .quiz-form input {
+  min-height: 82px;
+  border: 0;
+  border-bottom: 5px solid var(--primary);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--arena-ink);
+}
+
+.multiplayer-play-card .quiz-form .primary-button {
+  display: none;
+}
+
+.multiplayer-play-card .quiz-form label::after {
+  content: 'Tape ta reponse';
+  margin-top: 12px;
+  color: #405b6d;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.78rem;
+  font-weight: 850;
+  letter-spacing: 0.18em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+@media (max-width: 720px) {
+  .multiplayer-arena {
+    grid-template-columns: 1fr;
+  }
+
+  .multiplayer-metric-grid {
+    width: 100%;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  .multiplayer-metric-grid span:last-child {
+    font-size: 0.66rem;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+  }
+
+  .multiplayer-play-card {
+    margin-top: 42px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .multiplayer-timer-ring.critical strong,
+  .multiplayer-play-card.answer-correct .question-line,
+  .multiplayer-play-card.answer-wrong .question-line,
+  .multiplayer-result-player.is-winner {
+    animation: none;
+  }
+}

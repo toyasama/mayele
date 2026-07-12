@@ -1,0 +1,82 @@
+name: Production readiness
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  readiness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            client/package-lock.json
+            server/package-lock.json
+
+      - name: Install server
+        working-directory: server
+        run: npm ci
+
+      - name: Install client
+        working-directory: client
+        run: npm ci
+
+      - name: Clean-code scans
+        shell: bash
+        run: |
+          ! grep -RInE '@clerk/react/legacy|legacy-match|responsive-legacy|tempoFallback|Ã|â€™|Ãƒ|\?\?tre|\?\?fini' client/src server/src client/e2e
+          ! grep -RInE 'console\.log|REST legacy|route REST legacy|routes REST legacy' client/e2e
+
+      - name: Server audit
+        working-directory: server
+        run: npm audit --audit-level=moderate
+
+      - name: Client audit
+        working-directory: client
+        run: npm audit --audit-level=moderate
+
+      - name: Server typecheck
+        working-directory: server
+        run: npm run typecheck
+
+      - name: Server tests
+        working-directory: server
+        run: npm run test
+
+      - name: Server build
+        working-directory: server
+        run: npm run build
+
+      - name: Client lint
+        working-directory: client
+        run: npm run lint
+
+      - name: Client tests
+        working-directory: client
+        run: npm run test
+
+      - name: Client build
+        working-directory: client
+        run: npm run build
+
+      - name: Install Playwright browser
+        working-directory: client
+        run: npx playwright install --with-deps chromium
+
+      - name: E2E smoke
+        working-directory: client
+        run: npm run test:e2e
+
+      - name: Responsive E2E smoke
+        working-directory: client
+        run: npm run test:responsive

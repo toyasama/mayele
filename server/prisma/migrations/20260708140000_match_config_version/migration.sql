@@ -1,0 +1,2 @@
+ALTER TABLE "matches"
+ADD COLUMN "config_version" INTEGER NOT NULL DEFAULT 0;

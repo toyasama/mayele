@@ -1,6 +1,7 @@
 import { ClerkProvider } from '@clerk/react'
 import { useNavigate } from 'react-router-dom'
 import App from './App'
+import { ProfileProvider } from './context/profile'
 
 const clerkPublishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
 
@@ -22,7 +23,9 @@ export function ClerkRoot() {
       signInFallbackRedirectUrl="/dashboard"
       signUpFallbackRedirectUrl="/dashboard"
     >
-      <App />
+      <ProfileProvider>
+        <App />
+      </ProfileProvider>
     </ClerkProvider>
   )
 }

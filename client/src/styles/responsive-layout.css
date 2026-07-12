@@ -1,0 +1,717 @@
+/* Responsive layout adjustments shared across application surfaces. */
+@media (max-width: 960px) {
+  .topbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .home-hero,
+  .hero-panel,
+  .mission-grid,
+  .level-ladder,
+  .two-columns,
+  .three-columns,
+  .stats-grid,
+  .game-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .nav-links,
+  .topbar-actions {
+    width: 100%;
+  }
+}
+
+@media (max-width: 720px) {
+  .app-shell {
+    width: min(calc(100% - 20px), 1180px);
+    padding: 6px 0 24px;
+  }
+
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    flex-direction: row;
+    align-items: center;
+    padding: 6px 0 10px;
+    background: rgba(246, 247, 251, 0.96);
+    backdrop-filter: blur(10px);
+  }
+
+  .brand {
+    font-size: 1.05rem;
+  }
+
+  .nav-links,
+  .topbar-actions {
+    display: none;
+  }
+
+  .mobile-menu-button {
+    display: inline-flex;
+    flex-direction: column;
+  }
+
+  .mobile-menu-overlay {
+    display: block;
+  }
+
+  .main-content,
+  .page {
+    gap: 14px;
+  }
+
+  h1 {
+    font-size: clamp(2rem, 12vw, 3rem);
+  }
+
+  .hero-panel {
+    gap: 18px;
+    padding: 20px;
+  }
+
+  .home-hero {
+    min-height: auto;
+    gap: 18px;
+    padding-top: 10px;
+  }
+
+  .home-hero-copy h1 {
+    max-width: 16ch;
+  }
+
+  .arena-preview {
+    min-height: 360px;
+  }
+
+  .arena-question {
+    min-height: 150px;
+  }
+
+  .loop-track {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-copy {
+    gap: 12px;
+  }
+
+  .hero-copy .lead {
+    font-size: 1rem;
+  }
+
+  .hero-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .metric-card {
+    min-height: 78px;
+    padding: 12px;
+  }
+
+  .metric-card strong {
+    font-size: 1.45rem;
+  }
+
+  .metric-card span {
+    font-size: 0.85rem;
+    line-height: 1.2;
+  }
+
+  .dashboard-hero {
+    order: 1;
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .dashboard-page .dashboard-hero {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .dashboard-hero h1,
+  .section-header h1 {
+    font-size: clamp(1.8rem, 9vw, 2.4rem);
+  }
+
+  .dashboard-page {
+    gap: 10px;
+  }
+
+  .dashboard-page .dashboard-hero h1 {
+    margin-top: 4px;
+    font-size: 1.15rem;
+    line-height: 1.1;
+  }
+
+  .dashboard-page .lead {
+    display: none;
+  }
+
+  .dashboard-mobile-tabs {
+    position: sticky;
+    top: 64px;
+    z-index: 12;
+    order: 4;
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding: 4px 0 6px;
+    background: rgba(246, 247, 251, 0.96);
+    backdrop-filter: blur(10px);
+  }
+
+  .dashboard-mobile-tabs button {
+    min-width: max-content;
+    min-height: 32px;
+    padding: 6px 9px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: #ffffff;
+    color: var(--muted);
+    font-size: 0.85rem;
+    font-weight: 850;
+    cursor: pointer;
+  }
+
+  .dashboard-mobile-tabs button.active {
+    background: #e8f7f3;
+    border-color: #8bcfc2;
+    color: var(--primary-dark);
+  }
+
+  .dashboard-mobile-panel {
+    order: 5;
+    display: none;
+  }
+
+  .dashboard-mobile-panel.active,
+  .dashboard-focus-grid.dashboard-mobile-panel.active {
+    display: grid;
+  }
+
+  .game-page {
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .game-page .section-header {
+    display: none;
+  }
+
+  .dashboard-priority-grid {
+    order: 2;
+  }
+
+  .dashboard-stats-grid {
+    order: 3;
+  }
+
+  .dashboard-detail-grid {
+    order: 4;
+  }
+
+  .dashboard-history {
+    order: 5;
+  }
+
+  .mission-card p {
+    min-height: auto;
+  }
+
+  .dashboard-page .mission-grid,
+  .dashboard-page .level-ladder {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .dashboard-page .mission-card,
+  .dashboard-page .level-card,
+  .dashboard-page .diagnostic-card,
+  .dashboard-page .dashboard-history {
+    gap: 8px;
+    padding: 12px;
+  }
+
+  .dashboard-page .mission-card {
+    min-height: auto;
+  }
+
+  .dashboard-page .mission-card p,
+  .dashboard-page .diagnostic-card p {
+    min-height: auto;
+    font-size: 0.88rem;
+  }
+
+  .dashboard-page .mission-topline strong {
+    font-size: 1.15rem;
+  }
+
+  .dashboard-page .mission-card h3,
+  .dashboard-page .level-card h3,
+  .dashboard-page .diagnostic-card h2 {
+    font-size: 1rem;
+  }
+
+  .dashboard-page .mission-card .secondary-button,
+  .dashboard-page .level-card .secondary-button,
+  .dashboard-page .diagnostic-card .primary-button {
+    min-height: 38px;
+    padding-block: 7px;
+    font-size: 0.9rem;
+  }
+
+  .dashboard-page .level-metrics > div {
+    min-height: 58px;
+    padding: 8px;
+  }
+
+  .dashboard-page .level-metrics strong {
+    font-size: 1.08rem;
+  }
+
+  .dashboard-page .mode-chip-list,
+  .dashboard-page .session-tags {
+    gap: 6px;
+  }
+
+  .dashboard-page .mode-chip,
+  .dashboard-page .session-tags span {
+    min-height: 30px;
+    padding: 5px 7px;
+    font-size: 0.84rem;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .stat-card {
+    min-height: 56px;
+    gap: 4px;
+    padding: 8px;
+  }
+
+  .stat-card span {
+    font-size: 0.72rem;
+    line-height: 1.05;
+  }
+
+  .stat-card strong {
+    font-size: 1.2rem;
+  }
+
+  .dashboard-stats-grid .stat-card:nth-child(3) span,
+  .dashboard-stats-grid .stat-card:nth-child(4) span {
+    font-size: 0;
+  }
+
+  .dashboard-stats-grid .stat-card:nth-child(3) span::after {
+    content: 'Precis.';
+    font-size: 0.72rem;
+  }
+
+  .dashboard-stats-grid .stat-card:nth-child(4) span::after {
+    content: 'Serie';
+    font-size: 0.72rem;
+  }
+
+  .dashboard-page .section-kicker {
+    gap: 6px;
+  }
+
+  .dashboard-page .section-kicker h2 {
+    font-size: 1.05rem;
+  }
+
+  .game-shell {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+    min-width: 0;
+  }
+
+  .sprint-card {
+    order: 2;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .settings-panel {
+    display: grid;
+    order: 1;
+    width: 100%;
+    gap: 8px;
+    min-width: 0;
+    overflow: hidden;
+    background: #ffffff;
+    border-color: #c9d9eb;
+    box-shadow: 0 12px 28px rgba(20, 31, 55, 0.07);
+  }
+
+  .game-page .settings-panel > div:not(.focus-note) {
+    display: grid;
+    grid-template-columns: 48px minmax(0, 1fr);
+    gap: 8px;
+    align-items: center;
+    min-width: 0;
+  }
+
+  .settings-panel summary {
+    display: none;
+  }
+
+  .settings-panel summary::after {
+    content: '+';
+    color: var(--primary-dark);
+    font-size: 1.3rem;
+  }
+
+  .settings-panel[open] summary::after {
+    content: '-';
+  }
+
+  .segmented-grid {
+    display: flex;
+    gap: 7px;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scroll-snap-type: x proximity;
+  }
+
+  .segment {
+    min-width: max-content;
+    min-height: 32px;
+    padding: 6px 9px;
+    white-space: nowrap;
+    scroll-snap-align: start;
+    font-size: 0.84rem;
+  }
+
+  .panel-label {
+    margin-bottom: 0;
+    font-size: 0.62rem;
+    letter-spacing: 0;
+    text-transform: uppercase;
+  }
+
+  .start-session-button {
+    min-height: 40px;
+  }
+
+  .session-banner {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 5px;
+    padding: 5px;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .session-banner > div {
+    min-width: 0;
+    min-height: 40px;
+    padding: 5px;
+  }
+
+  .session-banner span {
+    font-size: 0.62rem;
+    line-height: 1.05;
+  }
+
+  .game-page .session-banner > div:nth-child(2) span,
+  .game-page .session-banner > div:nth-child(4) span {
+    font-size: 0;
+  }
+
+  .game-page .session-banner > div:nth-child(2) span::after {
+    content: 'Justes';
+    font-size: 0.62rem;
+  }
+
+  .game-page .session-banner > div:nth-child(4) span::after {
+    content: 'Prec.';
+    font-size: 0.62rem;
+  }
+
+  .session-banner strong {
+    font-size: 0.9rem;
+  }
+
+  .sprint-topline {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+  }
+
+  .question-line {
+    min-height: 150px;
+    font-size: clamp(3.2rem, 18vw, 5.5rem);
+  }
+
+  .skill-hint {
+    margin-top: -10px;
+  }
+
+  .form-card {
+    padding: 18px;
+  }
+}
+
+@media (max-width: 640px) {
+  .app-shell {
+    width: min(calc(100% - 24px), 1180px);
+    padding: 8px 0 28px;
+  }
+
+  .card,
+  .dashboard-hero,
+  .focus-band,
+  .home-loop-section {
+    padding: 18px;
+  }
+
+  .game-page .settings-panel {
+    padding: 8px;
+  }
+
+  .game-page.session-active .settings-panel {
+    display: none;
+  }
+
+  .game-page .sprint-card {
+    padding: 14px;
+  }
+
+  .game-page .session-banner > div {
+    min-width: 0;
+  }
+
+  .game-page .session-banner span {
+    overflow-wrap: anywhere;
+  }
+
+  .hero-panel {
+    padding: 24px;
+  }
+
+  .nav-link,
+  .primary-button,
+  .secondary-button,
+  .ghost-button {
+    width: 100%;
+  }
+
+  .mobile-menu-button {
+    width: 44px;
+  }
+
+  .mobile-nav-link {
+    width: 100%;
+  }
+
+  .focus-band,
+  .session-row,
+  .skill-row,
+  .error-row,
+  .sprint-topline,
+  .quiz-form {
+    grid-template-columns: 1fr;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .two-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .profile-settings-card {
+    grid-template-columns: 1fr;
+    padding: 20px;
+  }
+
+  .profile-settings-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-top: 0;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 12px;
+  }
+
+  .profile-settings-nav h2 {
+    width: 100%;
+  }
+
+  .profile-settings-nav button {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .profile-public-preview {
+    grid-template-columns: 60px minmax(0, 1fr);
+  }
+
+  .profile-public-preview img,
+  .profile-public-avatar-initials {
+    width: 60px;
+    height: 60px;
+  }
+
+  .arena-lanes {
+    grid-template-columns: 1fr;
+  }
+
+  .arena-lanes > div {
+    min-height: 76px;
+  }
+
+  .result-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .session-banner {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    width: calc(100vw - 24px);
+    max-width: 100%;
+  }
+
+  .score-block,
+  .progress-meta {
+    justify-items: start;
+    text-align: left;
+  }
+
+  .game-page .score-block {
+    justify-items: end;
+    text-align: right;
+  }
+
+  .game-page .sprint-topline {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+  }
+
+  .level-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 420px) {
+  .app-shell {
+    width: min(calc(100% - 16px), 1180px);
+  }
+
+  .card,
+  .dashboard-hero,
+  .focus-band,
+  .home-loop-section,
+  .hero-panel {
+    padding: 14px;
+  }
+
+  .game-page .settings-panel {
+    padding: 9px;
+  }
+
+  .game-page .sprint-card {
+    padding: 12px;
+  }
+
+  .game-page .segment {
+    min-height: 30px;
+    padding: 5px 8px;
+    font-size: 0.8rem;
+  }
+
+  .game-page .start-session-button {
+    min-height: 38px;
+  }
+
+  .game-page .session-banner {
+    width: calc(100vw - 16px);
+  }
+
+  .game-page .session-banner > div {
+    min-height: 38px;
+    padding: 5px;
+  }
+
+  .home-hero-copy h1 {
+    max-width: 100%;
+    font-size: clamp(2.35rem, 10vw, 3.2rem);
+  }
+
+  .arena-preview {
+    min-height: auto;
+    padding: 12px;
+  }
+
+  .arena-preview::before {
+    inset: 12px;
+  }
+
+  .arena-question {
+    grid-template-columns: 1fr;
+  }
+
+  .arena-question strong {
+    min-width: 74px;
+    min-height: 74px;
+    font-size: 2.25rem;
+  }
+
+  .hero-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .metric-card {
+    min-height: 64px;
+  }
+
+  .session-banner > div {
+    min-height: 72px;
+  }
+
+  .result-grid,
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-page .dashboard-stats-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 5px;
+  }
+
+  .dashboard-page .stat-card {
+    min-height: 50px;
+    padding: 7px 5px;
+  }
+
+  .dashboard-page .stat-card span {
+    font-size: 0.62rem;
+  }
+
+  .dashboard-page .stat-card strong {
+    font-size: 0.98rem;
+  }
+
+  .dashboard-page .dashboard-mobile-tabs button {
+    min-height: 30px;
+    padding: 5px 8px;
+    font-size: 0.78rem;
+  }
+
+  .question-line {
+    min-height: 132px;
+  }
+}
+
