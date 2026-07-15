@@ -38,8 +38,8 @@ jobs:
         ports:
           - 5432:5432
     env:
-      DATABASE_URL: ${{ env.E2E_DATABASE_URL }}
-      DIRECT_URL: ${{ env.E2E_DATABASE_URL }}
+      DATABASE_URL: postgresql://mayele:mayele@127.0.0.1:5432/mayele_e2e
+      DIRECT_URL: postgresql://mayele:mayele@127.0.0.1:5432/mayele_e2e
 
     steps:
       - name: Checkout
@@ -126,8 +126,8 @@ jobs:
         ports:
           - 5432:5432
     env:
-      DATABASE_URL: ${{ env.E2E_DATABASE_URL }}
-      DIRECT_URL: ${{ env.E2E_DATABASE_URL }}
+      DATABASE_URL: postgresql://mayele:mayele@127.0.0.1:5432/mayele_e2e
+      DIRECT_URL: postgresql://mayele:mayele@127.0.0.1:5432/mayele_e2e
       E2E_REALTIME_UI_BUDGET_MS: "150"
 
     steps:
@@ -198,8 +198,8 @@ jobs:
         ports:
           - 5432:5432
     env:
-      DATABASE_URL: ${{ env.E2E_DATABASE_URL }}
-      DIRECT_URL: ${{ env.E2E_DATABASE_URL }}
+      DATABASE_URL: postgresql://mayele:mayele@127.0.0.1:5432/mayele_e2e
+      DIRECT_URL: postgresql://mayele:mayele@127.0.0.1:5432/mayele_e2e
 
     steps:
       - name: Checkout
