@@ -38,7 +38,6 @@ import {
   isActiveRoomMatch,
   isDisplayableRoomMatch,
   selectRoomMatch,
-  shouldReturnToLobbyWhenMatchDisappears,
 } from '../lib/multiplayerRoom'
 import {
   initialMultiplayerRoomState,
@@ -474,35 +473,6 @@ export function MultiplayerGamePage() {
     configFlushTokenRef.current += 1
   }, [])
 
-  const resetToNewRoom = useCallback(() => {
-    cancelQueuedConfigFlush()
-    configDraftRef.current = null
-    submittedConfigRef.current = null
-    configSyncInFlightRef.current = false
-    roomActionInFlightRef.current = null
-    matchAnswersRef.current = []
-    tempoQuestionStartedAtByIndexRef.current.clear()
-    completedTempoQuestionIndexesRef.current.clear()
-    tempoActiveQuestionIndexRef.current = 0
-    activeRunKeyRef.current = null
-    tempoPendingAnswerRef.current = null
-    leavingCompletedMatchRef.current = null
-    resultSubmittedRef.current = null
-    preferredMatchIdRef.current = null
-    selectedMatchIdRef.current = null
-    activeMatchRef.current = null
-    setActiveMatch(null)
-    applyConfig(DEFAULT_ROOM_CONFIG)
-    setSelectedOpponent(null)
-    setRoomDraftOpen(true)
-    setFriendPickerOpen(false)
-    setSearchParams({})
-    setError('')
-    setAction('')
-    setTempoActiveQuestionIndex(0)
-    setTempoPendingAnswer(null)
-  }, [applyConfig, cancelQueuedConfigFlush, setSearchParams])
-
   const resetToMultiplayerHome = useCallback(() => {
     cancelQueuedConfigFlush()
     configDraftRef.current = null
@@ -555,23 +525,19 @@ export function MultiplayerGamePage() {
     }
 
     if (isStaleRoomError(caughtError)) {
-      if (shouldReturnToLobbyWhenMatchDisappears(activeMatchRef.current?.status)) {
-        resetToMultiplayerHome()
-      } else {
-        resetToNewRoom()
-      }
+      resetToMultiplayerHome()
       return
     }
 
     setError(errorMessage(caughtError, fallback))
-  }, [resetToMultiplayerHome, resetToNewRoom])
+  }, [resetToMultiplayerHome])
 
   const refreshMatchSnapshot = useCallback(async (matchId: string, syncConfig: boolean) => {
     const overview = await api.getMatchRoomOverview(getToken)
     const refreshedMatch = overview.matches.find((item) => item.id === matchId) ?? null
 
     if (!refreshedMatch) {
-      resetToNewRoom()
+      resetToMultiplayerHome()
       return null
     }
 
@@ -583,7 +549,7 @@ export function MultiplayerGamePage() {
     }
 
     return appliedMatch
-  }, [applyConfig, applyMatchSnapshot, getToken, localPendingConfig, resetToNewRoom])
+  }, [applyConfig, applyMatchSnapshot, getToken, localPendingConfig, resetToMultiplayerHome])
 
   const flushConfigSync = useCallback(() => {
     cancelQueuedConfigFlush()
@@ -623,7 +589,7 @@ export function MultiplayerGamePage() {
       })
       .catch((caughtError) => {
         if (isStaleRoomError(caughtError)) {
-          resetToNewRoom()
+          resetToMultiplayerHome()
           return
         }
 
@@ -655,7 +621,7 @@ export function MultiplayerGamePage() {
           queueConfigFlush()
         }
       })
-  }, [applyMatchSnapshot, cancelQueuedConfigFlush, refreshMatchSnapshot, reportBackgroundRoomError, resetToNewRoom, queueConfigFlush])
+  }, [applyMatchSnapshot, cancelQueuedConfigFlush, refreshMatchSnapshot, reportBackgroundRoomError, resetToMultiplayerHome, queueConfigFlush])
 
   useEffect(() => {
     flushConfigSyncRef.current = flushConfigSync
@@ -756,9 +722,9 @@ export function MultiplayerGamePage() {
         return
       }
 
-      resetToNewRoom()
+      resetToMultiplayerHome()
     }
-  }, [applyRoomOverview, getToken, roomRealtimeAuthenticated, resetToNewRoom])
+  }, [applyRoomOverview, getToken, roomRealtimeAuthenticated, resetToMultiplayerHome])
 
   const applyRealtimeMatchSnapshot = useCallback((match: MatchData, options: { recordLegacyEvent?: boolean } = {}) => {
     const currentMatch = activeMatchRef.current
@@ -839,19 +805,15 @@ export function MultiplayerGamePage() {
         return true
       }
 
-      if (shouldReturnToLobbyWhenMatchDisappears(currentMatch?.status, match.status)) {
-        dismissedMatchIdsRef.current.add(match.id)
-        resetToMultiplayerHome()
-      } else {
-        resetToNewRoom()
-      }
+      dismissedMatchIdsRef.current.add(match.id)
+      resetToMultiplayerHome()
 
       return true
     }
 
     applyDisplayedMatch(match)
     return true
-  }, [applyDisplayedMatch, profile?.id, resetToMultiplayerHome, resetToNewRoom, showToast])
+  }, [applyDisplayedMatch, profile?.id, resetToMultiplayerHome, showToast])
 
   const applyRoomRuntimeEvent = useCallback((event: RoomRealtimeEvent) => {
     const currentRevision = roomRevisionRef.current[event.roomId] ?? 0
@@ -865,13 +827,21 @@ export function MultiplayerGamePage() {
       [event.roomId]: event.revision,
     }
 
-    if (event.reason === 'match_left') {
+    const closesCurrentRoom = event.reason === 'match_declined' || event.reason === 'match_left'
+
+    if (closesCurrentRoom) {
       dismissedMatchIdsRef.current.add(event.match.id)
+      dispatchOrderedRoomState({ type: 'dismiss-match', matchId: event.match.id })
+      setMatches((currentMatches) => currentMatches.filter((item) => item.id !== event.match.id))
+
+      resetToMultiplayerHome()
+
+      return
     }
 
     dispatchOrderedRoomState({ type: 'room-event', event, selectedMatchId: selectedMatchIdRef.current ?? preferredMatchIdRef.current })
     applyRealtimeMatchSnapshot(event.match, { recordLegacyEvent: false })
-  }, [applyRealtimeMatchSnapshot])
+  }, [applyRealtimeMatchSnapshot, resetToMultiplayerHome])
 
   const applyRoomRuntimeSnapshot = useCallback((snapshot: RoomSnapshotPayload) => {
     const currentRevision = roomRevisionRef.current[snapshot.roomId] ?? 0
@@ -1100,7 +1070,7 @@ export function MultiplayerGamePage() {
         }
 
         if (isStaleRoomError(caughtError)) {
-          resetToNewRoom()
+          resetToMultiplayerHome()
           return
         }
 
@@ -1123,7 +1093,7 @@ export function MultiplayerGamePage() {
         heartbeatTargetIdRef.current = null
       }
     }
-  }, [heartbeatMatchId, getToken, reportBackgroundRoomError, resetToNewRoom])
+  }, [heartbeatMatchId, getToken, reportBackgroundRoomError, resetToMultiplayerHome])
 
   function openInvitation(match: MatchData) {
     cancelQueuedConfigFlush()
@@ -1244,11 +1214,7 @@ export function MultiplayerGamePage() {
       showToast('Invitation acceptee. En attente du lancement.')
     } catch (caughtError) {
       if (isStaleRoomError(caughtError)) {
-        if (shouldReturnToLobbyWhenMatchDisappears(match.status)) {
-          resetToMultiplayerHome()
-        } else {
-          resetToNewRoom()
-        }
+        resetToMultiplayerHome()
         return
       }
 
@@ -1281,7 +1247,7 @@ export function MultiplayerGamePage() {
       dismissedMatchIdsRef.current.delete(match.id)
 
       if (isStaleRoomError(caughtError)) {
-        resetToNewRoom()
+        resetToMultiplayerHome()
         return
       }
 
@@ -1379,7 +1345,7 @@ export function MultiplayerGamePage() {
       showToast('Maitre du salon change.')
     } catch (caughtError) {
       if (isStaleRoomError(caughtError)) {
-        resetToNewRoom()
+        resetToMultiplayerHome()
         return
       }
 
@@ -1455,7 +1421,7 @@ export function MultiplayerGamePage() {
       showToast('Configuration proposee.')
     } catch (caughtError) {
       if (isStaleRoomError(caughtError)) {
-        resetToNewRoom()
+        resetToMultiplayerHome()
         return
       }
 
@@ -1488,7 +1454,7 @@ export function MultiplayerGamePage() {
       showToast('Defi lance.')
     } catch (caughtError) {
       if (isStaleRoomError(caughtError)) {
-        resetToNewRoom()
+        resetToMultiplayerHome()
         return
       }
 
@@ -1518,7 +1484,7 @@ export function MultiplayerGamePage() {
       showToast('Configuration refusee.')
     } catch (caughtError) {
       if (isStaleRoomError(caughtError)) {
-        resetToNewRoom()
+        resetToMultiplayerHome()
         return
       }
 

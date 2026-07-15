@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isActiveRoomMatch, selectRoomMatch, shouldReturnToLobbyWhenMatchDisappears } from './multiplayerRoom'
+import { isActiveRoomMatch, selectRoomMatch } from './multiplayerRoom'
 import type { MatchData, PublicPlayer } from './api'
 
 const host: PublicPlayer = {
@@ -235,20 +235,5 @@ describe('multiplayer room selection', () => {
     })
 
     expect(selectRoomMatch([invite], 'host', null, Date.parse('2026-07-08T10:04:00.000Z'))?.id).toBe('outgoing_invite')
-  })
-})
-
-describe('multiplayer room disappearance policy', () => {
-  it('renvoie au lobby quand une partie ou des resultats disparaissent', () => {
-    expect(shouldReturnToLobbyWhenMatchDisappears('in_progress')).toBe(true)
-    expect(shouldReturnToLobbyWhenMatchDisappears('completed')).toBe(true)
-    expect(shouldReturnToLobbyWhenMatchDisappears('accepted', 'completed')).toBe(true)
-    expect(shouldReturnToLobbyWhenMatchDisappears('accepted', 'cancelled')).toBe(true)
-  })
-
-  it('garde le draft-room pour les salons non termines devenus indisponibles', () => {
-    expect(shouldReturnToLobbyWhenMatchDisappears('pending')).toBe(false)
-    expect(shouldReturnToLobbyWhenMatchDisappears('accepted')).toBe(false)
-    expect(shouldReturnToLobbyWhenMatchDisappears('ready')).toBe(false)
   })
 })

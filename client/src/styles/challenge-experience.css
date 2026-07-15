@@ -214,6 +214,51 @@
   font-size: 1rem;
 }
 
+@media (min-width: 1024px) {
+  .challenge-setup {
+    width: min(100%, 920px);
+  }
+
+  .challenge-config-board .challenge-config-row {
+    grid-template-columns: 96px minmax(0, 1fr);
+  }
+
+  .challenge-config-board .challenge-operation-grid,
+  .challenge-config-board .challenge-level-grid {
+    display: grid;
+    overflow: visible;
+    padding: 0;
+    scroll-snap-type: none;
+  }
+
+  .challenge-config-board .challenge-operation-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .challenge-config-board .challenge-level-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .challenge-config-board .challenge-choice-tile,
+  .challenge-config-board .challenge-operation-grid .challenge-choice-tile,
+  .challenge-config-board .challenge-level-tile {
+    width: 100%;
+    min-width: 0;
+    white-space: normal;
+    text-align: center;
+  }
+
+  .challenge-config-board .challenge-choice-tile span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .challenge-config-board .challenge-operation-grid .challenge-choice-tile {
+    min-height: 48px;
+    padding-inline: 8px;
+  }
+}
+
 .challenge-choice-section {
   display: grid;
   gap: 18px;

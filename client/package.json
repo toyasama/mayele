@@ -12,7 +12,8 @@
     "preview": "vite preview --host",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "test:responsive": "playwright test --config=playwright.responsive.config.ts"
+    "test:responsive": "playwright test --config=playwright.responsive.config.ts",
+    "test:visual": "playwright test --config=playwright.visual.config.ts"
   },
   "dependencies": {
     "@clerk/react": "^6.10.4",

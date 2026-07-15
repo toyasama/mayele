@@ -746,17 +746,37 @@ export async function waitForRealtimePersistenceIdle() {
   }
 }
 
-export function getPendingRealtimeHeartbeatSnapshot(playerId: string, matchId: string) {
+export function getInFlightRealtimeMatchSnapshot(playerId: string, matchId: string) {
   const snapshot = matchSnapshotCache.get(matchId)
 
-  if (!snapshot || !matchPersistenceQueue.has(matchId)) {
+  if (
+    !snapshot ||
+    !matchPersistenceQueue.has(matchId) ||
+    !snapshot.participants.some((participant) => participant.player.id === playerId)
+  ) {
     return null
   }
 
+  return snapshotWithTempoRuntime(snapshotWithFreshServerNow(snapshot))
+}
+
+export function listInFlightRealtimeMatchSnapshots(playerId: string) {
+  return Array.from(matchSnapshotCache.values()).flatMap((snapshot) => {
+    if (!matchPersistenceQueue.has(snapshot.id) || !snapshot.participants.some((participant) => participant.player.id === playerId)) {
+      return []
+    }
+
+    return [snapshotWithTempoRuntime(snapshotWithFreshServerNow(snapshot))]
+  })
+}
+
+export function getPendingRealtimeHeartbeatSnapshot(playerId: string, matchId: string) {
+  const snapshot = getInFlightRealtimeMatchSnapshot(playerId, matchId)
+
   if (
+    !snapshot ||
     snapshot.createdBy.id !== playerId ||
-    !ACTIVE_REALTIME_HEARTBEAT_STATUSES.has(snapshot.status) ||
-    !snapshot.participants.some((participant) => participant.player.id === playerId)
+    !ACTIVE_REALTIME_HEARTBEAT_STATUSES.has(snapshot.status)
   ) {
     return null
   }

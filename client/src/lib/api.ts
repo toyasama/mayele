@@ -484,12 +484,14 @@ export const api = {
   getMatches: (getToken: TokenProvider) =>
     request<{ matches: MatchData[] }>('/matches', {
       method: 'GET',
+      cache: 'no-store',
       getToken,
     }),
 
   getMatchRoomOverview: (getToken: TokenProvider) =>
     request<{ friends: PublicPlayer[]; matches: MatchData[] }>('/matches/room-overview', {
       method: 'GET',
+      cache: 'no-store',
       getToken,
     }),
 

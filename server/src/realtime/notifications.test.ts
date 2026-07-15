@@ -7,6 +7,8 @@ import {
   closeRealtime,
   emitMatchSnapshot,
   emitSocialChanged,
+  getInFlightRealtimeMatchSnapshot,
+  listInFlightRealtimeMatchSnapshots,
   getRealtimeHealth,
   getPendingRealtimeHeartbeatSnapshot,
   initRealtime,
@@ -709,6 +711,14 @@ describe('realtime notifications', () => {
       createdBy: { id: 'player_a' },
       hostActiveAt: expect.any(String),
     })
+    const guestInFlightMatch = getInFlightRealtimeMatchSnapshot('player_b', matchId!)
+
+    expect(guestInFlightMatch).toMatchObject({ id: matchId })
+    expect(guestInFlightMatch?.participants.some((participant) => participant.player.id === 'player_b')).toBe(true)
+    expect(listInFlightRealtimeMatchSnapshots('player_b')).toEqual([
+      expect.objectContaining({ id: matchId }),
+    ])
+    expect(getInFlightRealtimeMatchSnapshot('player_unknown', matchId!)).toBeNull()
     expect(getPendingRealtimeHeartbeatSnapshot('player_b', matchId!)).toBeNull()
     expect(getPendingRealtimeHeartbeatSnapshot('player_a', 'match_missing')).toBeNull()
 
@@ -716,6 +726,7 @@ describe('realtime notifications', () => {
     await waitForRealtimePersistenceIdle()
 
     expect(getPendingRealtimeHeartbeatSnapshot('player_a', matchId!)).toBeNull()
+    expect(listInFlightRealtimeMatchSnapshots('player_b')).toEqual([])
   })
 
   it("fait entrer l'invite dans le salon par commande Socket.IO avec ACK et broadcast", async () => {

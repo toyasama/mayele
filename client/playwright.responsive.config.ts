@@ -1,24 +1,26 @@
-import { defineConfig } from '@playwright/test'
+import { defineConfig } from "@playwright/test";
 
-const APP_PORT = 5174
-const API_PORT = 4100
-const APP_URL = `http://127.0.0.1:${APP_PORT}`
-const API_URL = `http://127.0.0.1:${API_PORT}`
+const APP_PORT = 5174;
+const API_PORT = 4100;
+const APP_URL = `http://127.0.0.1:${APP_PORT}`;
+const API_URL = `http://127.0.0.1:${API_PORT}`;
 
 export default defineConfig({
-  testDir: './e2e',
+  testDir: "./e2e",
   testMatch: /responsive\.spec\.ts/,
   fullyParallel: false,
   workers: 1,
-  reporter: [['list']],
+  reporter: process.env.CI
+    ? [["line"], ["html", { outputFolder: "playwright-report", open: "never" }]]
+    : [["list"]],
   use: {
     baseURL: APP_URL,
-    trace: 'on-first-retry',
+    trace: "on-first-retry",
   },
   webServer: [
     {
-      command: 'npm run dev:e2e',
-      cwd: '../server',
+      command: "npm run dev:e2e",
+      cwd: "../server",
       env: {
         ...process.env,
         PORT: String(API_PORT),
@@ -33,7 +35,7 @@ export default defineConfig({
         ...process.env,
         VITE_API_URL: `${API_URL}/api`,
         VITE_REALTIME_URL: API_URL,
-        VITE_E2E_AUTH_BYPASS: 'true',
+        VITE_E2E_AUTH_BYPASS: "true",
       },
       url: APP_URL,
       reuseExistingServer: false,
@@ -42,24 +44,24 @@ export default defineConfig({
   ],
   projects: [
     {
-      name: 'mobile-390',
+      name: "mobile-390",
       use: {
         viewport: { width: 390, height: 844 },
         isMobile: true,
       },
     },
     {
-      name: 'tablet-portrait-768',
+      name: "tablet-portrait-768",
       use: {
         viewport: { width: 768, height: 1024 },
         isMobile: true,
       },
     },
     {
-      name: 'tablet-landscape-1024',
+      name: "tablet-landscape-1024",
       use: {
         viewport: { width: 1024, height: 768 },
       },
     },
   ],
-})
+});

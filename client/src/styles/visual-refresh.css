@@ -298,7 +298,7 @@ body {
   grid-column: 2;
   width: 100%;
   min-width: 0;
-  padding: 108px clamp(22px, 3vw, 42px) 46px;
+  padding: 86px clamp(22px, 3vw, 42px) 44px;
 }
 
 .desktop-sidebar {
@@ -1268,4 +1268,3 @@ button[aria-expanded='false'] .nav-toggle-chevron {
     min-height: 210px;
   }
 }
-

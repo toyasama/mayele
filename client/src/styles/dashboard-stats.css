@@ -10,6 +10,7 @@
 }
 
 .stats-insight-card {
+  min-width: 0;
   min-height: 190px;
   display: grid;
   align-content: start;
@@ -26,9 +27,11 @@
 }
 
 .insight-main {
+  min-width: 0;
   color: var(--text);
   font-size: clamp(1.65rem, 3vw, 2.35rem);
   line-height: 1.05;
+  overflow-wrap: anywhere;
 }
 
 .insight-detail-list {
@@ -37,6 +40,7 @@
 }
 
 .insight-detail-row {
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -88,6 +92,7 @@
 
 .record-grid > div,
 .stat-detail-grid > div {
+  min-width: 0;
   min-height: 66px;
   display: grid;
   align-content: center;
@@ -115,11 +120,12 @@
 
 .operation-stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
   gap: 14px;
 }
 
 .operation-stat-card {
+  min-width: 0;
   min-height: 226px;
   display: grid;
   align-content: start;
@@ -131,15 +137,22 @@
 }
 
 .operation-stat-topline {
-  display: flex;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
   align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 6px;
+}
+
+.operation-stat-topline span,
+.operation-stat-topline strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .operation-stat-topline strong {
   color: var(--text);
-  font-size: 2rem;
+  font-size: 1.85rem;
   line-height: 1;
 }
 
@@ -195,9 +208,30 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.level-ladder {
+  grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+}
+
+.level-card {
+  min-width: 0;
+}
+
 .level-card-header > div,
 .level-metrics > div {
   min-width: 0;
+}
+
+.level-card h3,
+.level-card p,
+.level-card .secondary-button,
+.level-card .mode-chip {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.level-card .secondary-button.full-width {
+  white-space: normal;
+  text-align: center;
 }
 
 .level-metrics span,

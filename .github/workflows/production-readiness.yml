@@ -1,14 +1,45 @@
-name: Production readiness
+name: Verify and release production
 
 on:
+  pull_request:
+    branches: [main]
   push:
     branches: [main]
-  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mayele-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  NODE_VERSION: "22"
+  E2E_DATABASE_URL: postgresql://mayele:mayele@127.0.0.1:5432/mayele_e2e
 
 jobs:
-  readiness:
+  quality:
+    name: Quality and build
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: mayele
+          POSTGRES_PASSWORD: mayele
+          POSTGRES_DB: mayele_e2e
+        options: >-
+          --health-cmd "pg_isready -U mayele -d mayele_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+    env:
+      DATABASE_URL: ${{ env.E2E_DATABASE_URL }}
+      DIRECT_URL: ${{ env.E2E_DATABASE_URL }}
 
     steps:
       - name: Checkout
@@ -17,7 +48,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: |
             client/package-lock.json
@@ -34,7 +65,7 @@ jobs:
       - name: Clean-code scans
         shell: bash
         run: |
-          ! grep -RInE '@clerk/react/legacy|legacy-match|responsive-legacy|tempoFallback|Ã|â€™|Ãƒ|\?\?tre|\?\?fini' client/src server/src client/e2e
+          ! grep -RInE '@clerk/react/legacy|legacy-match|responsive-legacy|tempoFallback|Ãƒ|Ã¢â‚¬â„¢|ÃƒÆ’|\?\?tre|\?\?fini' client/src server/src client/e2e
           ! grep -RInE 'console\.log|REST legacy|route REST legacy|routes REST legacy' client/e2e
 
       - name: Server audit
@@ -48,6 +79,10 @@ jobs:
       - name: Server typecheck
         working-directory: server
         run: npm run typecheck
+
+      - name: Apply test migrations
+        working-directory: server
+        run: npm run prisma:migrate:deploy
 
       - name: Server tests
         working-directory: server
@@ -71,14 +106,221 @@ jobs:
           VITE_API_URL: https://api.mayele-learning.com/api
         run: npm run build
 
-      - name: Install Playwright browser
+  e2e:
+    name: E2E multiplayer and solo
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: mayele
+          POSTGRES_PASSWORD: mayele
+          POSTGRES_DB: mayele_e2e
+        options: >-
+          --health-cmd "pg_isready -U mayele -d mayele_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+    env:
+      DATABASE_URL: ${{ env.E2E_DATABASE_URL }}
+      DIRECT_URL: ${{ env.E2E_DATABASE_URL }}
+      E2E_REALTIME_UI_BUDGET_MS: "150"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            client/package-lock.json
+            server/package-lock.json
+
+      - name: Install server
+        working-directory: server
+        run: npm ci
+
+      - name: Install client
+        working-directory: client
+        run: npm ci
+
+      - name: Apply E2E migrations
+        working-directory: server
+        run: npm run prisma:migrate:deploy
+
+      - name: Check E2E domain constraints
+        working-directory: server
+        run: npm run db:check-domain
+
+      - name: Install Playwright Chromium
         working-directory: client
         run: npx playwright install --with-deps chromium
 
-      - name: E2E smoke
+      - name: Run E2E smoke
         working-directory: client
         run: npm run test:e2e
 
-      - name: Responsive E2E smoke
+      - name: Upload E2E diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-diagnostics-${{ github.run_attempt }}
+          path: |
+            client/test-results
+            client/playwright-report
+          if-no-files-found: ignore
+          retention-days: 7
+
+  responsive-e2e:
+    name: Responsive E2E
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: mayele
+          POSTGRES_PASSWORD: mayele
+          POSTGRES_DB: mayele_e2e
+        options: >-
+          --health-cmd "pg_isready -U mayele -d mayele_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+    env:
+      DATABASE_URL: ${{ env.E2E_DATABASE_URL }}
+      DIRECT_URL: ${{ env.E2E_DATABASE_URL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            client/package-lock.json
+            server/package-lock.json
+
+      - name: Install server
+        working-directory: server
+        run: npm ci
+
+      - name: Install client
+        working-directory: client
+        run: npm ci
+
+      - name: Apply E2E migrations
+        working-directory: server
+        run: npm run prisma:migrate:deploy
+
+      - name: Install Playwright Chromium
+        working-directory: client
+        run: npx playwright install --with-deps chromium
+
+      - name: Run responsive E2E smoke
         working-directory: client
         run: npm run test:responsive
+
+      - name: Upload responsive diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: responsive-diagnostics-${{ github.run_attempt }}
+          path: |
+            client/test-results
+            client/playwright-report
+          if-no-files-found: ignore
+          retention-days: 7
+
+  deploy-production:
+    name: Deploy production
+    needs: [quality, e2e, responsive-e2e]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment:
+      name: production
+      url: https://mayele-learning.com
+    env:
+      PRODUCTION_APP_URL: https://mayele-learning.com
+      PRODUCTION_API_URL: https://api.mayele-learning.com
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
+      RAILWAY_ENVIRONMENT: ${{ secrets.RAILWAY_ENVIRONMENT }}
+      RAILWAY_SERVICE: ${{ secrets.RAILWAY_SERVICE }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Validate release secrets
+        shell: bash
+        run: |
+          required=(RAILWAY_TOKEN RAILWAY_PROJECT_ID RAILWAY_ENVIRONMENT RAILWAY_SERVICE VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID)
+          for name in "${required[@]}"; do
+            if [ -z "${!name}" ]; then
+              echo "Secret de production manquant: ${name}" >&2
+              exit 1
+            fi
+          done
+
+      - name: Deploy API to Railway
+        shell: bash
+        run: npx --yes @railway/cli@5.26.1 up --ci --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_ENVIRONMENT" --service "$RAILWAY_SERVICE"
+
+      - name: Wait for API readiness
+        shell: bash
+        run: |
+          for attempt in {1..60}; do
+            if curl --fail --silent --show-error --max-time 10 "$PRODUCTION_API_URL/api/ready"; then
+              exit 0
+            fi
+            echo "API indisponible, nouvelle tentative dans 5 secondes (${attempt}/60)."
+            sleep 5
+          done
+          echo "L'API Railway n'est pas devenue prete a temps." >&2
+          exit 1
+
+      - name: Install client
+        working-directory: client
+        run: npm ci
+
+      - name: Deploy client to Vercel
+        working-directory: client
+        env:
+          VITE_API_URL: https://api.mayele-learning.com/api
+        shell: bash
+        run: |
+          npx --yes vercel@56.2.0 pull --yes --environment=production --token="$VERCEL_TOKEN"
+          npx --yes vercel@56.2.0 build --prod --token="$VERCEL_TOKEN"
+          npx --yes vercel@56.2.0 deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+
+      - name: Production smoke
+        shell: bash
+        run: |
+          curl --fail --silent --show-error --max-time 20 "$PRODUCTION_API_URL/api/health"
+          curl --fail --silent --show-error --max-time 20 "$PRODUCTION_API_URL/api/ready"
+          curl --fail --silent --show-error --max-time 20 "$PRODUCTION_APP_URL/" > /dev/null

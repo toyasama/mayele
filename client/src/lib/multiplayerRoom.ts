@@ -1,8 +1,6 @@
 import type { MatchData } from './api'
 
 const ACTIVE_MATCH_STATUSES = new Set(['pending', 'accepted', 'ready', 'in_progress'])
-type MatchStatus = MatchData['status']
-
 function participantFor(match: MatchData, playerId: string) {
   return match.participants.find((participant) => participant.player.id === playerId) ?? null
 }
@@ -92,8 +90,4 @@ export function selectRoomMatch(matches: MatchData[], playerId: string | undefin
   }
 
   return selected
-}
-
-export function shouldReturnToLobbyWhenMatchDisappears(currentStatus?: MatchStatus, disappearedStatus?: MatchStatus) {
-  return currentStatus === 'in_progress' || currentStatus === 'completed' || disappearedStatus === 'cancelled' || disappearedStatus === 'completed'
 }

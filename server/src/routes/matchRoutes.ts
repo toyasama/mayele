@@ -5,7 +5,9 @@ import {
   emitMatchSnapshot,
   emitNotificationCreated,
   emitNotificationsChanged,
+  getInFlightRealtimeMatchSnapshot,
   getPendingRealtimeHeartbeatSnapshot,
+  listInFlightRealtimeMatchSnapshots,
 } from '../realtime/notifications.js'
 import { parseMatchResultPayload } from '../schemas/matchSchema.js'
 import {
@@ -28,7 +30,7 @@ import {
   type MatchView,
 } from '../services/matchService.js'
 import { listFriends } from '../services/friendService.js'
-import { serializeMatch, serializePublicPlayer } from '../services/matchPresenter.js'
+import { serializeMatch, serializePublicPlayer, type SerializedMatch } from '../services/matchPresenter.js'
 import { getCurrentPlayer, isPlayerProfileComplete } from '../services/playerService.js'
 
 async function getCompleteCurrentPlayer(clerkUserId: string) {
@@ -43,6 +45,16 @@ async function getCompleteCurrentPlayer(clerkUserId: string) {
 
 function matchOpponent(match: MatchView, playerId: string) {
   return match.participants.find((participant) => participant.player.id !== playerId)?.player ?? null
+}
+
+function mergeMatchSnapshots(persistedMatches: SerializedMatch[], inFlightMatches: SerializedMatch[]) {
+  const matchesById = new Map(persistedMatches.map((match) => [match.id, match]))
+
+  for (const match of inFlightMatches) {
+    matchesById.set(match.id, match)
+  }
+
+  return Array.from(matchesById.values()).sort((left, right) => right.createdAt.localeCompare(left.createdAt))
 }
 
 function matchServiceErrorToApiError(error: MatchServiceError) {
@@ -92,8 +104,13 @@ export function matchRoutes() {
       const { clerkUserId } = getRequiredAuth(req)
       const player = await getCompleteCurrentPlayer(clerkUserId)
       const matches = await listMatches(player.id)
+      const serializedMatches = mergeMatchSnapshots(
+        matches.map(serializeMatch),
+        listInFlightRealtimeMatchSnapshots(player.id),
+      )
 
-      res.json({ matches: matches.map(serializeMatch) })
+      res.set('Cache-Control', 'no-store')
+      res.json({ matches: serializedMatches })
     } catch (error) {
       next(error)
     }
@@ -104,8 +121,13 @@ export function matchRoutes() {
       const { clerkUserId } = getRequiredAuth(req)
       const player = await getCompleteCurrentPlayer(clerkUserId)
       const [friends, matches] = await Promise.all([listFriends(player.id), listMatches(player.id)])
+      const serializedMatches = mergeMatchSnapshots(
+        matches.map(serializeMatch),
+        listInFlightRealtimeMatchSnapshots(player.id),
+      )
 
-      res.json({ friends: friends.map(serializePublicPlayer), matches: matches.map(serializeMatch) })
+      res.set('Cache-Control', 'no-store')
+      res.json({ friends: friends.map(serializePublicPlayer), matches: serializedMatches })
     } catch (error) {
       next(error)
     }
@@ -115,9 +137,23 @@ export function matchRoutes() {
     try {
       const { clerkUserId } = getRequiredAuth(req)
       const player = await getCompleteCurrentPlayer(clerkUserId)
-      const match = await getMatch(player.id, req.params.matchId)
+      try {
+        const match = await getMatch(player.id, req.params.matchId)
 
-      res.json({ match: serializeMatch(match) })
+        res.set('Cache-Control', 'no-store')
+        res.json({ match: serializeMatch(match) })
+      } catch (error) {
+        const inFlightMatch = error instanceof MatchServiceError && error.code === 'match_not_found'
+          ? getInFlightRealtimeMatchSnapshot(player.id, req.params.matchId)
+          : null
+
+        if (!inFlightMatch) {
+          throw error
+        }
+
+        res.set('Cache-Control', 'no-store')
+        res.json({ match: inFlightMatch })
+      }
     } catch (error) {
       next(error instanceof MatchServiceError ? matchServiceErrorToApiError(error) : error)
     }
