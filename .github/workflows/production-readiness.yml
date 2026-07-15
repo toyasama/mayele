@@ -16,7 +16,6 @@ concurrency:
 
 env:
   NODE_VERSION: "22"
-  E2E_DATABASE_URL: postgresql://mayele:mayele@127.0.0.1:5432/mayele_e2e
 
 jobs:
   quality:
