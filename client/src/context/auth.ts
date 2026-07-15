@@ -2,7 +2,7 @@ import { useAuth as useClerkAuth, useClerk, useUser } from '@clerk/react'
 import type { AuthUser } from '../lib/api'
 import { detectBrowserTimeZone } from '../lib/timeZone'
 
-const E2E_AUTH_BYPASS = import.meta.env.VITE_E2E_AUTH_BYPASS === 'true'
+export const isE2EAuthBypassEnabled = import.meta.env.VITE_E2E_AUTH_BYPASS === 'true'
 const E2E_HOST_USER: AuthUser = {
   id: 'e2e-host',
   clerkUserId: 'e2e-host',
@@ -65,22 +65,22 @@ function e2eUser(): AuthUser {
   return userKey === 'guest' ? E2E_GUEST_USER : E2E_HOST_USER
 }
 
-export function useAuth() {
+function useE2EAuth(): AuthContextValue {
+  const user = e2eUser()
+
+  return {
+    user,
+    getToken: getE2EToken,
+    loading: false,
+    isAuthenticated: true,
+    logout: e2eLogout,
+  }
+}
+
+function useClerkBackedAuth(): AuthContextValue {
   const clerkAuth = useClerkAuth()
   const { user } = useUser()
   const clerk = useClerk()
-
-  if (E2E_AUTH_BYPASS) {
-    const user = e2eUser()
-
-    return {
-      user,
-      getToken: getE2EToken,
-      loading: false,
-      isAuthenticated: true,
-      logout: e2eLogout,
-    }
-  }
 
   const email = user?.primaryEmailAddress?.emailAddress ?? null
   const fullName = user?.fullName ?? user?.username ?? displayNameFromEmail(email)
@@ -110,3 +110,6 @@ export function useAuth() {
     logout: () => clerk.signOut(),
   }
 }
+
+// This selection is fixed for the lifetime of a Vite build.
+export const useAuth: () => AuthContextValue = isE2EAuthBypassEnabled ? useE2EAuth : useClerkBackedAuth

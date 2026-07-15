@@ -1,9 +1,9 @@
-import { useUser } from '@clerk/react'
+import { useUser as useClerkUser } from '@clerk/react'
 import { type ChangeEvent, type FormEvent, useEffect, useMemo, useState } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { PageFrame } from '../components/layout/PageFrame'
 import { ResponsiveTabs } from '../components/layout/ResponsiveTabs'
-import { useAuth } from '../context/auth'
+import { isE2EAuthBypassEnabled, useAuth } from '../context/auth'
 import { useProfile } from '../context/profile-context'
 import { api, type AuthUser } from '../lib/api'
 import { dateInputLimit, formatDisplayName, isValidBirthDate, USERNAME_PATTERN } from '../lib/profile'
@@ -24,6 +24,17 @@ type LocationState = {
 }
 
 const MAX_AVATAR_SIZE = 5 * 1024 * 1024
+
+function useE2EProfileImageUser() {
+  return { user: null }
+}
+
+function useClerkProfileImageUser() {
+  return useClerkUser()
+}
+
+// E2E renders the complete profile flow without mounting Clerk.
+const useProfileImageUser = isE2EAuthBypassEnabled ? useE2EProfileImageUser : useClerkProfileImageUser
 
 function initialDraftFromUser(user: AuthUser | null): ProfileDraft {
   return {
@@ -75,7 +86,7 @@ function validateSystemDraft(draft: ProfileDraft) {
 export function ProfileSettingsPage() {
   const { isAuthenticated, loading, getToken } = useAuth()
   const { profile: contextProfile, profileLoading, profileError, refreshProfile } = useProfile()
-  const { user: clerkUser } = useUser()
+  const { user: clerkUser } = useProfileImageUser()
   const navigate = useNavigate()
   const location = useLocation()
   const locationState = (location.state as LocationState | null) ?? null
