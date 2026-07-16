@@ -147,10 +147,6 @@ export function participantStatusLabel(participant: MatchData['participants'][nu
         return 'Absent temporairement'
       }
 
-      if (participant.player.presenceStatus === 'busy') {
-        return 'Occupe'
-      }
-
       return 'Dans le salon'
     case 'playing':
       return 'En jeu'

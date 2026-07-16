@@ -47,6 +47,20 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     }
   }, [cacheKey, isAuthenticated, getToken])
 
+  const updateProfilePresence = useCallback((presence: Pick<AuthUser, 'id' | 'presenceStatus' | 'presenceUpdatedAt'>) => {
+    setProfile((current) => {
+      if (!current || current.id !== presence.id) {
+        return current
+      }
+
+      return {
+        ...current,
+        presenceStatus: presence.presenceStatus,
+        presenceUpdatedAt: presence.presenceUpdatedAt,
+      }
+    })
+  }, [])
+
   useEffect(() => {
     const key = isAuthenticated ? user?.clerkUserId ?? 'authenticated' : 'unauthenticated'
 
@@ -69,7 +83,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
   }, [cacheKey, isAuthenticated, fetchProfile, user?.clerkUserId])
 
   return (
-    <ProfileContext.Provider value={{ profile, profileLoading, profileError, refreshProfile: fetchProfile }}>
+    <ProfileContext.Provider value={{ profile, profileLoading, profileError, refreshProfile: fetchProfile, updateProfilePresence }}>
       {children}
     </ProfileContext.Provider>
   )

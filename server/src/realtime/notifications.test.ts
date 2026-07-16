@@ -56,8 +56,15 @@ const notificationServiceMocks = vi.hoisted(() => ({
   matchInviteNotificationKey: (matchId: string) => `match:${matchId}:invite`,
 }))
 
+const presenceServiceMocks = vi.hoisted(() => ({
+  listFriends: vi.fn(),
+  updatePlayerPresenceById: vi.fn(),
+}))
+
 vi.mock('../services/matchService.js', () => matchServiceMocks)
 vi.mock('../services/notificationService.js', () => notificationServiceMocks)
+vi.mock('../services/friendService.js', () => ({ listFriends: presenceServiceMocks.listFriends }))
+vi.mock('../services/playerService.js', () => ({ updatePlayerPresenceById: presenceServiceMocks.updatePlayerPresenceById }))
 
 let httpServer: HttpServer | null = null
 const sockets: ClientSocket[] = []
@@ -319,6 +326,10 @@ describe('realtime notifications', () => {
     notificationServiceMocks.createNotification.mockResolvedValue(notificationView())
     notificationServiceMocks.dismissNotificationByDedupeKey.mockReset()
     notificationServiceMocks.dismissNotificationByDedupeKey.mockResolvedValue(false)
+    presenceServiceMocks.listFriends.mockReset()
+    presenceServiceMocks.listFriends.mockResolvedValue([])
+    presenceServiceMocks.updatePlayerPresenceById.mockReset()
+    presenceServiceMocks.updatePlayerPresenceById.mockResolvedValue(playerA)
   })
 
   afterEach(async () => {
@@ -348,6 +359,75 @@ describe('realtime notifications', () => {
     await connectClient(port, 'token_a')
 
     expect(getRealtimeHealth()).toMatchObject({ initialized: true, connectedSockets: 1, onlinePlayers: 0 })
+  })
+
+  it('persiste et diffuse la presence reelle a la connexion, au masquage puis a la deconnexion', async () => {
+    httpServer = createServer()
+    initRealtime(httpServer, {
+      authenticateToken: async (token) => {
+        if (token === 'token_a') {
+          return { clerkUserId: 'clerk_a', playerId: 'player_a', player: { ...playerA, presenceStatus: 'offline', presenceUpdatedAt: new Date().toISOString() } }
+        }
+
+        if (token === 'token_b') {
+          return { clerkUserId: 'clerk_b', playerId: 'player_b', player: { ...playerB, presenceStatus: 'offline', presenceUpdatedAt: new Date().toISOString() } }
+        }
+
+        return null
+      },
+    })
+    presenceServiceMocks.listFriends.mockImplementation(async (playerId) => playerId === 'player_a' ? [{ id: 'player_b' }] : [])
+    const port = await listen(httpServer)
+    const clientB = await connectClient(port, 'token_b')
+    const onlineEvent = new Promise<{ reason: string; player: { id: string; presenceStatus: string } }>((resolve) => {
+      clientB.once('presence:changed', resolve)
+    })
+    const clientA = await connectClient(port, 'token_a')
+
+    await expect(onlineEvent).resolves.toMatchObject({
+      reason: 'presence_online',
+      player: { id: 'player_a', presenceStatus: 'online' },
+    })
+    await expect.poll(() => presenceServiceMocks.updatePlayerPresenceById.mock.calls.length).toBe(2)
+    expect(presenceServiceMocks.updatePlayerPresenceById).toHaveBeenLastCalledWith(
+      'player_a',
+      'online',
+      expect.any(Date),
+    )
+    expect(getRealtimeHealth()).toMatchObject({ connectedSockets: 2, onlinePlayers: 2 })
+
+    const awayEvent = new Promise<{ reason: string; player: { id: string; presenceStatus: string } }>((resolve) => {
+      clientB.once('presence:changed', resolve)
+    })
+    clientA.emit('presence:activity', { active: false })
+
+    await expect(awayEvent).resolves.toMatchObject({
+      reason: 'presence_away',
+      player: { id: 'player_a', presenceStatus: 'away' },
+    })
+    await expect.poll(() => presenceServiceMocks.updatePlayerPresenceById.mock.calls.length).toBe(3)
+    expect(presenceServiceMocks.updatePlayerPresenceById).toHaveBeenLastCalledWith(
+      'player_a',
+      'away',
+      expect.any(Date),
+    )
+    expect(getRealtimeHealth()).toMatchObject({ connectedSockets: 2, onlinePlayers: 1 })
+
+    const offlineEvent = new Promise<{ reason: string; player: { id: string; presenceStatus: string } }>((resolve) => {
+      clientB.once('presence:changed', resolve)
+    })
+    clientA.disconnect()
+
+    await expect(offlineEvent).resolves.toMatchObject({
+      reason: 'presence_offline',
+      player: { id: 'player_a', presenceStatus: 'offline' },
+    })
+    await expect.poll(() => presenceServiceMocks.updatePlayerPresenceById.mock.calls.length).toBe(4)
+    expect(presenceServiceMocks.updatePlayerPresenceById).toHaveBeenLastCalledWith(
+      'player_a',
+      'offline',
+      expect.any(Date),
+    )
   })
 
   it('envoie les evenements sociaux uniquement aux rooms des joueurs cibles', async () => {

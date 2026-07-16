@@ -1,14 +1,11 @@
 import { Router } from 'express'
 import { badRequest } from '../errors.js'
 import { getRequiredAuth } from '../middleware/auth.js'
-import { emitPresenceChanged } from '../realtime/notifications.js'
-import { parsePresencePayload, parseProfilePayload, parseTimeZonePayload } from '../schemas/profileSchema.js'
-import { listFriends } from '../services/friendService.js'
+import { parseProfilePayload, parseTimeZonePayload } from '../schemas/profileSchema.js'
 import {
   getCurrentPlayer,
   isPlayerProfileComplete,
   ProfileServiceError,
-  updatePlayerPresence,
   updatePlayerTimeZone,
   upsertPlayerProfile,
 } from '../services/playerService.js'
@@ -99,23 +96,6 @@ export function profileRoutes() {
       const { clerkUserId } = getRequiredAuth(req)
       const payload = parseTimeZonePayload(req.body)
       const player = await updatePlayerTimeZone(clerkUserId, payload.timeZone)
-
-      res.json({
-        user: serializeProfileUser(player),
-      })
-    } catch (error) {
-      next(error)
-    }
-  })
-
-  router.put('/me/presence', async (req, res, next) => {
-    try {
-      const { clerkUserId } = getRequiredAuth(req)
-      const payload = parsePresencePayload(req.body)
-      const player = await updatePlayerPresence(clerkUserId, payload.presenceStatus)
-      const friends = await listFriends(player.id)
-
-      emitPresenceChanged([player.id, ...friends.map((friend) => friend.id)], 'presence_updated')
 
       res.json({
         user: serializeProfileUser(player),

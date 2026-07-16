@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import type { Socket } from 'socket.io-client'
-import { ApiRequestError, type ChallengeMode, type MatchData, type NotificationData, type TempoProgressData } from '../lib/api'
+import { ApiRequestError, type ChallengeMode, type MatchData, type NotificationData, type PresenceStatus, type TempoProgressData } from '../lib/api'
 import { waitForAuthToken } from '../lib/authToken'
 import { createClientCommandId } from '../lib/clientCommandId'
 import type { SkillTag } from '../lib/game'
@@ -55,6 +55,14 @@ export type MatchTempoAnswerRecordedPayload = RealtimePayload & {
 
 export type NotificationsRealtimePayload = RealtimePayload & {
   notification?: NotificationData
+}
+
+export type PresenceRealtimePayload = RealtimePayload & {
+  player: {
+    id: string
+    presenceStatus: PresenceStatus
+    presenceUpdatedAt: string
+  }
 }
 
 export type RealtimeConfigPayload = {
@@ -124,7 +132,7 @@ export function realtimeCommandTimeoutMs(eventName: string) {
 
 type RealtimeHandlers = {
   onSocialChanged?: (payload: RealtimePayload) => void
-  onPresenceChanged?: (payload: RealtimePayload) => void
+  onPresenceChanged?: (payload: PresenceRealtimePayload) => void
   onMatchChanged?: (payload: MatchRealtimePayload) => void
   onRoomEvent?: (payload: RoomRealtimeEvent) => void
   onRoomSnapshot?: (payload: RoomSnapshotPayload) => void
@@ -286,7 +294,7 @@ async function ensureRealtimeSocket(getToken: TokenProvider) {
       notifyRealtimeReady(false)
     })
     socket.on('social:changed', (payload: RealtimePayload) => dispatchRealtimeEvent('onSocialChanged', payload))
-    socket.on('presence:changed', (payload: RealtimePayload) => dispatchRealtimeEvent('onPresenceChanged', payload))
+    socket.on('presence:changed', (payload: PresenceRealtimePayload) => dispatchRealtimeEvent('onPresenceChanged', payload))
     socket.on('match:changed', (payload: MatchRealtimePayload) => dispatchRealtimeEvent('onMatchChanged', payload))
     socket.on('room:event', (payload: RoomRealtimeEvent) => dispatchRealtimeEvent('onRoomEvent', payload))
     socket.on('room:snapshot', (payload: RoomSnapshotPayload) => dispatchRealtimeEvent('onRoomSnapshot', payload))
@@ -425,6 +433,12 @@ export function useRealtimeEvents({
     })
   }, [])
 
+  const setPresenceActivity = useCallback((active: boolean) => {
+    if (sharedSocket?.connected) {
+      sharedSocket.emit('presence:activity', { active })
+    }
+  }, [])
+
   const updateMatchConfig = useCallback((matchId: string, config: RealtimeConfigPayload) => {
     return emitRealtimeCommand<{ match: MatchData }>('match:update-config', { matchId, config })
   }, [emitRealtimeCommand])
@@ -504,6 +518,7 @@ export function useRealtimeEvents({
     requestMatchRematch,
     submitMatchResult,
     submitTempoAnswer,
+    setPresenceActivity,
     updateMatchProgress,
     updateMatchConfig,
   }

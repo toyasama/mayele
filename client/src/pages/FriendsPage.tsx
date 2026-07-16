@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { PageFrame } from '../components/layout/PageFrame'
 import { ResponsiveTabs } from '../components/layout/ResponsiveTabs'
 import { useAuth } from '../context/auth'
-import { useRealtimeEvents } from '../hooks/useRealtimeEvents'
+import { useRealtimeEvents, type PresenceRealtimePayload } from '../hooks/useRealtimeEvents'
 import { readCache, SOCIAL_CACHE_PREFIX, userCacheKey, writeCache } from '../lib/appCache'
 import { api, type FriendRequestData, type PublicPlayer } from '../lib/api'
 import type { PresenceStatus } from '../lib/api'
@@ -77,10 +77,6 @@ function presenceLabel(status: PresenceStatus) {
 
   if (status === 'away') {
     return 'Absent'
-  }
-
-  if (status === 'busy') {
-    return 'Occupe'
   }
 
   return 'Hors ligne'
@@ -260,11 +256,30 @@ export function FriendsPage() {
     })
   }, [refreshSocialData])
 
+  const applyRealtimePresence = useCallback((payload: PresenceRealtimePayload) => {
+    const patchPlayer = (player: PublicPlayer) => {
+      if (player.id !== payload.player.id) {
+        return player
+      }
+
+      return {
+        ...player,
+        presenceStatus: payload.player.presenceStatus,
+        presenceUpdatedAt: payload.player.presenceUpdatedAt,
+      }
+    }
+
+    setFriends((current) => current.map(patchPlayer))
+    setIncomingRequests((current) => current.map((request) => ({ ...request, player: patchPlayer(request.player) })))
+    setOutgoingRequests((current) => current.map((request) => ({ ...request, player: patchPlayer(request.player) })))
+    setSearchResults((current) => current.map(patchPlayer))
+  }, [])
+
   const realtimeCommands = useRealtimeEvents({
     isAuthenticated,
     getToken,
     onSocialChanged: refreshSocialDataFromRealtime,
-    onPresenceChanged: refreshSocialDataFromRealtime,
+    onPresenceChanged: applyRealtimePresence,
   })
 
   useEffect(() => {

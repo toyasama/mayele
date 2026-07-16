@@ -195,7 +195,7 @@ async function createAcceptedRoom(browser: Browser, request: APIRequestContext) 
   await waitForRealtimeReady(guest.page)
   await guest.page.getByRole('button', { name: /Entrer dans le salon/i }).click()
 
-  await expect(host.page.getByText(/Dans le salon/i).first()).toBeVisible()
+  await expect(host.page.getByRole('button', { name: /Fermer le salon/i })).toBeVisible()
   await expect(guest.page.getByText(/En attente du maitre du salon/i).first()).toBeVisible()
 
   return { host, guest }
@@ -474,7 +474,7 @@ test('latence entree salon dans le budget realtime CI', async ({ browser, reques
     await guest.page.goto(host.page.url())
     await expect(guest.page.getByRole('button', { name: /Entrer dans le salon/i })).toBeVisible()
 
-    const hostSeenAtPromise = observeTextEpochMs(host.page, 'Dans le salon')
+    const hostSeenAtPromise = observeTextEpochMs(host.page, 'Fermer le salon')
     const guestStartedAt = await clickButtonInPageAndReturnEpochMs(guest.page, 'Entrer dans le salon')
     const hostSeenAt = await hostSeenAtPromise
     const latencyMs = hostSeenAt - guestStartedAt

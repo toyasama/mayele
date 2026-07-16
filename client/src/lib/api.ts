@@ -2,7 +2,7 @@ import { waitForAuthToken } from './authToken'
 import type { AnswerResult, SkillTag } from './game'
 import { resolveApiBase } from './runtimeConfig'
 
-export type PresenceStatus = 'online' | 'away' | 'busy' | 'offline'
+export type PresenceStatus = 'online' | 'away' | 'offline'
 
 const API_BASE = resolveApiBase(import.meta.env.VITE_API_URL, undefined, { isProduction: import.meta.env.PROD })
 
@@ -381,13 +381,6 @@ export const api = {
       method: 'PUT',
       getToken,
       body: JSON.stringify({ timeZone }),
-    }),
-
-  updatePresenceStatus: (getToken: TokenProvider, presenceStatus: PresenceStatus) =>
-    request<{ user: AuthUser }>('/me/presence', {
-      method: 'PUT',
-      getToken,
-      body: JSON.stringify({ presenceStatus }),
     }),
 
   getDashboard: (getToken: TokenProvider) =>

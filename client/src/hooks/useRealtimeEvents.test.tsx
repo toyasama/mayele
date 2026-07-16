@@ -67,6 +67,7 @@ describe('useRealtimeEvents', () => {
 
     await waitFor(() => {
       expect(socketMocks.fakeSocket.connect).toHaveBeenCalled()
+      expect(socketMocks.handlers.get('realtime:ready')).toHaveLength(1)
     })
 
     const joinPromise = result.current.joinRoom('room_1')
@@ -157,4 +158,5 @@ describe('useRealtimeEvents', () => {
     expect(realtimeCommandTimeoutMs('room:join')).toBe(4_000)
     expect(realtimeCommandTimeoutMs('match:update-progress')).toBe(4_000)
   })
+
 })

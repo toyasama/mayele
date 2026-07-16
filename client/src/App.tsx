@@ -6,6 +6,7 @@ import { ProtectedRoute } from './components/ProtectedRoute'
 import { TimeZonePrompt } from './components/TimeZonePrompt'
 import { useAuth } from './context/auth'
 import { useProfile } from './context/profile-context'
+import { usePresenceActivity } from './hooks/usePresenceActivity'
 import { useRealtimeEvents } from './hooks/useRealtimeEvents'
 import { DASHBOARD_CACHE_PREFIX, readCache, SOCIAL_CACHE_PREFIX, userCacheKey, writeCache } from './lib/appCache'
 import { api, ApiRequestError, type DashboardData, type FriendRequestData, type NotificationData, type PresenceStatus, type PublicPlayer } from './lib/api'
@@ -71,8 +72,7 @@ function BellIcon() {
 
 function App() {
   const { user, isAuthenticated, logout, getToken } = useAuth()
-  const { profile, refreshProfile } = useProfile()
-  const [presenceSaving, setPresenceSaving] = useState(false)
+  const { profile, updateProfilePresence } = useProfile()
   const [notifications, setNotifications] = useState<NotificationData[]>([])
   const [unreadNotifications, setUnreadNotifications] = useState(0)
   const [notificationPanelOpen, setNotificationPanelOpen] = useState(false)
@@ -81,7 +81,7 @@ function App() {
   const notificationsLoadedRef = useRef(false)
   const displayUser = profile ?? user
   const displayName = formatDisplayName(displayUser)
-  const presenceStatus = displayUser?.presenceStatus ?? 'online'
+  const presenceStatus = displayUser?.presenceStatus ?? 'offline'
 
   const addFloatingToast = useCallback((toast: FloatingToast) => {
     setFloatingToasts((current) => {
@@ -155,9 +155,10 @@ function App() {
     }
   }, [addFloatingToast])
 
-  useRealtimeEvents({
+  const realtime = useRealtimeEvents({
     isAuthenticated: Boolean(isAuthenticated && profile?.profileComplete),
     getToken,
+    onPresenceChanged: (payload) => updateProfilePresence(payload.player),
     onNotificationsChanged: (payload) => {
       if (payload.notification) {
         applyRealtimeNotification(payload.notification)
@@ -174,6 +175,12 @@ function App() {
       })
     },
     onConnectionError: (error) => reportBackgroundError('Connexion temps reel impossible.', error),
+  })
+
+  usePresenceActivity({
+    enabled: Boolean(isAuthenticated && profile?.profileComplete),
+    isRealtimeReady: realtime.isRealtimeReady,
+    setPresenceActivity: realtime.setPresenceActivity,
   })
 
   useEffect(() => {
@@ -259,20 +266,6 @@ function App() {
     void logout()
   }
 
-  async function handlePresenceChange(nextStatus: PresenceStatus) {
-    setPresenceSaving(true)
-
-    try {
-      await api.updatePresenceStatus(getToken, nextStatus)
-      await refreshProfile()
-    } catch (error) {
-      reportBackgroundError('Mise a jour de presence impossible.', error)
-      await refreshProfile()
-    } finally {
-      setPresenceSaving(false)
-    }
-  }
-
   async function handleMarkNotificationRead(notification: NotificationData) {
     if (notification.readAt) {
       setNotificationPanelOpen(false)
@@ -322,22 +315,24 @@ function App() {
     }
   }
 
-  function renderPresenceControl(className = '') {
+  function presenceLabel(status: PresenceStatus) {
+    if (status === 'online') {
+      return 'En ligne'
+    }
+
+    if (status === 'away') {
+      return 'Absent'
+    }
+
+    return 'Hors ligne'
+  }
+
+  function renderPresenceIndicator(className = '') {
     return (
-      <label className={`presence-control presence-${presenceStatus} ${className}`}>
+      <span className={`presence-control presence-${presenceStatus} ${className}`} aria-label={`Statut : ${presenceLabel(presenceStatus)}`}>
         <span className="presence-dot" aria-hidden="true" />
-        <select
-          aria-label="Statut en ligne"
-          value={presenceStatus}
-          disabled={presenceSaving}
-          onChange={(event) => void handlePresenceChange(event.target.value as PresenceStatus)}
-        >
-          <option value="online">En ligne</option>
-          <option value="away">Absent</option>
-          <option value="busy">Occupe</option>
-          <option value="offline">Hors ligne</option>
-        </select>
-      </label>
+        <span className="presence-label">{presenceLabel(presenceStatus)}</span>
+      </span>
     )
   }
 
@@ -472,7 +467,7 @@ function App() {
         displayName={displayName}
         displayUser={displayUser}
         notificationsSlot={isAuthenticated ? renderNotificationCenter() : null}
-        presenceSlot={isAuthenticated ? renderPresenceControl : undefined}
+        presenceSlot={isAuthenticated ? renderPresenceIndicator : undefined}
         onLogout={handleLogout}
       >
         {isAuthenticated ? <TimeZonePrompt /> : null}

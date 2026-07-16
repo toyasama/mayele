@@ -155,7 +155,7 @@ export function e2eRoutes() {
               username: player.username,
               name: player.name,
               timeZone: 'Europe/Paris',
-              presenceStatus: 'online',
+              presenceStatus: 'offline',
               presenceUpdatedAt: new Date(),
             },
             create: {
@@ -167,7 +167,7 @@ export function e2eRoutes() {
               username: player.username,
               name: player.name,
               timeZone: 'Europe/Paris',
-              presenceStatus: 'online',
+              presenceStatus: 'offline',
               presenceUpdatedAt: new Date(),
             },
           }),

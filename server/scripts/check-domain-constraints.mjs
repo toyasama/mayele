@@ -14,7 +14,7 @@ if (!databaseUrl) {
 }
 
 const checks = [
-  ['players.presence_status', "SELECT presence_status AS value, count(*)::int AS count FROM players WHERE presence_status NOT IN ('online', 'away', 'busy', 'offline') GROUP BY presence_status"],
+  ['players.presence_status', "SELECT presence_status AS value, count(*)::int AS count FROM players WHERE presence_status NOT IN ('online', 'away', 'offline') GROUP BY presence_status"],
   ['notifications.type', "SELECT type AS value, count(*)::int AS count FROM notifications WHERE type NOT IN ('friend_request_received', 'friend_request_accepted', 'match_invite_received', 'match_invite_accepted', 'match_invite_declined') GROUP BY type"],
   ['notifications.status', "SELECT status AS value, count(*)::int AS count FROM notifications WHERE status NOT IN ('active', 'dismissed') GROUP BY status"],
   ['friend_requests.status', "SELECT status AS value, count(*)::int AS count FROM friend_requests WHERE status NOT IN ('pending', 'accepted', 'declined', 'cancelled') GROUP BY status"],

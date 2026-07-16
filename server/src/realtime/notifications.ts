@@ -7,6 +7,7 @@ import { ApiError } from '../errors.js'
 import { logger } from '../lib/logger.js'
 import { prisma } from '../lib/prisma.js'
 import { captureException } from '../lib/sentry.js'
+import { listFriends } from '../services/friendService.js'
 import {
   parseRealtimeTempoAnswerCommand,
   type TempoAnswerPayload,
@@ -28,6 +29,7 @@ import {
   type MatchView,
 } from '../services/matchService.js'
 import { serializeMatch, type SerializedMatch } from '../services/matchPresenter.js'
+import { updatePlayerPresenceById } from '../services/playerService.js'
 import {
   applyTempoAnswerProgressDraft,
   applyTempoFinalDraft,
@@ -39,6 +41,7 @@ import {
   type RealtimePublicPlayer,
 } from './matchDrafts.js'
 import { registerMatchCommandHandlers } from './matchCommandHandlers.js'
+import { PresenceRuntime, type PresenceTransition } from './presenceRuntime.js'
 
 type RealtimeIdentity = {
   clerkUserId: string
@@ -53,6 +56,10 @@ type RealtimeEventPayload = {
 
 type NotificationsChangedPayload = RealtimeEventPayload & {
   notification?: SerializedNotification
+}
+
+type PresenceChangedPayload = RealtimeEventPayload & {
+  player: RealtimePublicPlayer
 }
 
 type MatchChangedPayload = RealtimeEventPayload & {
@@ -127,7 +134,8 @@ let io: Server | null = null
 const matchSnapshotCache = new Map<string, SerializedMatch>()
 const matchPersistenceQueue = new Map<string, Promise<unknown>>()
 const tempoMatchRuntimes = new Map<string, TempoMatchRuntime>()
-const onlinePlayers = new Map<string, { player: RealtimePublicPlayer; socketIds: Set<string> }>()
+const presenceRuntime = new PresenceRuntime()
+const presencePersistenceQueues = new Map<string, Promise<void>>()
 const MATCH_STATUS_ORDER: Record<string, number> = {
   pending: 10,
   accepted: 20,
@@ -143,6 +151,7 @@ const REALTIME_RATE_WINDOW_MS = 60 * 1000
 const REALTIME_DEFAULT_COMMAND_LIMIT = 180
 const REALTIME_COMMAND_ACK_WARN_MS = 5_000
 const REALTIME_COMMAND_EVENTS = new Set([
+  'presence:activity',
   'room:join',
   'match:update-config',
   'match:create-invitation',
@@ -159,6 +168,7 @@ const REALTIME_COMMAND_EVENTS = new Set([
   'match:submit-tempo-answer',
 ])
 const REALTIME_COMMAND_LIMITS: Record<string, number> = {
+  'presence:activity': 240,
   'room:join': 120,
   'match:update-config': 120,
   'match:create-invitation': 30,
@@ -180,12 +190,62 @@ export function getRealtimeHealth() {
   return {
     initialized: Boolean(io),
     connectedSockets: io?.sockets.sockets.size ?? 0,
-    onlinePlayers: onlinePlayers.size,
+    onlinePlayers: presenceRuntime.onlinePlayerCount,
   }
 }
 
 function playerRoom(playerId: string) {
   return `player:${playerId}`
+}
+
+function queuePresenceTransition(transition: PresenceTransition | null) {
+  if (!transition?.shouldPersist) {
+    return
+  }
+
+  const previous = presencePersistenceQueues.get(transition.playerId) ?? Promise.resolve()
+  const next = previous
+    .catch((error) => {
+      logger.error('presence_persistence_queue_failed', {
+        playerId: transition.playerId,
+        message: error instanceof Error ? error.message : String(error),
+      })
+      captureException(error)
+    })
+    .then(async () => {
+      try {
+        await updatePlayerPresenceById(
+          transition.playerId,
+          transition.status,
+          new Date(transition.player.presenceUpdatedAt),
+        )
+
+        if (!transition.shouldBroadcast) {
+          return
+        }
+
+        const friends = await listFriends(transition.playerId)
+        emitPresenceChanged(
+          [transition.playerId, ...friends.map((friend) => friend.id)],
+          `presence_${transition.status}`,
+          transition.player,
+        )
+      } catch (error) {
+        logger.error('presence_persistence_failed', {
+          playerId: transition.playerId,
+          status: transition.status,
+          message: error instanceof Error ? error.message : String(error),
+        })
+        captureException(error)
+      }
+    })
+
+  presencePersistenceQueues.set(transition.playerId, next)
+  void next.finally(() => {
+    if (presencePersistenceQueues.get(transition.playerId) === next) {
+      presencePersistenceQueues.delete(transition.playerId)
+    }
+  })
 }
 
 function isRealtimeCommandAllowed(playerId: string, eventName: string, now = Date.now()) {
@@ -305,27 +365,6 @@ function serializeRealtimePlayer(player: {
     totalXp: player.totalXp,
     presenceStatus: player.presenceStatus,
     presenceUpdatedAt: player.presenceUpdatedAt.toISOString(),
-  }
-}
-
-function rememberOnlinePlayer(playerId: string, socketId: string, player: RealtimePublicPlayer) {
-  const current = onlinePlayers.get(playerId) ?? { player, socketIds: new Set<string>() }
-  current.player = player
-  current.socketIds.add(socketId)
-  onlinePlayers.set(playerId, current)
-}
-
-function forgetOnlinePlayer(playerId: string, socketId: string) {
-  const current = onlinePlayers.get(playerId)
-
-  if (!current) {
-    return
-  }
-
-  current.socketIds.delete(socketId)
-
-  if (current.socketIds.size === 0) {
-    onlinePlayers.delete(playerId)
   }
 }
 
@@ -803,7 +842,8 @@ export async function resetRealtimeStateForTests() {
     }
   }
   tempoMatchRuntimes.clear()
-  onlinePlayers.clear()
+  presenceRuntime.clear()
+  presencePersistenceQueues.clear()
   io?.sockets.sockets.forEach((socket) => {
     socket.disconnect(true)
   })
@@ -929,7 +969,8 @@ export function initRealtime(httpServer: HttpServer, options: InitRealtimeOption
     }
   }
   tempoMatchRuntimes.clear()
-  onlinePlayers.clear()
+  presenceRuntime.clear()
+  presencePersistenceQueues.clear()
 
   const socketServer = new Server(httpServer, {
     allowRequest: (request, callback) => {
@@ -1011,7 +1052,7 @@ export function initRealtime(httpServer: HttpServer, options: InitRealtimeOption
     }
 
     if (socket.data.publicPlayer) {
-      rememberOnlinePlayer(playerId, socket.id, socket.data.publicPlayer as RealtimePublicPlayer)
+      queuePresenceTransition(presenceRuntime.connect(playerId, socket.id, socket.data.publicPlayer as RealtimePublicPlayer))
     }
 
     logger.info('realtime_connected', {
@@ -1050,12 +1091,20 @@ export function initRealtime(httpServer: HttpServer, options: InitRealtimeOption
       next(new Error('rate_limit_exceeded'))
     })
     socket.on('disconnect', (reason) => {
-      forgetOnlinePlayer(playerId, socket.id)
+      queuePresenceTransition(presenceRuntime.disconnect(playerId, socket.id))
       logger.info('realtime_disconnected', {
         playerId,
         socketId: socket.id,
         reason,
       })
+    })
+
+    socket.on('presence:activity', (value: unknown) => {
+      if (!value || typeof value !== 'object' || !('active' in value) || typeof value.active !== 'boolean') {
+        return
+      }
+
+      queuePresenceTransition(presenceRuntime.setActivity(playerId, socket.id, value.active))
     })
 
     socket.on('room:join', (value: unknown, ack?: (response: RealtimeCommandAck<{ joined: true }>) => void) => {
@@ -1081,7 +1130,7 @@ export function initRealtime(httpServer: HttpServer, options: InitRealtimeOption
     registerMatchCommandHandlers(socket, {
       playerId,
       publicPlayer: socket.data.publicPlayer as RealtimePublicPlayer | undefined,
-      getOnlinePlayer: (targetPlayerId) => onlinePlayers.get(targetPlayerId)?.player ?? null,
+      getConnectedPlayer: (targetPlayerId) => presenceRuntime.getConnectedPlayer(targetPlayerId),
       getCachedMatch: (matchId) => matchSnapshotCache.get(matchId) ?? null,
       deleteCachedMatch: (matchId) => {
         matchSnapshotCache.delete(matchId)
@@ -1145,14 +1194,14 @@ export function emitSocialChanged(playerIds: string[], reason: string) {
   }
 }
 
-export function emitPresenceChanged(playerIds: string[], reason: string) {
+export function emitPresenceChanged(playerIds: string[], reason: string, player: RealtimePublicPlayer) {
   const socketServer = io
 
   if (!socketServer) {
     return
   }
 
-  const payload: RealtimeEventPayload = { reason, at: new Date().toISOString() }
+  const payload: PresenceChangedPayload = { reason, at: new Date().toISOString(), player }
 
   for (const playerId of new Set(playerIds)) {
     socketServer.to(playerRoom(playerId)).emit('presence:changed', payload)
@@ -1293,7 +1342,8 @@ export function closeRealtime() {
     }
   }
   tempoMatchRuntimes.clear()
-  onlinePlayers.clear()
+  presenceRuntime.clear()
+  presencePersistenceQueues.clear()
   realtimeRateBuckets.clear()
   clearRoomRuntimeState()
 }

@@ -42,6 +42,7 @@ const prismaMock = {
     findUnique: vi.fn(async () => existingPlayer),
     create: vi.fn(async () => existingPlayer),
     update: vi.fn(async () => existingPlayer),
+    updateMany: vi.fn(async () => ({ count: 0 })),
   },
 }
 
@@ -53,8 +54,9 @@ const {
   getOrCreatePlayer,
   getCurrentPlayer,
   isPlayerProfileComplete,
+  markAllPlayersOffline,
   ProfileServiceError,
-  updatePlayerPresence,
+  updatePlayerPresenceById,
   updatePlayerTimeZone,
   upsertPlayerProfile,
 } = await import('./playerService.js')
@@ -229,18 +231,31 @@ describe('updatePlayerTimeZone', () => {
   })
 })
 
-describe('updatePlayerPresence', () => {
-  it('met a jour le statut de presence du joueur', async () => {
-    prismaMock.player.findUnique.mockResolvedValue(existingPlayer)
-    prismaMock.player.update.mockResolvedValue({ ...existingPlayer, presenceStatus: 'busy' })
+describe('markAllPlayersOffline', () => {
+  it('reinitialise uniquement les presences encore actives au demarrage serveur', async () => {
+    const now = new Date('2026-07-16T10:00:00.000Z')
 
-    const player = await updatePlayerPresence('clerk_123', 'busy')
+    await markAllPlayersOffline(now)
 
-    expect(player.presenceStatus).toBe('busy')
+    expect(prismaMock.player.updateMany).toHaveBeenCalledWith({
+      where: { NOT: { presenceStatus: 'offline' } },
+      data: { presenceStatus: 'offline', presenceUpdatedAt: now },
+    })
+  })
+})
+
+describe('updatePlayerPresenceById', () => {
+  it('met a jour le statut de presence autoritatif du joueur', async () => {
+    const updatedAt = new Date('2026-07-16T10:00:00.000Z')
+    prismaMock.player.update.mockResolvedValue({ ...existingPlayer, presenceStatus: 'away', presenceUpdatedAt: updatedAt })
+
+    const player = await updatePlayerPresenceById('player_1', 'away', updatedAt)
+
+    expect(player.presenceStatus).toBe('away')
     expect(prismaMock.player.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'player_1' },
-        data: expect.objectContaining({ presenceStatus: 'busy', presenceUpdatedAt: expect.any(Date) }),
+        data: { presenceStatus: 'away', presenceUpdatedAt: updatedAt },
       }),
     )
   })

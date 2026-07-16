@@ -4,6 +4,7 @@ import { logger } from './lib/logger.js'
 import { prisma } from './lib/prisma.js'
 import { initSentry } from './lib/sentry.js'
 import { initRealtime } from './realtime/notifications.js'
+import { markAllPlayersOffline } from './services/playerService.js'
 import { createServer } from 'node:http'
 
 assertProductionEnv()
@@ -11,6 +12,19 @@ initSentry()
 
 const app = createApp()
 const httpServer = createServer(app)
+
+// The socket registry is process-local. A fresh process has no connected player,
+// so persisted presence must not survive a crash or a deployment.
+try {
+  const { count } = await markAllPlayersOffline()
+  logger.info('presence_reconciled_on_startup', { updatedPlayers: count })
+} catch (error) {
+  logger.error('presence_reconciliation_failed_on_startup', {
+    message: error instanceof Error ? error.message : String(error),
+  })
+  await prisma.$disconnect()
+  process.exit(1)
+}
 
 initRealtime(httpServer)
 

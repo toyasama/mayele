@@ -71,7 +71,7 @@ type MatchRematchCommandAck = RealtimeCommandAck<{
 type MatchCommandContext = {
   playerId: string
   publicPlayer: RealtimePublicPlayer | undefined
-  getOnlinePlayer(playerId: string): RealtimePublicPlayer | null
+  getConnectedPlayer(playerId: string): RealtimePublicPlayer | null
   getCachedMatch(matchId: string): SerializedMatch | null
   deleteCachedMatch(matchId: string): void
   commandIdFromValue(value: unknown): string | null
@@ -257,17 +257,19 @@ export function registerMatchCommandHandlers(socket: Socket, context: MatchComma
       const creatorParticipantId = `participant_${randomUUID()}`
       const opponentParticipantId = `participant_${randomUUID()}`
       const creator = context.publicPlayer
-      const onlineOpponent = context.getOnlinePlayer(command.opponentPlayerId)
+      // A background tab is still connected to the site and can receive an invitation.
+      // `away` is a presentation state, while `offline` means no authenticated socket.
+      const connectedOpponent = context.getConnectedPlayer(command.opponentPlayerId)
       const notificationId = `notification_${randomUUID()}`
 
-      if (creator && onlineOpponent) {
+      if (creator && connectedOpponent) {
         optimisticSnapshot = optimisticInvitationSnapshot({
           matchId,
           roomId,
           creatorParticipantId,
           opponentParticipantId,
           creator,
-          opponent: onlineOpponent,
+          opponent: connectedOpponent,
           command,
           now,
         })

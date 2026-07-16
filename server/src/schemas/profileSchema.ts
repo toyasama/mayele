@@ -4,8 +4,6 @@ import { badRequest } from '../errors.js'
 
 const USERNAME_PATTERN = /^[a-zA-Z0-9_]{3,24}$/
 const BIRTH_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
-export const PRESENCE_STATUSES = ['online', 'away', 'busy', 'offline'] as const
-export type PresenceStatus = (typeof PRESENCE_STATUSES)[number]
 
 function parseBirthDate(value: string) {
   if (!BIRTH_DATE_PATTERN.test(value)) {
@@ -101,18 +99,4 @@ export function parseTimeZonePayload(value: unknown) {
   }
 
   return { timeZone: normalizeTimeZone(parsed.data.timeZone) }
-}
-
-const presencePayloadSchema = z.object({
-  presenceStatus: z.enum(PRESENCE_STATUSES),
-})
-
-export function parsePresencePayload(value: unknown) {
-  const parsed = presencePayloadSchema.safeParse(value)
-
-  if (!parsed.success) {
-    throw badRequest('Statut invalide.')
-  }
-
-  return parsed.data
 }

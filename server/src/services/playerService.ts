@@ -1,8 +1,8 @@
 import { getClerkUser } from '../middleware/auth.js'
 import { normalizeTimeZone } from '../domain/daily.js'
+import type { PresenceStatus } from '../domain/presence.js'
 import { getClerkUserFromCache, invalidateClerkUserCache, setClerkUserInCache } from '../lib/clerkCache.js'
 import { prisma } from '../lib/prisma.js'
-import type { PresenceStatus } from '../schemas/profileSchema.js'
 import { invalidateDashboardCache } from './dashboardService.js'
 
 export class ProfileServiceError extends Error {
@@ -177,14 +177,24 @@ export async function updatePlayerTimeZone(clerkUserId: string, timeZone: string
   return player
 }
 
-export async function updatePlayerPresence(clerkUserId: string, presenceStatus: PresenceStatus) {
-  const existingPlayer = await syncPlayerProfile(clerkUserId)
-
+export async function updatePlayerPresenceById(playerId: string, presenceStatus: PresenceStatus, presenceUpdatedAt = new Date()) {
   return prisma.player.update({
-    where: { id: existingPlayer.id },
+    where: { id: playerId },
     data: {
       presenceStatus,
-      presenceUpdatedAt: new Date(),
+      presenceUpdatedAt,
+    },
+  })
+}
+
+export async function markAllPlayersOffline(presenceUpdatedAt = new Date()) {
+  return prisma.player.updateMany({
+    where: {
+      NOT: { presenceStatus: 'offline' },
+    },
+    data: {
+      presenceStatus: 'offline',
+      presenceUpdatedAt,
     },
   })
 }

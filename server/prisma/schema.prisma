@@ -18,7 +18,7 @@ model Player {
   username    String?       @unique
   avatarUrl   String?       @map("avatar_url")
   timeZone    String        @default("Europe/Paris") @map("time_zone")
-  presenceStatus String     @default("online") @map("presence_status")
+  presenceStatus String     @default("offline") @map("presence_status")
   presenceUpdatedAt DateTime @default(now()) @map("presence_updated_at")
   totalXp     Int           @default(0) @map("total_xp")
   createdAt   DateTime      @default(now()) @map("created_at")
