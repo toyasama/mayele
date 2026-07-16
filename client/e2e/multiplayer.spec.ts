@@ -1,4 +1,5 @@
 import { expect, type APIRequestContext, type Browser, type Page, type TestInfo, test } from '@playwright/test'
+import { waitForRealtimeReady } from './realtime'
 
 const APP_URL = process.env.E2E_APP_URL ?? 'http://127.0.0.1:5173'
 const API_URL = process.env.E2E_API_URL ?? 'http://127.0.0.1:4000'
@@ -167,34 +168,6 @@ async function proposeChallenge(page: Page) {
   await button.click()
 }
 
-async function waitForRealtimeReady(page: Page, timeoutMs = 5000) {
-  await page.evaluate(
-    (timeout) =>
-      new Promise<void>((resolve, reject) => {
-        const currentWindow = window as typeof window & { __mayeleRealtimeReadyAt?: number }
-
-        if (currentWindow.__mayeleRealtimeReadyAt) {
-          resolve()
-          return
-        }
-
-        const timeoutId = window.setTimeout(() => {
-          window.removeEventListener('mayele:realtime-ready', handleReady)
-          reject(new Error('Realtime ready not observed'))
-        }, timeout)
-
-        function handleReady() {
-          window.clearTimeout(timeoutId)
-          window.removeEventListener('mayele:realtime-ready', handleReady)
-          resolve()
-        }
-
-        window.addEventListener('mayele:realtime-ready', handleReady)
-      }),
-    timeoutMs,
-  )
-}
-
 async function createInvitedRoom(browser: Browser, request: APIRequestContext) {
   const reset = await request.post(`${API_URL}/api/e2e/reset-multiplayer`)
   expect(reset.ok()).toBeTruthy()
@@ -209,6 +182,7 @@ async function createInvitedRoom(browser: Browser, request: APIRequestContext) {
   await expect(host.page.getByRole('button', { name: /Bob Guest/i })).toBeVisible()
   await host.page.getByRole('button', { name: /Bob Guest/i }).click()
   await expect(host.page).toHaveURL(/match=/)
+  await expect(host.page.getByRole('button', { name: /Annuler l'invitation/i })).toBeVisible()
   await waitForRealtimeReady(host.page)
 
   return { host, guest }

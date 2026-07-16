@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host",
-    "dev:e2e": "vite --host 127.0.0.1 --mode e2e",
+    "serve:e2e": "node scripts/serve-e2e.mjs",
     "check:runtime-config": "node scripts/check-runtime-config.mjs",
     "build": "npm run check:runtime-config && tsc -b && vite build",
     "lint": "eslint .",

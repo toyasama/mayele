@@ -15,7 +15,7 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: "npm run dev:e2e",
+      command: "npm run serve:e2e -- --port 5173",
       cwd: "../server",
       url: "http://127.0.0.1:4000/api/health",
       reuseExistingServer: false,

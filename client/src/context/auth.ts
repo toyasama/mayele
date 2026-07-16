@@ -2,7 +2,9 @@ import { useAuth as useClerkAuth, useClerk, useUser } from '@clerk/react'
 import type { AuthUser } from '../lib/api'
 import { detectBrowserTimeZone } from '../lib/timeZone'
 
-export const isE2EAuthBypassEnabled = import.meta.env.VITE_E2E_AUTH_BYPASS === 'true'
+// Every E2E client build uses `vite build --mode e2e`. Tying the bypass
+// to that build mode keeps the test identity deterministic across CI runners.
+export const isE2EAuthBypassEnabled = import.meta.env.MODE === 'e2e'
 const E2E_HOST_USER: AuthUser = {
   id: 'e2e-host',
   clerkUserId: 'e2e-host',

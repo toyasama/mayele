@@ -31,7 +31,7 @@ export default defineConfig({
       timeout: 120_000,
     },
     {
-      command: `npm run dev:e2e -- --port ${APP_PORT}`,
+      command: `npm run serve:e2e -- --port ${APP_PORT}`,
       env: e2eClientEnvironment(API_URL),
       url: APP_URL,
       reuseExistingServer: false,

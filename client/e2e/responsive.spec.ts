@@ -1,4 +1,5 @@
 import { expect, type Browser, type Page, type TestInfo, test } from '@playwright/test'
+import { waitForRealtimeReady } from './realtime'
 
 const APP_URL = process.env.E2E_APP_URL ?? 'http://127.0.0.1:5174'
 const API_URL = process.env.E2E_API_URL ?? 'http://127.0.0.1:4100'
@@ -359,6 +360,7 @@ test('multijoueur lobby room et arene restent utilisables', async ({ page, brows
   try {
     await page.goto(`${APP_URL}/jeu/multijoueur`)
     await guest.page.goto(`${APP_URL}/jeu/multijoueur`)
+    await Promise.all([waitForRealtimeReady(page), waitForRealtimeReady(guest.page)])
     await expect(page.locator('.multiplayer-lobby-grid')).toBeVisible()
     await expectNoHorizontalOverflow(page, 'multiplayer lobby')
     await attachScreenshot(page, testInfo, 'multiplayer-lobby')
@@ -415,9 +417,13 @@ test('multijoueur lobby room et arene restent utilisables', async ({ page, brows
 
     await page.getByRole('button', { name: /Bob Guest/i }).click()
     await expect(page).toHaveURL(/match=/)
+    await expect(page.getByRole('button', { name: /Annuler l'invitation/i })).toBeVisible()
+    await waitForRealtimeReady(page)
     await guest.page.goto(page.url())
+    await waitForRealtimeReady(guest.page)
     await guest.page.getByRole('button', { name: /Entrer dans le salon/i }).click()
     await expect(page.locator('.multiplayer-room-grid')).toBeVisible()
+    await expect(guest.page.getByText(/En attente du maitre du salon/i).first()).toBeVisible()
     if ((viewport.width ?? 1024) < 768) {
       const mobileRoomNav = page.locator('.multiplayer-mobile-room-nav')
       const roomGrid = page.locator('.multiplayer-room-grid')
