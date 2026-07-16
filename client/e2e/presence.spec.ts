@@ -29,8 +29,10 @@ test('la presence ami suit activement le cycle de vie de son onglet', async ({ b
   const guest = await authenticatedPage(browser, 'guest')
 
   try {
-    await Promise.all([host.page.goto(`${APP_URL}/amis`), guest.page.goto(`${APP_URL}/amis`)])
-    await Promise.all([waitForRealtimeReady(host.page), waitForRealtimeReady(guest.page)])
+    await guest.page.goto(`${APP_URL}/amis`)
+    await waitForRealtimeReady(guest.page)
+    await host.page.goto(`${APP_URL}/amis`)
+    await waitForRealtimeReady(host.page)
 
     const guestCard = friendCard(host.page, 'Bob Guest')
     await expect(guestCard).toContainText('En ligne')

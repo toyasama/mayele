@@ -302,7 +302,9 @@ async function clickButtonInPageAndReturnEpochMs(page: Page, label: string) {
   const button = page.locator('button').filter({ hasText: label }).first()
   await expect(button).toBeVisible()
 
-  const startedAt = Date.now()
+  const startedAt = button.evaluate((element) => new Promise<number>((resolve) => {
+    element.addEventListener('click', () => resolve(Date.now()), { capture: true, once: true })
+  }))
   await button.click()
   return startedAt
 }
@@ -314,9 +316,37 @@ async function observeActiveButtonEpochMs(page: Page, label: string, timeoutMs =
 }
 
 async function observeTextEpochMs(page: Page, pattern: string, timeoutMs = 3000) {
-  const text = page.getByText(new RegExp(pattern, 'i')).first()
-  await expect(text).toBeVisible({ timeout: timeoutMs })
-  return Date.now()
+  return page.evaluate(
+    ({ source, timeout }) =>
+      new Promise<number>((resolve, reject) => {
+        const expression = new RegExp(source, 'i')
+        const isVisible = (element: Element) => {
+          const style = window.getComputedStyle(element)
+          return style.visibility !== 'hidden' && style.display !== 'none' && element.getClientRects().length > 0
+        }
+        const isObserved = () => Array.from(document.querySelectorAll('body *')).some((element) => {
+          return isVisible(element) && expression.test(element.textContent ?? '')
+        })
+        const resolveIfObserved = () => {
+          if (!isObserved()) {
+            return
+          }
+
+          window.clearTimeout(timeoutId)
+          observer.disconnect()
+          resolve(Date.now())
+        }
+        const timeoutId = window.setTimeout(() => {
+          observer.disconnect()
+          reject(new Error(`Text ${source} not observed`))
+        }, timeout)
+        const observer = new MutationObserver(resolveIfObserved)
+
+        observer.observe(document.body, { characterData: true, childList: true, subtree: true })
+        resolveIfObserved()
+      }),
+    { source: pattern, timeout: timeoutMs },
+  )
 }
 
 async function observeSelectorEpochMs(page: Page, selector: string, timeoutMs = 3000) {

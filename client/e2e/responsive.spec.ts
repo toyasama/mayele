@@ -237,6 +237,7 @@ test('amis et profil restent lisibles sans debordement', async ({ page }, testIn
   await page.goto(`${APP_URL}/amis`)
   await expect(page.getByRole('button', { name: /Mes amis/i })).toBeVisible()
   if ((page.viewportSize()?.width ?? 1024) < 768) {
+    await expect(page.locator('.profile-card-scroller').or(page.locator('.friends-empty-panel'))).toBeVisible()
     const friendsLayout = await page.evaluate(() => {
       const scroller = document.querySelector('.profile-card-scroller')
       const card = document.querySelector('.profile-card')

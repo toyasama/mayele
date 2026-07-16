@@ -158,6 +158,7 @@ type RealtimeSubscriber = {
 }
 
 const realtimeSubscribers = new Set<RealtimeSubscriber>()
+const realtimePresenceByPlayerId = new Map<string, PresenceRealtimePayload['player']>()
 let sharedSocket: Socket | null = null
 let sharedSocketReady = false
 let sharedSocketConnecting = false
@@ -213,6 +214,20 @@ function dispatchRealtimeEvent<K extends keyof RealtimeHandlers>(
   })
 }
 
+function recordRealtimePresence(payload: PresenceRealtimePayload) {
+  const current = realtimePresenceByPlayerId.get(payload.player.id)
+
+  if (!current || Date.parse(current.presenceUpdatedAt) <= Date.parse(payload.player.presenceUpdatedAt)) {
+    realtimePresenceByPlayerId.set(payload.player.id, payload.player)
+  }
+
+  dispatchRealtimeEvent('onPresenceChanged', payload)
+}
+
+export function getRealtimePresence(playerId: string) {
+  return realtimePresenceByPlayerId.get(playerId) ?? null
+}
+
 function waitForReadySocket() {
   if (sharedSocket?.connected) {
     return Promise.resolve(sharedSocket)
@@ -248,6 +263,7 @@ function disconnectSharedSocket() {
   }
 
   notifyRealtimeReady(false)
+  realtimePresenceByPlayerId.clear()
   rejectReadyWaiters(realtimeUnavailableError())
 }
 
@@ -294,7 +310,7 @@ async function ensureRealtimeSocket(getToken: TokenProvider) {
       notifyRealtimeReady(false)
     })
     socket.on('social:changed', (payload: RealtimePayload) => dispatchRealtimeEvent('onSocialChanged', payload))
-    socket.on('presence:changed', (payload: PresenceRealtimePayload) => dispatchRealtimeEvent('onPresenceChanged', payload))
+    socket.on('presence:changed', recordRealtimePresence)
     socket.on('match:changed', (payload: MatchRealtimePayload) => dispatchRealtimeEvent('onMatchChanged', payload))
     socket.on('room:event', (payload: RoomRealtimeEvent) => dispatchRealtimeEvent('onRoomEvent', payload))
     socket.on('room:snapshot', (payload: RoomSnapshotPayload) => dispatchRealtimeEvent('onRoomSnapshot', payload))

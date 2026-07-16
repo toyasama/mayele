@@ -107,6 +107,15 @@ async function connectClient(port: number, token: string) {
   return socket
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise
+  })
+
+  return { promise, resolve }
+}
+
 const playerA = {
   id: 'player_a',
   name: 'Awa',
@@ -382,12 +391,15 @@ describe('realtime notifications', () => {
     const onlineEvent = new Promise<{ reason: string; player: { id: string; presenceStatus: string } }>((resolve) => {
       clientB.once('presence:changed', resolve)
     })
+    const pendingPresencePersistence = deferred<typeof playerA>()
+    presenceServiceMocks.updatePlayerPresenceById.mockImplementationOnce(() => pendingPresencePersistence.promise)
     const clientA = await connectClient(port, 'token_a')
 
     await expect(onlineEvent).resolves.toMatchObject({
       reason: 'presence_online',
       player: { id: 'player_a', presenceStatus: 'online' },
     })
+    pendingPresencePersistence.resolve(playerA)
     await expect.poll(() => presenceServiceMocks.updatePlayerPresenceById.mock.calls.length).toBe(2)
     expect(presenceServiceMocks.updatePlayerPresenceById).toHaveBeenLastCalledWith(
       'player_a',
@@ -428,6 +440,49 @@ describe('realtime notifications', () => {
       'offline',
       expect.any(Date),
     )
+  })
+
+  it('synchronise la presence runtime lorsqu un ami se connecte apres son emission initiale', async () => {
+    httpServer = createServer()
+    initRealtime(httpServer, {
+      authenticateToken: async (token) => {
+        if (token === 'token_a') {
+          return { clerkUserId: 'clerk_a', playerId: 'player_a', player: { ...playerA, presenceStatus: 'offline', presenceUpdatedAt: new Date().toISOString() } }
+        }
+
+        if (token === 'token_b') {
+          return { clerkUserId: 'clerk_b', playerId: 'player_b', player: { ...playerB, presenceStatus: 'offline', presenceUpdatedAt: new Date().toISOString() } }
+        }
+
+        return null
+      },
+    })
+    const delayedFriendsForB = deferred<Array<{ id: string }>>()
+    presenceServiceMocks.listFriends.mockImplementation(async (playerId) => {
+      if (playerId === 'player_b') {
+        return delayedFriendsForB.promise
+      }
+
+      return []
+    })
+    const port = await listen(httpServer)
+    await connectClient(port, 'token_a')
+    await expect.poll(() => getRealtimeHealth().onlinePlayers).toBe(1)
+
+    const clientB = await connectClient(port, 'token_b')
+    const syncEvent = new Promise<{ reason: string; player: { id: string; presenceStatus: string } }>((resolve) => {
+      clientB.on('presence:changed', (payload) => {
+        if (payload.player.id === 'player_a') {
+          resolve(payload)
+        }
+      })
+    })
+    delayedFriendsForB.resolve([{ id: 'player_a' }])
+
+    await expect(syncEvent).resolves.toMatchObject({
+      reason: 'presence_sync',
+      player: { id: 'player_a', presenceStatus: 'online' },
+    })
   })
 
   it('envoie les evenements sociaux uniquement aux rooms des joueurs cibles', async () => {

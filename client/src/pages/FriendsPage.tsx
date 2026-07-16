@@ -1,9 +1,9 @@
-import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
+import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { PageFrame } from '../components/layout/PageFrame'
 import { ResponsiveTabs } from '../components/layout/ResponsiveTabs'
 import { useAuth } from '../context/auth'
-import { useRealtimeEvents, type PresenceRealtimePayload } from '../hooks/useRealtimeEvents'
+import { getRealtimePresence, useRealtimeEvents, type PresenceRealtimePayload } from '../hooks/useRealtimeEvents'
 import { readCache, SOCIAL_CACHE_PREFIX, userCacheKey, writeCache } from '../lib/appCache'
 import { api, type FriendRequestData, type PublicPlayer } from '../lib/api'
 import type { PresenceStatus } from '../lib/api'
@@ -189,6 +189,7 @@ export function FriendsPage() {
   const [searching, setSearching] = useState(false)
   const [actionId, setActionId] = useState<string | null>(null)
   const [error, setError] = useState('')
+  const realtimePresenceByPlayerIdRef = useRef(new Map<string, PresenceRealtimePayload['player']>())
 
   function showToast(title: string) {
     window.dispatchEvent(new CustomEvent('mayele:toast', { detail: { title, variant: 'success' } }))
@@ -239,8 +240,28 @@ export function FriendsPage() {
     }
   }, [searchParams])
 
+  const patchPlayerWithRealtimePresence = useCallback((player: PublicPlayer) => {
+    const realtimePresence = realtimePresenceByPlayerIdRef.current.get(player.id) ?? getRealtimePresence(player.id)
+
+    if (!realtimePresence || Date.parse(realtimePresence.presenceUpdatedAt) < Date.parse(player.presenceUpdatedAt)) {
+      return player
+    }
+
+    return {
+      ...player,
+      presenceStatus: realtimePresence.presenceStatus,
+      presenceUpdatedAt: realtimePresence.presenceUpdatedAt,
+    }
+  }, [])
+
+  const mergeRealtimePresence = useCallback((payload: SocialOverview): SocialOverview => ({
+    friends: payload.friends.map(patchPlayerWithRealtimePresence),
+    incoming: payload.incoming.map((request) => ({ ...request, player: patchPlayerWithRealtimePresence(request.player) })),
+    outgoing: payload.outgoing.map((request) => ({ ...request, player: patchPlayerWithRealtimePresence(request.player) })),
+  }), [patchPlayerWithRealtimePresence])
+
   const refreshSocialData = useCallback(async () => {
-    const payload = await api.getSocialOverview(getToken)
+    const payload = mergeRealtimePresence(await api.getSocialOverview(getToken))
 
     setFriends(sortPlayers(payload.friends))
     setIncomingRequests(payload.incoming)
@@ -248,7 +269,7 @@ export function FriendsPage() {
     if (cacheKey) {
       writeCache(cacheKey, payload)
     }
-  }, [cacheKey, getToken])
+  }, [cacheKey, getToken, mergeRealtimePresence])
 
   const refreshSocialDataFromRealtime = useCallback(() => {
     void refreshSocialData().catch((caughtError) => {
@@ -257,6 +278,13 @@ export function FriendsPage() {
   }, [refreshSocialData])
 
   const applyRealtimePresence = useCallback((payload: PresenceRealtimePayload) => {
+    const currentPresence = realtimePresenceByPlayerIdRef.current.get(payload.player.id)
+
+    if (currentPresence && Date.parse(currentPresence.presenceUpdatedAt) > Date.parse(payload.player.presenceUpdatedAt)) {
+      return
+    }
+
+    realtimePresenceByPlayerIdRef.current.set(payload.player.id, payload.player)
     const patchPlayer = (player: PublicPlayer) => {
       if (player.id !== payload.player.id) {
         return player
@@ -287,11 +315,12 @@ export function FriendsPage() {
       return
     }
 
-    setFriends(sortPlayers(cachedOverview.friends))
-    setIncomingRequests(cachedOverview.incoming)
-    setOutgoingRequests(cachedOverview.outgoing)
+    const payload = mergeRealtimePresence(cachedOverview)
+    setFriends(sortPlayers(payload.friends))
+    setIncomingRequests(payload.incoming)
+    setOutgoingRequests(payload.outgoing)
     setLoading(false)
-  }, [cachedOverview])
+  }, [cachedOverview, mergeRealtimePresence])
 
   useEffect(() => {
     if (!cacheKey || loading) {

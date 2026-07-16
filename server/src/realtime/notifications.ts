@@ -136,6 +136,7 @@ const matchPersistenceQueue = new Map<string, Promise<unknown>>()
 const tempoMatchRuntimes = new Map<string, TempoMatchRuntime>()
 const presenceRuntime = new PresenceRuntime()
 const presencePersistenceQueues = new Map<string, Promise<void>>()
+const presenceBroadcastVersions = new Map<string, number>()
 const MATCH_STATUS_ORDER: Record<string, number> = {
   pending: 10,
   accepted: 20,
@@ -199,7 +200,17 @@ function playerRoom(playerId: string) {
 }
 
 function queuePresenceTransition(transition: PresenceTransition | null) {
-  if (!transition?.shouldPersist) {
+  if (!transition) {
+    return
+  }
+
+  if (transition.shouldBroadcast) {
+    const version = (presenceBroadcastVersions.get(transition.playerId) ?? 0) + 1
+    presenceBroadcastVersions.set(transition.playerId, version)
+    void broadcastPresenceTransition(transition, version)
+  }
+
+  if (!transition.shouldPersist) {
     return
   }
 
@@ -220,16 +231,6 @@ function queuePresenceTransition(transition: PresenceTransition | null) {
           new Date(transition.player.presenceUpdatedAt),
         )
 
-        if (!transition.shouldBroadcast) {
-          return
-        }
-
-        const friends = await listFriends(transition.playerId)
-        emitPresenceChanged(
-          [transition.playerId, ...friends.map((friend) => friend.id)],
-          `presence_${transition.status}`,
-          transition.player,
-        )
       } catch (error) {
         logger.error('presence_persistence_failed', {
           playerId: transition.playerId,
@@ -246,6 +247,56 @@ function queuePresenceTransition(transition: PresenceTransition | null) {
       presencePersistenceQueues.delete(transition.playerId)
     }
   })
+}
+
+async function broadcastPresenceTransition(transition: PresenceTransition, version: number) {
+  try {
+    const friends = await listFriends(transition.playerId)
+
+    // A slower friendship lookup from an older transition must not overwrite a newer state.
+    if (presenceBroadcastVersions.get(transition.playerId) !== version) {
+      return
+    }
+
+    emitPresenceChanged(
+      [transition.playerId, ...friends.map((friend) => friend.id)],
+      `presence_${transition.status}`,
+      transition.player,
+    )
+  } catch (error) {
+    logger.error('presence_broadcast_failed', {
+      playerId: transition.playerId,
+      status: transition.status,
+      message: error instanceof Error ? error.message : String(error),
+    })
+    captureException(error)
+  }
+}
+
+async function syncPresenceToSocket(socket: Socket, playerId: string) {
+  try {
+    const friends = await listFriends(playerId)
+
+    for (const friend of friends) {
+      const player = presenceRuntime.getConnectedPlayer(friend.id)
+
+      if (!player) {
+        continue
+      }
+
+      socket.emit('presence:changed', {
+        reason: 'presence_sync',
+        at: new Date().toISOString(),
+        player,
+      } satisfies PresenceChangedPayload)
+    }
+  } catch (error) {
+    logger.error('presence_sync_failed', {
+      playerId,
+      message: error instanceof Error ? error.message : String(error),
+    })
+    captureException(error)
+  }
 }
 
 function isRealtimeCommandAllowed(playerId: string, eventName: string, now = Date.now()) {
@@ -844,6 +895,7 @@ export async function resetRealtimeStateForTests() {
   tempoMatchRuntimes.clear()
   presenceRuntime.clear()
   presencePersistenceQueues.clear()
+  presenceBroadcastVersions.clear()
   io?.sockets.sockets.forEach((socket) => {
     socket.disconnect(true)
   })
@@ -1051,10 +1103,6 @@ export function initRealtime(httpServer: HttpServer, options: InitRealtimeOption
       return
     }
 
-    if (socket.data.publicPlayer) {
-      queuePresenceTransition(presenceRuntime.connect(playerId, socket.id, socket.data.publicPlayer as RealtimePublicPlayer))
-    }
-
     logger.info('realtime_connected', {
       playerId,
       socketId: socket.id,
@@ -1063,7 +1111,11 @@ export function initRealtime(httpServer: HttpServer, options: InitRealtimeOption
     })
 
     socket.join(playerRoom(playerId))
+    if (socket.data.publicPlayer) {
+      queuePresenceTransition(presenceRuntime.connect(playerId, socket.id, socket.data.publicPlayer as RealtimePublicPlayer))
+    }
     socket.emit('realtime:ready', { playerId, at: new Date().toISOString() })
+    void syncPresenceToSocket(socket, playerId)
     socket.use((packet, next) => {
       const eventName = packet[0]
 
