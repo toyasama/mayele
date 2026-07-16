@@ -1,4 +1,4 @@
-import { expect, type Browser, type Page, type TestInfo, test } from '@playwright/test'
+import { expect, type APIRequestContext, type Browser, type Page, type TestInfo, test } from '@playwright/test'
 import { waitForRealtimeReady } from './realtime'
 
 const APP_URL = process.env.E2E_APP_URL ?? 'http://127.0.0.1:5174'
@@ -19,6 +19,11 @@ async function authenticatedPage(browser: Browser, user: 'host' | 'guest', viewp
   const page = await context.newPage()
   await authenticate(page, user)
   return { context, page }
+}
+
+async function resetMultiplayerFixture(request: APIRequestContext) {
+  const reset = await request.post(`${API_URL}/api/e2e/reset-multiplayer`)
+  expect(reset.ok()).toBeTruthy()
 }
 
 function solvePrompt(prompt: string) {
@@ -77,7 +82,8 @@ async function assertShellNavigation(page: Page) {
   }
 }
 
-test.beforeEach(async ({ page }) => {
+test.beforeEach(async ({ page, request }) => {
+  await resetMultiplayerFixture(request)
   await authenticate(page, 'host')
 })
 
@@ -227,10 +233,7 @@ test('solo setup puis arene restent utilisables', async ({ page }, testInfo) => 
   await expect(page.getByRole('textbox', { name: /Votre reponse/i })).toBeFocused()
 })
 
-test('amis et profil restent lisibles sans debordement', async ({ page, request }, testInfo) => {
-  const reset = await request.post(`${API_URL}/api/e2e/reset-multiplayer`)
-  expect(reset.ok()).toBeTruthy()
-
+test('amis et profil restent lisibles sans debordement', async ({ page }, testInfo) => {
   await page.goto(`${APP_URL}/amis`)
   await expect(page.getByRole('button', { name: /Mes amis/i })).toBeVisible()
   if ((page.viewportSize()?.width ?? 1024) < 768) {
@@ -348,11 +351,8 @@ test('amis et profil restent lisibles sans debordement', async ({ page, request 
   await attachScreenshot(page, testInfo, 'profile')
 })
 
-test('multijoueur lobby room et arene restent utilisables', async ({ page, browser, request }, testInfo) => {
+test('multijoueur lobby room et arene restent utilisables', async ({ page, browser }, testInfo) => {
   test.setTimeout(60_000)
-
-  const reset = await request.post(`${API_URL}/api/e2e/reset-multiplayer`)
-  expect(reset.ok()).toBeTruthy()
 
   const viewport = page.viewportSize() ?? { width: 390, height: 844 }
   const guest = await authenticatedPage(browser, 'guest', viewport)
