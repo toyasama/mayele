@@ -1,6 +1,12 @@
-﻿import { expect, type Browser, type Page, test } from '@playwright/test'
+﻿import { expect, type APIRequestContext, type Browser, type Page, test } from '@playwright/test'
 
 const APP_URL = process.env.E2E_APP_URL ?? 'http://127.0.0.1:5173'
+const API_URL = process.env.E2E_API_URL ?? 'http://127.0.0.1:4000'
+
+async function resetMultiplayerFixture(request: APIRequestContext) {
+  const reset = await request.post(`${API_URL}/api/e2e/reset-multiplayer`)
+  expect(reset.ok()).toBeTruthy()
+}
 
 async function e2ePage(browser: Browser) {
   const context = await browser.newContext()
@@ -70,6 +76,10 @@ async function startSoloTempo(page: Page, perQuestionSeconds = 10) {
   await expect(page.getByText(/Question 1\/30/i)).toBeVisible()
   await expect(page.getByRole('textbox', { name: /Votre reponse/i })).toBeFocused()
 }
+
+test.beforeEach(async ({ request }) => {
+  await resetMultiplayerFixture(request)
+})
 
 test('capture le mode solo lance avec la mise en page epuree', async ({ browser }) => {
   const { context, page } = await e2ePage(browser)
