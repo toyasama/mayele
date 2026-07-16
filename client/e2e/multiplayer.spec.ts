@@ -209,6 +209,7 @@ async function createInvitedRoom(browser: Browser, request: APIRequestContext) {
   await expect(host.page.getByRole('button', { name: /Bob Guest/i })).toBeVisible()
   await host.page.getByRole('button', { name: /Bob Guest/i }).click()
   await expect(host.page).toHaveURL(/match=/)
+  await waitForRealtimeReady(host.page)
 
   return { host, guest }
 }
@@ -217,6 +218,7 @@ async function createAcceptedRoom(browser: Browser, request: APIRequestContext) 
   const { host, guest } = await createInvitedRoom(browser, request)
 
   await guest.page.goto(host.page.url())
+  await waitForRealtimeReady(guest.page)
   await guest.page.getByRole('button', { name: /Entrer dans le salon/i }).click()
 
   await expect(host.page.getByText(/Dans le salon/i).first()).toBeVisible()
@@ -323,172 +325,35 @@ async function expectActiveOperation(page: Page, operationName: RegExp) {
 }
 
 async function clickButtonInPageAndReturnEpochMs(page: Page, label: string) {
-  return page.evaluate((buttonLabel) => {
-    const button = Array.from(document.querySelectorAll('button')).find((item) => item.textContent?.includes(buttonLabel))
+  const button = page.locator('button').filter({ hasText: label }).first()
+  await expect(button).toBeVisible()
 
-    if (!button) {
-      throw new Error(`Button not found: ${buttonLabel}`)
-    }
-
-    const startedAt = Date.now()
-    button.click()
-    return startedAt
-  }, label)
+  const startedAt = Date.now()
+  await button.click()
+  return startedAt
 }
 
 async function observeActiveButtonEpochMs(page: Page, label: string, timeoutMs = 3000) {
-  return page.evaluate(
-    ({ buttonLabel, timeout }) =>
-      new Promise<number>((resolve, reject) => {
-        const isActive = () => {
-          const button = Array.from(document.querySelectorAll('button')).find((item) => item.textContent?.includes(buttonLabel))
-          return Boolean(button?.classList.contains('active'))
-        }
-
-        if (isActive()) {
-          resolve(Date.now())
-          return
-        }
-
-        const timeoutId = window.setTimeout(() => {
-          observer.disconnect()
-          reject(new Error(`Active button not observed: ${buttonLabel}`))
-        }, timeout)
-        const observer = new MutationObserver(() => {
-          if (!isActive()) {
-            return
-          }
-
-          window.clearTimeout(timeoutId)
-          observer.disconnect()
-          resolve(Date.now())
-        })
-
-        observer.observe(document.body, {
-          attributes: true,
-          attributeFilter: ['class'],
-          childList: true,
-          subtree: true,
-        })
-      }),
-    { buttonLabel: label, timeout: timeoutMs },
-  )
+  const button = page.locator('button').filter({ hasText: label }).first()
+  await expect(button).toHaveClass(/active/, { timeout: timeoutMs })
+  return Date.now()
 }
 
 async function observeTextEpochMs(page: Page, pattern: string, timeoutMs = 3000) {
-  return page.evaluate(
-    ({ textPattern, timeout }) =>
-      new Promise<number>((resolve, reject) => {
-        const regex = new RegExp(textPattern, 'i')
-        const hasText = () => regex.test(document.body.textContent ?? '')
-
-        if (hasText()) {
-          resolve(Date.now())
-          return
-        }
-
-        const timeoutId = window.setTimeout(() => {
-          observer.disconnect()
-          reject(new Error(`Text not observed: ${textPattern}`))
-        }, timeout)
-        const observer = new MutationObserver(() => {
-          if (!hasText()) {
-            return
-          }
-
-          window.clearTimeout(timeoutId)
-          observer.disconnect()
-          resolve(Date.now())
-        })
-
-        observer.observe(document.body, {
-          characterData: true,
-          childList: true,
-          subtree: true,
-        })
-      }),
-    { textPattern: pattern, timeout: timeoutMs },
-  )
+  const text = page.getByText(new RegExp(pattern, 'i')).first()
+  await expect(text).toBeVisible({ timeout: timeoutMs })
+  return Date.now()
 }
 
 async function observeSelectorEpochMs(page: Page, selector: string, timeoutMs = 3000) {
-  return page.evaluate(
-    ({ targetSelector, timeout }) =>
-      new Promise<number>((resolve, reject) => {
-        const isVisible = () => {
-          const element = document.querySelector(targetSelector)
-
-          if (!(element instanceof HTMLElement)) {
-            return false
-          }
-
-          const style = window.getComputedStyle(element)
-          return style.display !== 'none' && style.visibility !== 'hidden' && element.offsetParent !== null
-        }
-
-        if (isVisible()) {
-          resolve(Date.now())
-          return
-        }
-
-        const timeoutId = window.setTimeout(() => {
-          observer.disconnect()
-          reject(new Error(`Selector not observed: ${targetSelector}`))
-        }, timeout)
-        const observer = new MutationObserver(() => {
-          if (!isVisible()) {
-            return
-          }
-
-          window.clearTimeout(timeoutId)
-          observer.disconnect()
-          resolve(Date.now())
-        })
-
-        observer.observe(document.body, {
-          attributes: true,
-          childList: true,
-          subtree: true,
-        })
-      }),
-    { targetSelector: selector, timeout: timeoutMs },
-  )
+  await expect(page.locator(selector).first()).toBeVisible({ timeout: timeoutMs })
+  return Date.now()
 }
 
 async function observeSelectorTextEpochMs(page: Page, selector: string, pattern: string, timeoutMs = 3000) {
-  return page.evaluate(
-    ({ targetSelector, textPattern, timeout }) =>
-      new Promise<number>((resolve, reject) => {
-        const regex = new RegExp(textPattern, 'i')
-        const hasText = () => Array.from(document.querySelectorAll(targetSelector)).some((element) => regex.test(element.textContent ?? ''))
-
-        if (hasText()) {
-          resolve(Date.now())
-          return
-        }
-
-        const timeoutId = window.setTimeout(() => {
-          observer.disconnect()
-          reject(new Error(`Selector text not observed: ${targetSelector} ${textPattern}`))
-        }, timeout)
-        const observer = new MutationObserver(() => {
-          if (!hasText()) {
-            return
-          }
-
-          window.clearTimeout(timeoutId)
-          observer.disconnect()
-          resolve(Date.now())
-        })
-
-        observer.observe(document.body, {
-          characterData: true,
-          childList: true,
-          subtree: true,
-        })
-      }),
-    { targetSelector: selector, textPattern: pattern, timeout: timeoutMs },
-  )
+  const matchingElement = page.locator(selector).filter({ hasText: new RegExp(pattern, 'i') }).first()
+  await expect(matchingElement).toBeVisible({ timeout: timeoutMs })
+  return Date.now()
 }
 
 async function waitForEnabledSubmit(page: Page, timeoutMs = 3000) {

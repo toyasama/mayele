@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test'
+import { e2eClientEnvironment } from './e2e/environment'
 
 const APP_PORT = 5175
 const API_PORT = 4101
@@ -29,12 +30,7 @@ export default defineConfig({
     },
     {
       command: `npm run dev:e2e -- --port ${APP_PORT}`,
-      env: {
-        ...process.env,
-        VITE_API_URL: `${API_URL}/api`,
-        VITE_REALTIME_URL: API_URL,
-        VITE_E2E_AUTH_BYPASS: 'true',
-      },
+      env: e2eClientEnvironment(API_URL),
       url: APP_URL,
       reuseExistingServer: false,
       timeout: 120_000,

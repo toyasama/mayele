@@ -6,6 +6,11 @@ import { fileURLToPath } from 'node:url'
 const serverRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
 const npmCli = process.env.npm_execpath
 const tsxCli = join(serverRoot, 'node_modules', 'tsx', 'dist', 'cli.mjs')
+const e2eEnvironment = {
+  ...process.env,
+  NODE_ENV: 'test',
+  E2E_AUTH_BYPASS: 'true',
+}
 
 function runNodeScript(scriptPath, args, options = {}) {
   return new Promise((resolve, reject) => {
@@ -34,15 +39,12 @@ if (!existsSync(tsxCli)) {
   throw new Error('tsx is not installed. Run npm install in the server workspace.')
 }
 
-await runNodeScript(npmCli, ['run', 'prisma:generate'])
+await runNodeScript(npmCli, ['run', 'prisma:generate'], { env: e2eEnvironment })
 
 const server = spawn(process.execPath, [tsxCli, 'watch', '--exclude', 'src/generated/**', 'src/server.ts'], {
   cwd: serverRoot,
   stdio: 'inherit',
-  env: {
-    ...process.env,
-    E2E_AUTH_BYPASS: 'true',
-  },
+  env: e2eEnvironment,
 })
 
 server.once('error', (error) => {

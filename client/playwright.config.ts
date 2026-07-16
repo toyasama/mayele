@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
+import { e2eClientEnvironment } from "./e2e/environment";
 
 export default defineConfig({
   testDir: "./e2e",
@@ -22,12 +23,7 @@ export default defineConfig({
     },
     {
       command: "npm run dev:e2e",
-      env: {
-        ...process.env,
-        VITE_API_URL: "http://127.0.0.1:4000/api",
-        VITE_REALTIME_URL: "http://127.0.0.1:4000",
-        VITE_E2E_AUTH_BYPASS: "true",
-      },
+      env: e2eClientEnvironment("http://127.0.0.1:4000"),
       url: "http://127.0.0.1:5173",
       reuseExistingServer: false,
       timeout: 120_000,

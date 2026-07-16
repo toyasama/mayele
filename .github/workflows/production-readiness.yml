@@ -42,10 +42,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -131,10 +131,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -166,9 +166,39 @@ jobs:
         working-directory: client
         run: npm run test:e2e
 
+      - name: Summarize E2E failures
+        if: failure()
+        working-directory: client
+        shell: bash
+        run: |
+          {
+            echo '## Diagnostics E2E'
+            echo
+            echo 'Les contextes Playwright ci-dessous sont limites aux huit premiers echecs et aux 160 premieres lignes par echec.'
+            echo
+
+            count=0
+            while IFS= read -r -d '' context; do
+              count=$((count + 1))
+              if [ "$count" -gt 8 ]; then
+                break
+              fi
+
+              echo "### ${context}"
+              echo '```text'
+              sed -n '1,160p' "$context"
+              echo '```'
+              echo
+            done < <(find test-results -type f -name error-context.md -print0 2>/dev/null | sort -z)
+
+            if [ "$count" -eq 0 ]; then
+              echo 'Aucun fichier error-context.md n a ete genere. Consulter l artefact e2e-diagnostics pour les traces Playwright.'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload E2E diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: e2e-diagnostics-${{ github.run_attempt }}
           path: |
@@ -202,10 +232,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -233,9 +263,39 @@ jobs:
         working-directory: client
         run: npm run test:responsive
 
+      - name: Summarize responsive E2E failures
+        if: failure()
+        working-directory: client
+        shell: bash
+        run: |
+          {
+            echo '## Diagnostics responsive E2E'
+            echo
+            echo 'Les contextes Playwright ci-dessous sont limites aux huit premiers echecs et aux 160 premieres lignes par echec.'
+            echo
+
+            count=0
+            while IFS= read -r -d '' context; do
+              count=$((count + 1))
+              if [ "$count" -gt 8 ]; then
+                break
+              fi
+
+              echo "### ${context}"
+              echo '```text'
+              sed -n '1,160p' "$context"
+              echo '```'
+              echo
+            done < <(find test-results -type f -name error-context.md -print0 2>/dev/null | sort -z)
+
+            if [ "$count" -eq 0 ]; then
+              echo 'Aucun fichier error-context.md n a ete genere. Consulter l artefact responsive-diagnostics pour les traces Playwright.'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload responsive diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: responsive-diagnostics-${{ github.run_attempt }}
           path: |
@@ -266,10 +326,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
