@@ -7,7 +7,7 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   reporter: process.env.CI
-    ? [["line"], ["html", { outputFolder: "playwright-report", open: "never" }]]
+    ? [["github"], ["line"], ["html", { outputFolder: "playwright-report", open: "never" }]]
     : [["list"]],
   use: {
     baseURL: "http://127.0.0.1:5173",
@@ -15,14 +15,14 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: "npm run serve:e2e -- --port 5173",
+      command: "npm run dev:e2e",
       cwd: "../server",
       url: "http://127.0.0.1:4000/api/health",
       reuseExistingServer: false,
       timeout: 120_000,
     },
     {
-      command: "npm run dev:e2e",
+      command: "npm run serve:e2e -- --port 5173",
       env: e2eClientEnvironment("http://127.0.0.1:4000"),
       url: "http://127.0.0.1:5173",
       reuseExistingServer: false,

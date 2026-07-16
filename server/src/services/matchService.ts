@@ -55,8 +55,8 @@ function expiresIn(ms: number) {
   return new Date(Date.now() + ms)
 }
 
-function inProgressExpiresAt(config: Parameters<typeof challengeRunDurationSeconds>[0]) {
-  return expiresIn(challengeRunDurationSeconds(config) * 1000 + MATCH_IN_PROGRESS_GRACE_MS)
+function inProgressExpiresAt(config: Parameters<typeof challengeRunDurationSeconds>[0], startedAt: Date) {
+  return new Date(startedAt.getTime() + challengeRunDurationSeconds(config) * 1000 + MATCH_IN_PROGRESS_GRACE_MS)
 }
 
 function isRecentHostHeartbeat(hostActiveAt: Date | null) {
@@ -554,7 +554,12 @@ export async function proposeChallenge(playerId: string, matchId: string, config
   return getMatch(playerId, matchId)
 }
 
-export async function startChallengeProposal(playerId: string, matchId: string, config: PersistedChallengeConfig) {
+export async function startChallengeProposal(
+  playerId: string,
+  matchId: string,
+  config: PersistedChallengeConfig,
+  startedAt: Date,
+) {
   await expireStaleMatches()
 
   const match = await prisma.match.findFirst({
@@ -593,7 +598,6 @@ export async function startChallengeProposal(playerId: string, matchId: string, 
 
   assertStartableConfig(config)
 
-  const now = new Date()
   const updatedMatch = await prisma.$transaction(async (tx) => {
     const lock = await tx.match.updateMany({
       where: {
@@ -603,8 +607,8 @@ export async function startChallengeProposal(playerId: string, matchId: string, 
       data: {
         ...persistedChallengeConfigData(config),
         status: 'in_progress',
-        startedAt: now,
-        expiresAt: inProgressExpiresAt(config),
+        startedAt,
+        expiresAt: inProgressExpiresAt(config, startedAt),
       },
     })
 
@@ -667,10 +671,12 @@ export async function acceptChallengeProposal(playerId: string, matchId: string)
 
   assertCompleteConfig(match)
 
+  const startedAt = new Date()
+
   await prisma.$transaction([
     prisma.match.update({
       where: { id: match.id },
-      data: { status: 'in_progress', startedAt: new Date(), expiresAt: inProgressExpiresAt(match) },
+      data: { status: 'in_progress', startedAt, expiresAt: inProgressExpiresAt(match, startedAt) },
     }),
     prisma.matchParticipant.updateMany({
       where: { matchId: match.id },

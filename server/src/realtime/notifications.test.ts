@@ -1091,6 +1091,7 @@ describe('realtime notifications', () => {
         durationSeconds: 60,
         questionSeed: 'seed_1',
       }),
+      expect.any(Date),
     )
     expect(matchServiceMocks.updateChallengeConfig).not.toHaveBeenCalled()
     expect(matchServiceMocks.acceptChallengeProposal).not.toHaveBeenCalled()
@@ -1143,6 +1144,7 @@ describe('realtime notifications', () => {
         questionCount: 30,
         perQuestionTimeLimitSeconds: 10,
       }),
+      expect.any(Date),
     )
   })
 

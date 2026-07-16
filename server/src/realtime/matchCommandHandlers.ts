@@ -489,10 +489,15 @@ export function registerMatchCommandHandlers(socket: Socket, context: MatchComma
 
       const draftSnapshot = applyProposalAcceptDraft(cachedMatch, playerId)
       rollbackSnapshot = cachedMatch
+      const startedAt = new Date(draftSnapshot.startedAt ?? '')
+
+      if (Number.isNaN(startedAt.getTime())) {
+        throw new MatchServiceError('match_not_ready')
+      }
 
       context.publishMatchRuntimeEvent(draftSnapshot, 'match_started', commandId)
       context.persistMatchSnapshotInBackground(command.matchId, () =>
-        startChallengeProposal(playerId, command.matchId, persistedConfigFromSnapshot(draftSnapshot)),
+        startChallengeProposal(playerId, command.matchId, persistedConfigFromSnapshot(draftSnapshot), startedAt),
       { playerId, command: 'match:accept-proposal' })
       ack?.({ ok: true, data: { match: draftSnapshot } })
     } catch (error) {

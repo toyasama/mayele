@@ -68,6 +68,12 @@ import {
 
 type MobileRoomView = 'primary' | 'players'
 
+const MATCH_HYDRATION_RETRY_DELAYS_MS = [100, 250, 500, 1_000, 2_000]
+
+function waitForMatchHydrationRetry(delayMs: number) {
+  return new Promise<void>((resolve) => window.setTimeout(resolve, delayMs))
+}
+
 export function MultiplayerGamePage() {
   const { getToken, isAuthenticated } = useAuth()
   const { profile } = useProfile()
@@ -690,6 +696,39 @@ export function MultiplayerGamePage() {
     return null
   }, [applyDisplayedMatch, profile?.id, selectedMatchId])
 
+  const hydrateSelectedMatch = useCallback(async (matchId: string) => {
+    for (const delayMs of MATCH_HYDRATION_RETRY_DELAYS_MS) {
+      try {
+        const { match } = await api.getMatch(getToken, matchId)
+
+        if (dismissedMatchIdsRef.current.has(match.id)) {
+          return false
+        }
+
+        dispatchOrderedRoomState({ type: 'match-upsert', match, selectedMatchId: matchId })
+        setMatches((currentMatches) => {
+          const currentSnapshot = currentMatches.find((item) => item.id === match.id)
+
+          if (isOlderMatchSnapshot(currentSnapshot, match)) {
+            return currentMatches
+          }
+
+          return [match, ...currentMatches.filter((item) => item.id !== match.id)]
+        })
+        applyDisplayedMatch(match)
+        return true
+      } catch (caughtError) {
+        if (!(caughtError instanceof ApiRequestError) || caughtError.code !== 'match_not_found') {
+          throw caughtError
+        }
+      }
+
+      await waitForMatchHydrationRetry(delayMs)
+    }
+
+    return false
+  }, [applyDisplayedMatch, getToken])
+
   useEffect(() => {
     if (!profile?.id) {
       return
@@ -716,6 +755,12 @@ export function MultiplayerGamePage() {
     const nextDisplayed = applyRoomOverview(overview)
 
     if (!nextDisplayed && (activeMatchRef.current || selectedMatchIdRef.current || preferredMatchIdRef.current)) {
+      const requestedMatchId = selectedMatchIdRef.current ?? preferredMatchIdRef.current
+
+      if (requestedMatchId && await hydrateSelectedMatch(requestedMatchId)) {
+        return
+      }
+
       const currentMatch = activeMatchRef.current
 
       if (currentMatch && (currentMatch.status === 'in_progress' || currentMatch.status === 'completed')) {
@@ -724,7 +769,7 @@ export function MultiplayerGamePage() {
 
       resetToMultiplayerHome()
     }
-  }, [applyRoomOverview, getToken, roomRealtimeAuthenticated, resetToMultiplayerHome])
+  }, [applyRoomOverview, getToken, hydrateSelectedMatch, roomRealtimeAuthenticated, resetToMultiplayerHome])
 
   const applyRealtimeMatchSnapshot = useCallback((match: MatchData, options: { recordLegacyEvent?: boolean } = {}) => {
     const currentMatch = activeMatchRef.current

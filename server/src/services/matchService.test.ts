@@ -611,6 +611,7 @@ describe('matchService', () => {
 
   it('lance la proposition realtime en une transaction avec la config exacte', async () => {
     const now = new Date('2026-07-08T12:00:00.000Z')
+    const startedAt = new Date('2026-07-08T11:59:57.000Z')
     const realtimeConfig = {
       game: 'addition',
       level: 'debutant',
@@ -637,7 +638,7 @@ describe('matchService', () => {
       participants: makeAcceptedMatch().participants.map((participant) => ({ ...participant, status: 'playing' })),
     }))
 
-    const match = await startChallengeProposal('player_b', 'match_1', realtimeConfig)
+    const match = await startChallengeProposal('player_b', 'match_1', realtimeConfig, startedAt)
 
     expect(match.status).toBe('in_progress')
     expect(match.questionSeed).toBe('seed_realtime')
@@ -649,8 +650,8 @@ describe('matchService', () => {
       data: {
         ...realtimeConfig,
         status: 'in_progress',
-        startedAt: now,
-        expiresAt: new Date(now.getTime() + 30 * 10 * 1000 + 2 * 60 * 1000),
+        startedAt,
+        expiresAt: new Date(startedAt.getTime() + 30 * 10 * 1000 + 2 * 60 * 1000),
       },
     })
     expect(prismaMock.matchParticipant.updateMany).toHaveBeenCalledWith({

@@ -488,6 +488,13 @@ export const api = {
       getToken,
     }),
 
+  getMatch: (getToken: TokenProvider, matchId: string) =>
+    request<{ match: MatchData }>(`/matches/${encodeURIComponent(matchId)}`, {
+      method: 'GET',
+      cache: 'no-store',
+      getToken,
+    }),
+
   getMatchRoomOverview: (getToken: TokenProvider) =>
     request<{ friends: PublicPlayer[]; matches: MatchData[] }>('/matches/room-overview', {
       method: 'GET',
