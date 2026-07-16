@@ -30,6 +30,20 @@ type CreateAppOptions = {
   authMiddlewareOverride?: RequestHandler
 }
 
+const bypassClerkMiddleware: RequestHandler = (_req, _res, next) => next()
+
+export function shouldMountClerkMiddleware(options: { isProduction: boolean; e2eAuthBypass: boolean }) {
+  return options.isProduction || !options.e2eAuthBypass
+}
+
+function resolveClerkMiddleware(override: RequestHandler | undefined) {
+  if (override) {
+    return override
+  }
+
+  return shouldMountClerkMiddleware(env) ? clerkMiddleware() : bypassClerkMiddleware
+}
+
 function corsOrigin(origin: string | undefined, callback: (error: Error | null, allowed?: boolean) => void) {
   if (isAllowedCorsOrigin(origin, { isProduction: env.isProduction, allowedOrigins: env.corsOrigins })) {
     callback(null, true)
@@ -59,7 +73,7 @@ export function createApp(options: CreateAppOptions = {}) {
   if (!env.isProduction && env.e2eAuthBypass) {
     app.use('/api', e2eRoutes())
   }
-  app.use(options.clerkMiddlewareOverride ?? clerkMiddleware())
+  app.use(resolveClerkMiddleware(options.clerkMiddlewareOverride))
   app.use('/api/players/search', authMiddleware, searchRateLimit)
   app.use('/api/me', authMiddleware, profileMutationRateLimit)
   app.use('/api/friends', authMiddleware, socialMutationRateLimit)

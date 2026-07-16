@@ -1,12 +1,18 @@
 import type { RequestHandler } from 'express'
 import request from 'supertest'
 import { describe, expect, it } from 'vitest'
-import { createApp } from './app.js'
+import { createApp, shouldMountClerkMiddleware } from './app.js'
 
 const noopClerk: RequestHandler = (_req, _res, next) => next()
 const rejectAuth: RequestHandler = (_req, res) => res.status(401).json({ message: 'Authentification requise.' })
 
 describe('app', () => {
+  it('mounts Clerk except for the non-production E2E auth bypass', () => {
+    expect(shouldMountClerkMiddleware({ isProduction: false, e2eAuthBypass: true })).toBe(false)
+    expect(shouldMountClerkMiddleware({ isProduction: false, e2eAuthBypass: false })).toBe(true)
+    expect(shouldMountClerkMiddleware({ isProduction: true, e2eAuthBypass: true })).toBe(true)
+  })
+
   it('exposes a public health endpoint', async () => {
     const app = createApp({ clerkMiddlewareOverride: noopClerk, authMiddlewareOverride: rejectAuth })
 
