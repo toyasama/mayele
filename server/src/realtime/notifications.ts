@@ -12,6 +12,7 @@ import {
   parseRealtimeTempoAnswerCommand,
   type TempoAnswerPayload,
 } from '../schemas/matchSchema.js'
+import { parsePresenceVisibilityCommand } from '../schemas/presenceSchema.js'
 import type { SerializedNotification } from '../services/notificationPresenter.js'
 import {
   broadcastRoomEvent,
@@ -60,6 +61,10 @@ type NotificationsChangedPayload = RealtimeEventPayload & {
 
 type PresenceChangedPayload = RealtimeEventPayload & {
   player: RealtimePublicPlayer
+}
+
+type PresenceVisibilityPayload = {
+  hidden: boolean
 }
 
 type MatchChangedPayload = RealtimeEventPayload & {
@@ -153,6 +158,7 @@ const REALTIME_DEFAULT_COMMAND_LIMIT = 180
 const REALTIME_COMMAND_ACK_WARN_MS = 5_000
 const REALTIME_COMMAND_EVENTS = new Set([
   'presence:activity',
+  'presence:visibility',
   'room:join',
   'match:update-config',
   'match:create-invitation',
@@ -170,6 +176,7 @@ const REALTIME_COMMAND_EVENTS = new Set([
 ])
 const REALTIME_COMMAND_LIMITS: Record<string, number> = {
   'presence:activity': 240,
+  'presence:visibility': 30,
   'room:join': 120,
   'match:update-config': 120,
   'match:create-invitation': 30,
@@ -322,7 +329,7 @@ function commandIdFromValue(value: unknown) {
   return typeof clientCommandId === 'string' && clientCommandId.trim() ? clientCommandId : null
 }
 
-function realtimeCommandError(message: string, status: number, code: string): RealtimeCommandAck<unknown> {
+function realtimeCommandError<T = never>(message: string, status: number, code: string): RealtimeCommandAck<T> {
   return { ok: false, error: { message, status, code } }
 }
 
@@ -1115,6 +1122,7 @@ export function initRealtime(httpServer: HttpServer, options: InitRealtimeOption
       queuePresenceTransition(presenceRuntime.connect(playerId, socket.id, socket.data.publicPlayer as RealtimePublicPlayer))
     }
     socket.emit('realtime:ready', { playerId, at: new Date().toISOString() })
+    socket.emit('presence:visibility', { hidden: presenceRuntime.isManuallyOffline(playerId) } satisfies PresenceVisibilityPayload)
     void syncPresenceToSocket(socket, playerId)
     socket.use((packet, next) => {
       const eventName = packet[0]
@@ -1157,6 +1165,22 @@ export function initRealtime(httpServer: HttpServer, options: InitRealtimeOption
       }
 
       queuePresenceTransition(presenceRuntime.setActivity(playerId, socket.id, value.active))
+    })
+
+    socket.on('presence:visibility', (value: unknown, ack?: (response: RealtimeCommandAck<{ hidden: boolean }>) => void) => {
+      const command = parsePresenceVisibilityCommand(value)
+
+      if (!command) {
+        ack?.(realtimeCommandError('Statut de presence invalide.', 400, 'invalid_presence_visibility'))
+        return
+      }
+
+      const transition = presenceRuntime.setVisibility(playerId, command.visible)
+      queuePresenceTransition(transition)
+
+      const hidden = presenceRuntime.isManuallyOffline(playerId)
+      socketServer.to(playerRoom(playerId)).emit('presence:visibility', { hidden } satisfies PresenceVisibilityPayload)
+      ack?.({ ok: true, data: { hidden } })
     })
 
     socket.on('room:join', (value: unknown, ack?: (response: RealtimeCommandAck<{ joined: true }>) => void) => {

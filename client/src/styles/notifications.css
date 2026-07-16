@@ -200,6 +200,11 @@
   background: #f1f7ff;
 }
 
+.floating-toast.toast-error {
+  border-color: #f2b8b5;
+  background: #fff4f3;
+}
+
 .floating-toast a,
 .floating-toast > div {
   min-width: 0;

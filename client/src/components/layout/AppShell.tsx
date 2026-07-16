@@ -107,6 +107,7 @@ export function AppShell({
             user={displayUser}
             context={context}
             expandedGroups={expandedGroups}
+            presenceSlot={presenceSlot?.('sidebar-presence-control')}
             onToggleCollapsed={() => setSidebarCollapsed((current) => !current)}
             onToggleGroup={toggleGroup}
             onLogout={handleLogout}

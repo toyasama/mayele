@@ -49,3 +49,36 @@ test('la presence ami suit activement le cycle de vie de son onglet', async ({ b
     await host.context.close()
   }
 })
+
+test('le joueur peut apparaitre hors ligne sans quitter puis redevient visible a sa prochaine connexion', async ({ browser, request }) => {
+  await resetMultiplayerFixture(request)
+  let host = await authenticatedPage(browser, 'host')
+  const guest = await authenticatedPage(browser, 'guest')
+
+  try {
+    await guest.page.goto(`${APP_URL}/amis`)
+    await waitForRealtimeReady(guest.page)
+    await host.page.goto(`${APP_URL}/amis`)
+    await waitForRealtimeReady(host.page)
+
+    const guestCard = friendCard(host.page, 'Bob Guest')
+    const hostCard = friendCard(guest.page, 'Alice Host')
+    await expect(hostCard).toContainText('En ligne')
+
+    await host.page.getByRole('button', { name: 'Apparaitre hors ligne' }).click()
+    await expect(host.page.getByRole('button', { name: 'Apparaitre en ligne' })).toBeVisible()
+    await expect(hostCard).toContainText('Hors ligne')
+    await expect(guestCard).toContainText('En ligne')
+
+    await host.context.close()
+    host = await authenticatedPage(browser, 'host')
+    await host.page.goto(`${APP_URL}/amis`)
+    await waitForRealtimeReady(host.page)
+
+    await expect(host.page.getByRole('button', { name: 'Apparaitre hors ligne' })).toBeVisible()
+    await expect(hostCard).toContainText('En ligne')
+  } finally {
+    await host.context.close()
+    await guest.context.close()
+  }
+})

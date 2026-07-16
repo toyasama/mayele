@@ -43,6 +43,29 @@ describe('PresenceRuntime', () => {
     expect(runtime.onlinePlayerCount).toBe(0)
   })
 
+  it('masque volontairement un joueur sans couper sa connexion puis redevient visible a la prochaine session', () => {
+    const runtime = new PresenceRuntime()
+    runtime.connect(player.id, 'socket_1', player, 1_000)
+
+    expect(runtime.setVisibility(player.id, false, 2_000)).toMatchObject({
+      status: 'offline',
+      shouldBroadcast: true,
+      shouldPersist: true,
+    })
+    expect(runtime.isManuallyOffline(player.id)).toBe(true)
+    expect(runtime.getConnectedPlayer(player.id)).toBeNull()
+    expect(runtime.onlinePlayerCount).toBe(0)
+
+    expect(runtime.setVisibility(player.id, true, 3_000)).toMatchObject({ status: 'online', shouldBroadcast: true })
+    expect(runtime.isManuallyOffline(player.id)).toBe(false)
+    expect(runtime.getConnectedPlayer(player.id)).toMatchObject({ presenceStatus: 'online' })
+
+    runtime.setVisibility(player.id, false, 4_000)
+    runtime.disconnect(player.id, 'socket_1', 5_000)
+    expect(runtime.connect(player.id, 'socket_2', player, 6_000)).toMatchObject({ status: 'online', shouldBroadcast: true })
+    expect(runtime.isManuallyOffline(player.id)).toBe(false)
+  })
+
   it('ignore les heartbeats rapproches et persiste periodiquement une activite durable', () => {
     const runtime = new PresenceRuntime()
     runtime.connect(player.id, 'socket_1', player, 1_000)

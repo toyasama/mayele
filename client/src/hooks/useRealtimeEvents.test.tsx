@@ -149,6 +149,40 @@ describe('useRealtimeEvents', () => {
     expect(onMatchTempoAnswerRecorded).toHaveBeenCalledWith(payload)
   })
 
+  it('diffuse la preference de visibilite et envoie une commande Socket.IO validee', async () => {
+    const onPresenceVisibilityChanged = vi.fn()
+    const getToken = async () => 'token_1'
+    const { result } = renderHook(() =>
+      useRealtimeEvents({
+        isAuthenticated: true,
+        getToken,
+        onPresenceVisibilityChanged,
+      }),
+    )
+
+    await waitFor(() => {
+      expect(socketMocks.fakeSocket.connect).toHaveBeenCalled()
+    })
+
+    await act(async () => {
+      socketMocks.fakeSocket.connected = true
+      emitSocketEvent('realtime:ready')
+      emitSocketEvent('presence:visibility', { hidden: true })
+    })
+
+    expect(onPresenceVisibilityChanged).toHaveBeenCalledWith({ hidden: true })
+
+    await act(async () => {
+      await expect(result.current.setPresenceVisibility(false)).resolves.toEqual({ joined: true })
+    })
+
+    expect(socketMocks.commandEmit).toHaveBeenCalledWith(
+      'presence:visibility',
+      expect.objectContaining({ visible: false, clientCommandId: expect.any(String) }),
+      expect.any(Function),
+    )
+  })
+
   it('utilise un timeout plus long pour les commandes persistantes', () => {
     expect(realtimeCommandTimeoutMs('match:create-invitation')).toBe(12_000)
     expect(realtimeCommandTimeoutMs('match:propose')).toBe(12_000)

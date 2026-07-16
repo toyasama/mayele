@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { isNavigationItemActive, mainNavigationItems, type NavigationMatchContext } from './navigation'
 import { LogoutNavIcon } from './navigationIcons'
@@ -14,6 +15,7 @@ type DesktopSidebarProps = {
   user: SidebarUser | null | undefined
   context: NavigationMatchContext
   expandedGroups: Set<string>
+  presenceSlot?: ReactNode
   onToggleCollapsed: () => void
   onToggleGroup: (label: string) => void
   onLogout: () => void
@@ -39,6 +41,7 @@ export function DesktopSidebar({
   user,
   context,
   expandedGroups,
+  presenceSlot,
   onToggleCollapsed,
   onToggleGroup,
   onLogout,
@@ -111,17 +114,20 @@ export function DesktopSidebar({
         })}
       </nav>
 
-      <Link className="sidebar-profile" to="/profil/configuration" aria-label="Parametres du profil">
-        {user?.avatarUrl ? (
-          <img className="sidebar-profile-avatar" src={user.avatarUrl} alt="" />
-        ) : (
-          <span className="sidebar-profile-avatar initials" aria-hidden="true">
-            {userInitials(user)}
-          </span>
-        )}
-        <strong>{displayName}</strong>
-        <span>Profil</span>
-      </Link>
+      <div className="sidebar-account">
+        {presenceSlot}
+        <Link className="sidebar-profile" to="/profil/configuration" aria-label="Parametres du profil">
+          {user?.avatarUrl ? (
+            <img className="sidebar-profile-avatar" src={user.avatarUrl} alt="" />
+          ) : (
+            <span className="sidebar-profile-avatar initials" aria-hidden="true">
+              {userInitials(user)}
+            </span>
+          )}
+          <strong>{displayName}</strong>
+          <span>Profil</span>
+        </Link>
+      </div>
 
       <button className="sidebar-logout" type="button" onClick={onLogout}>
         <span className="sidebar-logout-icon" aria-hidden="true"><LogoutNavIcon /></span>

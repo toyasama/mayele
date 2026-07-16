@@ -34,14 +34,14 @@ type FloatingToast = {
   title: string
   body?: string | null
   href?: string | null
-  variant?: 'info' | 'success'
+  variant?: 'error' | 'info' | 'success'
 }
 
 type ToastEventDetail = {
   title: string
   body?: string | null
   href?: string | null
-  variant?: 'info' | 'success'
+  variant?: 'error' | 'info' | 'success'
 }
 
 function formatNotificationDate(value: string) {
@@ -77,6 +77,8 @@ function App() {
   const [unreadNotifications, setUnreadNotifications] = useState(0)
   const [notificationPanelOpen, setNotificationPanelOpen] = useState(false)
   const [floatingToasts, setFloatingToasts] = useState<FloatingToast[]>([])
+  const [presenceHidden, setPresenceHidden] = useState(false)
+  const [presenceVisibilityUpdating, setPresenceVisibilityUpdating] = useState(false)
   const knownNotificationIdsRef = useRef<Set<string>>(new Set())
   const notificationsLoadedRef = useRef(false)
   const displayUser = profile ?? user
@@ -159,6 +161,7 @@ function App() {
     isAuthenticated: Boolean(isAuthenticated && profile?.profileComplete),
     getToken,
     onPresenceChanged: (payload) => updateProfilePresence(payload.player),
+    onPresenceVisibilityChanged: (payload) => setPresenceHidden(payload.hidden),
     onNotificationsChanged: (payload) => {
       if (payload.notification) {
         applyRealtimeNotification(payload.notification)
@@ -190,6 +193,8 @@ function App() {
       setNotifications([])
       setUnreadNotifications(0)
       setFloatingToasts([])
+      setPresenceHidden(false)
+      setPresenceVisibilityUpdating(false)
       return
     }
 
@@ -327,12 +332,47 @@ function App() {
     return 'Hors ligne'
   }
 
+  async function togglePresenceVisibility() {
+    if (!realtime.isRealtimeReady || presenceVisibilityUpdating) {
+      return
+    }
+
+    const nextVisible = presenceHidden
+    setPresenceVisibilityUpdating(true)
+
+    try {
+      const payload = await realtime.setPresenceVisibility(nextVisible)
+      setPresenceHidden(payload.hidden)
+    } catch (error) {
+      addFloatingToast({
+        id: 'presence-visibility-error',
+        title: 'Statut non modifie',
+        body: error instanceof Error ? error.message : 'Impossible de mettre a jour votre statut.',
+        variant: 'error',
+      })
+    } finally {
+      setPresenceVisibilityUpdating(false)
+    }
+  }
+
   function renderPresenceIndicator(className = '') {
+    const effectivePresenceStatus = presenceHidden ? 'offline' : presenceStatus
+    const currentLabel = presenceLabel(effectivePresenceStatus)
+    const actionLabel = presenceHidden ? 'Apparaitre en ligne' : 'Apparaitre hors ligne'
+
     return (
-      <span className={`presence-control presence-${presenceStatus} ${className}`} aria-label={`Statut : ${presenceLabel(presenceStatus)}`}>
+      <button
+        className={`presence-control presence-control-button presence-${effectivePresenceStatus} ${className}`}
+        type="button"
+        aria-label={actionLabel}
+        aria-pressed={presenceHidden}
+        disabled={!realtime.isRealtimeReady || presenceVisibilityUpdating}
+        title={actionLabel}
+        onClick={() => void togglePresenceVisibility()}
+      >
         <span className="presence-dot" aria-hidden="true" />
-        <span className="presence-label">{presenceLabel(presenceStatus)}</span>
-      </span>
+        <span className="presence-label">{currentLabel}</span>
+      </button>
     )
   }
 

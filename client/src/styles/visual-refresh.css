@@ -172,6 +172,26 @@ body {
   font-weight: 800;
 }
 
+.presence-control-button {
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.presence-control-button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+}
+
+.presence-control-button:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--primary) 35%, transparent);
+  outline-offset: 2px;
+}
+
+.presence-control-button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
 .presence-label {
   font-weight: 850;
 }
@@ -196,6 +216,12 @@ body {
 }
 
 .mobile-presence-control {
+  width: 100%;
+  justify-content: flex-start;
+  border-radius: 8px;
+}
+
+.sidebar-presence-control {
   width: 100%;
   justify-content: flex-start;
   border-radius: 8px;
@@ -493,13 +519,18 @@ button[aria-expanded='false'] .nav-toggle-chevron {
   text-transform: uppercase;
 }
 
+.sidebar-account {
+  display: grid;
+  gap: 8px;
+  margin-top: auto;
+}
+
 .sidebar-profile {
   display: grid;
   grid-template-columns: 42px minmax(0, 1fr);
   align-items: center;
   column-gap: 10px;
   row-gap: 2px;
-  margin-top: auto;
   padding: 18px 14px;
   border-radius: 8px;
   background: linear-gradient(135deg, #fff6f7, #eef6ff);
@@ -569,7 +600,8 @@ button[aria-expanded='false'] .nav-toggle-chevron {
 .authenticated-shell.sidebar-collapsed .sidebar-label,
 .authenticated-shell.sidebar-collapsed .sidebar-nav-text,
 .authenticated-shell.sidebar-collapsed .sidebar-profile strong,
-.authenticated-shell.sidebar-collapsed .sidebar-profile > span:not(.sidebar-profile-avatar) {
+.authenticated-shell.sidebar-collapsed .sidebar-profile > span:not(.sidebar-profile-avatar),
+.authenticated-shell.sidebar-collapsed .sidebar-presence-control .presence-label {
   display: none;
 }
 
@@ -592,6 +624,7 @@ button[aria-expanded='false'] .nav-toggle-chevron {
 
 .authenticated-shell.sidebar-collapsed .sidebar-nav .nav-link,
 .authenticated-shell.sidebar-collapsed .sidebar-profile,
+.authenticated-shell.sidebar-collapsed .sidebar-presence-control,
 .authenticated-shell.sidebar-collapsed .sidebar-logout {
   width: 52px;
   min-height: 52px;

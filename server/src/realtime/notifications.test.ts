@@ -485,6 +485,64 @@ describe('realtime notifications', () => {
     })
   })
 
+  it('permet de masquer volontairement sa presence sans fermer la socket', async () => {
+    httpServer = createServer()
+    initRealtime(httpServer, {
+      authenticateToken: async (token) => {
+        if (token === 'token_a') {
+          return { clerkUserId: 'clerk_a', playerId: 'player_a', player: { ...playerA, presenceStatus: 'offline', presenceUpdatedAt: new Date().toISOString() } }
+        }
+
+        if (token === 'token_b') {
+          return { clerkUserId: 'clerk_b', playerId: 'player_b', player: { ...playerB, presenceStatus: 'offline', presenceUpdatedAt: new Date().toISOString() } }
+        }
+
+        return null
+      },
+    })
+    presenceServiceMocks.listFriends.mockImplementation(async (playerId) => {
+      if (playerId === 'player_a') {
+        return [{ id: 'player_b' }]
+      }
+
+      if (playerId === 'player_b') {
+        return [{ id: 'player_a' }]
+      }
+
+      return []
+    })
+    const port = await listen(httpServer)
+    const [clientA, clientB] = await Promise.all([connectClient(port, 'token_a'), connectClient(port, 'token_b')])
+    const offlineEvent = new Promise<{ reason: string; player: { id: string; presenceStatus: string } }>((resolve) => {
+      clientB.on('presence:changed', (payload) => {
+        if (payload.player.id === 'player_a' && payload.player.presenceStatus === 'offline') {
+          resolve(payload)
+        }
+      })
+    })
+    const privateVisibilityEvent = new Promise<{ hidden: boolean }>((resolve) => {
+      clientA.once('presence:visibility', resolve)
+    })
+
+    const ack = await new Promise<{ ok: boolean; data?: { hidden: boolean } }>((resolve) => {
+      clientA.emit('presence:visibility', { visible: false, clientCommandId: 'cmd_hide_presence' }, resolve)
+    })
+
+    expect(ack).toEqual({ ok: true, data: { hidden: true } })
+    await expect(privateVisibilityEvent).resolves.toEqual({ hidden: true })
+    await expect(offlineEvent).resolves.toMatchObject({
+      reason: 'presence_offline',
+      player: { id: 'player_a', presenceStatus: 'offline' },
+    })
+    await expect.poll(() => getRealtimeHealth().onlinePlayers).toBe(1)
+    await expect.poll(() => presenceServiceMocks.updatePlayerPresenceById.mock.calls.at(-1)?.[1]).toBe('offline')
+
+    const invalidAck = await new Promise<{ ok: boolean; error?: { code: string } }>((resolve) => {
+      clientA.emit('presence:visibility', { visible: 'false', clientCommandId: 'cmd_invalid_presence' }, resolve)
+    })
+    expect(invalidAck).toMatchObject({ ok: false, error: { code: 'invalid_presence_visibility' } })
+  })
+
   it('envoie les evenements sociaux uniquement aux rooms des joueurs cibles', async () => {
     httpServer = createServer()
     initRealtime(httpServer, {

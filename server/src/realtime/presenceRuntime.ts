@@ -16,6 +16,7 @@ type ConnectedPlayer = {
   player: RealtimePublicPlayer
   socketIds: Set<string>
   activeSocketIds: Set<string>
+  manuallyOffline: boolean
   lastActivityAtMs: number
   lastPersistedAtMs: number
 }
@@ -36,6 +37,7 @@ export class PresenceRuntime {
       player,
       socketIds: new Set<string>(),
       activeSocketIds: new Set<string>(),
+      manuallyOffline: false,
       lastActivityAtMs: 0,
       lastPersistedAtMs: 0,
     }
@@ -75,6 +77,22 @@ export class PresenceRuntime {
     return this.transition(playerId, current, now, activityChanged)
   }
 
+  setVisibility(playerId: string, visible: boolean, now = Date.now()) {
+    const current = this.players.get(playerId)
+
+    if (!current) {
+      return null
+    }
+
+    const manuallyOffline = !visible
+    if (current.manuallyOffline === manuallyOffline) {
+      return null
+    }
+
+    current.manuallyOffline = manuallyOffline
+    return this.transition(playerId, current, now, true)
+  }
+
   disconnect(playerId: string, socketId: string, now = Date.now()) {
     const current = this.players.get(playerId)
 
@@ -98,6 +116,10 @@ export class PresenceRuntime {
     return player && player.presenceStatus !== 'offline' ? player : null
   }
 
+  isManuallyOffline(playerId: string) {
+    return this.players.get(playerId)?.manuallyOffline ?? false
+  }
+
   get onlinePlayerCount() {
     return [...this.players.values()].filter((player) => player.player.presenceStatus === 'online').length
   }
@@ -107,7 +129,9 @@ export class PresenceRuntime {
   }
 
   private transition(playerId: string, current: ConnectedPlayer, now: number, activityChanged: boolean): PresenceTransition | null {
-    const status = presenceStatusForSockets(current.socketIds.size, current.activeSocketIds.size)
+    const status = current.manuallyOffline
+      ? 'offline'
+      : presenceStatusForSockets(current.socketIds.size, current.activeSocketIds.size)
     const statusChanged = current.player.presenceStatus !== status
     const heartbeatDue = status === 'online' && now - current.lastPersistedAtMs >= PRESENCE_HEARTBEAT_PERSIST_INTERVAL_MS
 

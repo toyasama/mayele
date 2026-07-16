@@ -65,6 +65,10 @@ export type PresenceRealtimePayload = RealtimePayload & {
   }
 }
 
+export type PresenceVisibilityRealtimePayload = {
+  hidden: boolean
+}
+
 export type RealtimeConfigPayload = {
   game?: string | null
   level?: string | null
@@ -133,6 +137,7 @@ export function realtimeCommandTimeoutMs(eventName: string) {
 type RealtimeHandlers = {
   onSocialChanged?: (payload: RealtimePayload) => void
   onPresenceChanged?: (payload: PresenceRealtimePayload) => void
+  onPresenceVisibilityChanged?: (payload: PresenceVisibilityRealtimePayload) => void
   onMatchChanged?: (payload: MatchRealtimePayload) => void
   onRoomEvent?: (payload: RoomRealtimeEvent) => void
   onRoomSnapshot?: (payload: RoomSnapshotPayload) => void
@@ -311,6 +316,7 @@ async function ensureRealtimeSocket(getToken: TokenProvider) {
     })
     socket.on('social:changed', (payload: RealtimePayload) => dispatchRealtimeEvent('onSocialChanged', payload))
     socket.on('presence:changed', recordRealtimePresence)
+    socket.on('presence:visibility', (payload: PresenceVisibilityRealtimePayload) => dispatchRealtimeEvent('onPresenceVisibilityChanged', payload))
     socket.on('match:changed', (payload: MatchRealtimePayload) => dispatchRealtimeEvent('onMatchChanged', payload))
     socket.on('room:event', (payload: RoomRealtimeEvent) => dispatchRealtimeEvent('onRoomEvent', payload))
     socket.on('room:snapshot', (payload: RoomSnapshotPayload) => dispatchRealtimeEvent('onRoomSnapshot', payload))
@@ -336,6 +342,7 @@ export function useRealtimeEvents({
   getToken,
   onSocialChanged,
   onPresenceChanged,
+  onPresenceVisibilityChanged,
   onMatchChanged,
   onRoomEvent,
   onRoomSnapshot,
@@ -359,6 +366,7 @@ export function useRealtimeEvents({
     handlersRef.current = {
       onSocialChanged,
       onPresenceChanged,
+      onPresenceVisibilityChanged,
       onMatchChanged,
       onRoomEvent,
       onRoomSnapshot,
@@ -374,6 +382,7 @@ export function useRealtimeEvents({
     onMatchChanged,
     onNotificationsChanged,
     onPresenceChanged,
+    onPresenceVisibilityChanged,
     onRoomEvent,
     onRoomSnapshot,
     onSocialChanged,
@@ -455,6 +464,10 @@ export function useRealtimeEvents({
     }
   }, [])
 
+  const setPresenceVisibility = useCallback((visible: boolean) => {
+    return emitRealtimeCommand<{ hidden: boolean }>('presence:visibility', { visible })
+  }, [emitRealtimeCommand])
+
   const updateMatchConfig = useCallback((matchId: string, config: RealtimeConfigPayload) => {
     return emitRealtimeCommand<{ match: MatchData }>('match:update-config', { matchId, config })
   }, [emitRealtimeCommand])
@@ -535,6 +548,7 @@ export function useRealtimeEvents({
     submitMatchResult,
     submitTempoAnswer,
     setPresenceActivity,
+    setPresenceVisibility,
     updateMatchProgress,
     updateMatchConfig,
   }
