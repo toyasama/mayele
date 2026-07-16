@@ -71,8 +71,23 @@ function requireHttpsUrl(value, name) {
   return url
 }
 
+function requireClerkPublishableKey(value) {
+  const clerkKey = value?.trim()
+
+  if (!clerkKey) {
+    fail('VITE_CLERK_PUBLISHABLE_KEY doit etre defini pour un build production.')
+  }
+
+  if (!/^pk_(?:test|live)_[A-Za-z0-9_-]{20,}$/.test(clerkKey)) {
+    fail('VITE_CLERK_PUBLISHABLE_KEY doit etre une cle publique Clerk valide.')
+  }
+
+  return clerkKey
+}
+
 const env = loadViteProductionEnv()
 const apiUrl = requireHttpsUrl(env.VITE_API_URL, 'VITE_API_URL')
+const clerkPublishableKey = requireClerkPublishableKey(env.VITE_CLERK_PUBLISHABLE_KEY)
 const apiPathname = apiUrl.pathname.replace(/\/+$/, '')
 
 if (apiPathname !== '/api') {
@@ -89,5 +104,5 @@ if (env.VITE_REALTIME_URL?.trim()) {
 }
 
 const realtimeOrigin = env.VITE_REALTIME_URL?.trim() || apiUrl.origin
-console.log(`Config frontend production OK: API=${apiUrl.origin}${apiUrl.pathname}, realtime=${realtimeOrigin}`)
-
+const clerkEnvironment = clerkPublishableKey.startsWith('pk_live_') ? 'live' : 'test'
+console.log(`Config frontend production OK: API=${apiUrl.origin}${apiUrl.pathname}, realtime=${realtimeOrigin}, Clerk=${clerkEnvironment}`)

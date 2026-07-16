@@ -103,6 +103,7 @@ jobs:
         working-directory: client
         env:
           VITE_API_URL: https://api.mayele-learning.com/api
+          VITE_CLERK_PUBLISHABLE_KEY: pk_test_ci_build_validation_1234567890
         run: npm run build
 
   e2e:
@@ -369,17 +370,28 @@ jobs:
 
       - name: Deploy client to Vercel
         working-directory: client
-        env:
-          VITE_API_URL: https://api.mayele-learning.com/api
         shell: bash
         run: |
           npx --yes vercel@56.2.0 pull --yes --environment=production --token="$VERCEL_TOKEN"
-          npx --yes vercel@56.2.0 build --prod --token="$VERCEL_TOKEN"
-          npx --yes vercel@56.2.0 deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+          npx --yes vercel@56.2.0 deploy --yes --force --prod --token="$VERCEL_TOKEN"
+
+      - name: Install production smoke browser
+        working-directory: client
+        run: npx playwright install --with-deps chromium
 
       - name: Production smoke
         shell: bash
         run: |
           curl --fail --silent --show-error --max-time 20 "$PRODUCTION_API_URL/api/health"
           curl --fail --silent --show-error --max-time 20 "$PRODUCTION_API_URL/api/ready"
-          curl --fail --silent --show-error --max-time 20 "$PRODUCTION_APP_URL/" > /dev/null
+          cd client
+          npm run test:production-smoke
+
+      - name: Upload production smoke diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: production-smoke-diagnostics-${{ github.run_attempt }}
+          path: client/test-results/production-smoke
+          if-no-files-found: ignore
+          retention-days: 7

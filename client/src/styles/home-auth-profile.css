@@ -195,6 +195,21 @@
   width: 100%;
 }
 
+.app-bootstrap-error {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 24px;
+}
+
+.app-bootstrap-error .auth-card {
+  text-align: center;
+}
+
+.app-bootstrap-error .ghost-button {
+  align-self: center;
+}
+
 .auth-single-column {
   width: min(100%, 560px);
   margin: 0 auto;
@@ -515,4 +530,3 @@
   text-align: center;
   color: var(--muted);
 }
-
