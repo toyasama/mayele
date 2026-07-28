@@ -73,7 +73,7 @@ jobs:
 
       - name: Client audit
         working-directory: client
-        run: npm audit --audit-level=moderate
+        run: npm run audit:ci
 
       - name: Server typecheck
         working-directory: server
