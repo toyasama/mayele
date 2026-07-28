@@ -40,7 +40,7 @@ export function playerInitials(player: Pick<PublicPlayer, 'name' | 'username'>) 
 
 export function roomStatusLabel(match: MatchData | null, hasSelectedOpponent: boolean) {
   if (!match) {
-    return hasSelectedOpponent ? 'Invitation a envoyer' : 'Nouveau salon'
+    return hasSelectedOpponent ? 'Invitation à envoyer' : 'Nouveau défi'
   }
 
   switch (match.status) {
@@ -93,7 +93,7 @@ export function playerCard(
           <>
             <span className="multiplayer-avatar empty-slot">+</span>
             <strong>En attente</strong>
-            <span>Invitez un ami dans le salon.</span>
+            <span>Place libre</span>
             {statusText ? <small className="multiplayer-player-status">{statusText}</small> : null}
           </>
         )}

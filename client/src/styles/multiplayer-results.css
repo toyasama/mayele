@@ -62,8 +62,52 @@
 
 .multiplayer-result-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: clamp(18px, 4vw, 34px);
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: clamp(10px, 2vw, 20px);
+  align-items: center;
+}
+
+.multiplayer-result-stage {
+  animation: experienceReveal var(--motion-normal) var(--ease-out) both;
+}
+
+.multiplayer-result-verdict {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  text-align: center;
+}
+
+.multiplayer-result-verdict > strong {
+  color: var(--text);
+  font-size: clamp(2.4rem, 7vw, 4.4rem);
+  line-height: 0.95;
+}
+
+.multiplayer-result-verdict.is-winner > strong {
+  color: var(--primary);
+}
+
+.multiplayer-result-verdict.is-loser > strong {
+  color: var(--coral, #d94835);
+}
+
+.multiplayer-result-verdict > small {
+  color: var(--muted);
+  font-weight: 750;
+}
+
+.multiplayer-result-versus {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--primary-dark);
+  color: #ffffff !important;
+  font-size: 0.78rem;
+  font-weight: 950 !important;
+  box-shadow: 0 8px 18px rgba(0, 48, 72, 0.2);
 }
 
 .multiplayer-result-actions {
@@ -124,6 +168,34 @@
   font-size: 0.78rem;
   font-weight: 950;
   white-space: nowrap;
+}
+
+.multiplayer-result-score {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+}
+
+.multiplayer-result-score strong {
+  font-size: clamp(2.5rem, 6vw, 4rem);
+  line-height: 0.9;
+}
+
+.multiplayer-result-score span {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+
+@media (max-width: 720px) {
+  .multiplayer-result-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .multiplayer-result-versus {
+    margin: -14px auto;
+    position: relative;
+    z-index: 2;
+  }
 }
 
 .multiplayer-result-forfeit-badge {
@@ -190,4 +262,3 @@
   background: #ffedd5;
   font-weight: 950;
 }
-

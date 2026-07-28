@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { ChallengeArenaScreen, ChallengeSetupScreen, type ChallengeMetric } from '../components/ChallengeExperience'
-import { ActionBar } from '../components/layout/ActionBar'
 import { PageFrame } from '../components/layout/PageFrame'
 import { PlayModeNavigationDialog } from '../components/PlayModeNavigationDialog'
 import { PlayModeTabs, type PlayModePath } from '../components/PlayModeTabs'
 import { useAuth } from '../context/auth'
+import { SoloResultStage } from '../features/solo/SoloResultStage'
 import { clearCachePrefix, DASHBOARD_CACHE_PREFIX } from '../lib/appCache'
-import { api } from '../lib/api'
+import { api, type DailyObjective, type SoloRunData, type SoloRunQuestion } from '../lib/api'
+import '../styles/routes/game.css'
 import { parseAnswerInput } from '../lib/answerInput'
 import { LEVEL_RUN_LABELS } from '../lib/challengeLabels'
 import {
@@ -19,32 +20,23 @@ import {
   type ChallengeMode,
 } from '../lib/challengeConfig'
 import { criticalRemainingSeconds, isCriticalRemainingTime } from '../lib/challengeTiming'
+import { createClientCommandId } from '../lib/clientCommandId'
 import {
   GAME_LABELS,
   LEVEL_LABELS,
   SKILL_LABELS,
-  calculateElapsedSessionSeconds,
   calculateRemainingSessionSeconds,
-  generateQuestion,
-  generateUniqueQuestion,
-  questionIdentity,
-  type AnswerResult,
   type GameLevel,
   type GameType,
-  type Question,
   type SkillTag,
 } from '../lib/game'
 import {
   DEFAULT_SOLO_CHALLENGE_CONFIG,
   activeTimerSecondsForSoloConfig,
   createSoloSessionState,
-  isSoloTempoComplete,
   normalizeSoloChallengeConfig,
-  recordSoloAnswer,
-  totalSecondsForSoloConfig,
   type SoloChallengeConfig,
   type SoloSessionState,
-  type SoloSessionStats,
 } from '../lib/soloChallenge'
 
 type SessionStatus = 'idle' | 'running' | 'finished'
@@ -96,8 +88,29 @@ function modeEyebrow(config: SoloChallengeConfig) {
   return `Sprint - ${config.sprintDurationSeconds}s`
 }
 
+function configFromRun(run: SoloRunData): SoloChallengeConfig {
+  return normalizeSoloChallengeConfig({
+    mode: run.mode,
+    game: run.game,
+    level: run.level,
+    focusSkill: run.practiceSkill,
+    sprintDurationSeconds: (run.mode === 'sprint' ? run.durationSeconds : 60) as SoloChallengeConfig['sprintDurationSeconds'],
+    tempoQuestionCount: run.questionCount,
+    tempoQuestionSeconds: run.perQuestionTimeLimitSeconds ?? 10,
+  })
+}
+
+function stateFromRun(run: SoloRunData): SoloSessionState {
+  return {
+    config: configFromRun(run),
+    stats: run.progress,
+    answers: run.answers,
+    activeQuestionIndex: run.currentQuestionIndex,
+  }
+}
+
 export function GamePage() {
-  const { getToken, isAuthenticated } = useAuth()
+  const { getToken, isAuthenticated, user } = useAuth()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const initialFocusSkill = parseFocusSkill(searchParams.get('focus'))
@@ -107,7 +120,7 @@ export function GamePage() {
 
   const [config, setConfig] = useState<SoloChallengeConfig>(initialConfig)
   const [sessionState, setSessionState] = useState<SoloSessionState>(() => createSoloSessionState(initialConfig))
-  const [question, setQuestion] = useState<Question>(() => generateQuestion(initialConfig.game, initialConfig.level, initialConfig.focusSkill))
+  const [question, setQuestion] = useState<SoloRunQuestion | null>(null)
   const [answer, setAnswer] = useState('')
   const [remainingSeconds, setRemainingSeconds] = useState(activeTimerSecondsForSoloConfig(initialConfig))
   const [status, setStatus] = useState<SessionStatus>('idle')
@@ -117,6 +130,10 @@ export function GamePage() {
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
   const [pendingModePath, setPendingModePath] = useState<PlayModePath | null>(null)
+  const [modeHelpOpen, setModeHelpOpen] = useState(false)
+  const [dailyObjectives, setDailyObjectives] = useState<DailyObjective[]>([])
+  const [dailyObjectivesLoading, setDailyObjectivesLoading] = useState(true)
+  const [expandedObjectiveKey, setExpandedObjectiveKey] = useState<string | null>(null)
 
   const inputRef = useRef<HTMLInputElement | null>(null)
   const intervalRef = useRef<number | null>(null)
@@ -124,22 +141,39 @@ export function GamePage() {
   const countdownTokenRef = useRef(0)
   const activeEndsAtRef = useRef(Date.now() + activeTimerSecondsForSoloConfig(initialConfig) * 1000)
   const expireActiveTimerRef = useRef<() => void>(() => undefined)
-  const startedAtRef = useRef(Date.now())
-  const questionStartedAtRef = useRef(Date.now())
   const finishedRef = useRef(true)
-  const submittedTempoQuestionIndexesRef = useRef(new Set<number>())
-  const questionKeysRef = useRef(new Set<string>())
+  const answerSubmittingRef = useRef(false)
+  const startCommandIdRef = useRef<string | null>(null)
+  const restoredOwnerRef = useRef<string | null>(null)
+  const getTokenRef = useRef(getToken)
   const statusRef = useRef<SessionStatus>('idle')
   const configRef = useRef<SoloChallengeConfig>(initialConfig)
   const sessionStateRef = useRef<SoloSessionState>(createSoloSessionState(initialConfig))
-  const questionRef = useRef<Question>(question)
+  const runRef = useRef<SoloRunData | null>(null)
   const answerRef = useRef('')
 
   statusRef.current = status
   configRef.current = config
   sessionStateRef.current = sessionState
-  questionRef.current = question
   answerRef.current = answer
+  getTokenRef.current = getToken
+
+  useEffect(() => {
+    if (!modeHelpOpen) return
+
+    const previousOverflow = document.body.style.overflow
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setModeHelpOpen(false)
+    }
+
+    document.body.style.overflow = 'hidden'
+    window.addEventListener('keydown', closeOnEscape)
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [modeHelpOpen])
 
   const clearTimers = useCallback(() => {
     countdownTokenRef.current += 1
@@ -155,67 +189,56 @@ export function GamePage() {
     }
   }, [])
 
-  const saveSession = useCallback(
-    async (finalConfig: SoloChallengeConfig, finalStats: SoloSessionStats, finalAnswers: AnswerResult[], durationSeconds: number) => {
-      if (!isAuthenticated || finalStats.totalQuestions === 0) {
-        return
-      }
+  const refreshDailyObjectives = useCallback(async () => {
+    if (!isAuthenticated) return
 
-      setSaving(true)
-      setSaveError('')
+    setDailyObjectivesLoading(true)
+    try {
+      const { objectives } = await api.getDailyObjectives(getToken)
+      setDailyObjectives(objectives)
+    } catch {
+      // Les objectifs restent une information secondaire : la preparation
+      // d'une partie doit rester disponible si leur lecture echoue.
+    } finally {
+      setDailyObjectivesLoading(false)
+    }
+  }, [getToken, isAuthenticated])
 
-      try {
-        await api.saveSession(getToken, {
-          game: finalConfig.game,
-          level: finalConfig.level,
-          practiceSkill: finalConfig.focusSkill,
-          totalQuestions: finalStats.totalQuestions,
-          durationSeconds,
-          bestStreak: finalStats.bestStreak,
-          answers: finalAnswers,
-        })
-        clearCachePrefix(DASHBOARD_CACHE_PREFIX)
-      } catch (err) {
-        setSaveError(err instanceof Error ? err.message : 'Sauvegarde impossible.')
-      } finally {
-        setSaving(false)
-      }
-    },
-    [getToken, isAuthenticated],
-  )
+  const applyServerRun = useCallback((run: SoloRunData) => {
+    const nextConfig = configFromRun(run)
+    const nextState = stateFromRun(run)
+    runRef.current = run
+    configRef.current = nextConfig
+    sessionStateRef.current = nextState
+    finishedRef.current = run.status === 'completed'
+    setConfig(nextConfig)
+    setSessionState(nextState)
+    setQuestion(run.question)
+    setAnswer('')
 
-  const finishSession = useCallback(() => {
-    if (finishedRef.current) {
+    if (run.status === 'completed') {
+      setRemainingSeconds(0)
+      setStatus('finished')
+      setFeedback(
+        run.progress.totalQuestions > 0
+          ? `${SOLO_MODE_LABELS[run.mode]} terminé. Analyse tes erreurs avant de rejouer.`
+          : `${SOLO_MODE_LABELS[run.mode]} terminé sans réponse validée.`,
+      )
+      clearCachePrefix(DASHBOARD_CACHE_PREFIX)
       return
     }
 
-    finishedRef.current = true
-    clearTimers()
-    const finalConfig = configRef.current
-    const finalState = sessionStateRef.current
-    const durationSeconds = Math.min(
-      calculateElapsedSessionSeconds(startedAtRef.current),
-      totalSecondsForSoloConfig(finalConfig),
-    )
-    const modeLabel = SOLO_MODE_LABELS[finalConfig.mode]
+    setStatus('running')
+    setFeedback('')
+  }, [])
 
-    setRemainingSeconds(0)
-    setStatus('finished')
-    setFeedback(
-      finalState.stats.totalQuestions > 0
-        ? `${modeLabel} termine. Analyse tes erreurs avant de rejouer.`
-        : `${modeLabel} termine sans reponse validee.`,
-    )
-    setFeedbackTone('info')
-    void saveSession(finalConfig, finalState.stats, finalState.answers, durationSeconds)
-  }, [clearTimers, saveSession])
-
-  const armCountdown = useCallback(
-    (totalSeconds: number, onExpire: () => void) => {
+  const armCountdownUntil = useCallback(
+    (deadlineAt: string, serverNow: string, onExpire: () => void) => {
       clearTimers()
       const token = countdownTokenRef.current + 1
       countdownTokenRef.current = token
-      const deadline = Date.now() + Math.max(1, totalSeconds) * 1000
+      const remainingMs = Math.max(0, Date.parse(deadlineAt) - Date.parse(serverNow))
+      const deadline = Date.now() + remainingMs
       let expired = false
 
       const expire = () => {
@@ -229,7 +252,7 @@ export function GamePage() {
 
       activeEndsAtRef.current = deadline
       expireActiveTimerRef.current = expire
-      setRemainingSeconds(Math.max(1, totalSeconds))
+      setRemainingSeconds(Math.max(0, Math.ceil(remainingMs / 1000)))
 
       intervalRef.current = window.setInterval(() => {
         const nextRemainingSeconds = calculateRemainingSessionSeconds(deadline)
@@ -239,10 +262,65 @@ export function GamePage() {
           expire()
         }
       }, 250)
-      timeoutRef.current = window.setTimeout(expire, Math.max(1, totalSeconds) * 1000 + 80)
+      timeoutRef.current = window.setTimeout(expire, remainingMs + 80)
     },
     [clearTimers],
   )
+
+  const expireHandlerRef = useRef<() => void>(() => undefined)
+  const armRunTimer = useCallback((run: SoloRunData) => {
+    const deadlineAt = run.mode === 'tempo' ? run.question?.deadlineAt : run.endsAt
+    if (!deadlineAt || run.status !== 'active') return
+    armCountdownUntil(deadlineAt, run.serverNow, () => expireHandlerRef.current())
+  }, [armCountdownUntil])
+
+  const finishSession = useCallback(async () => {
+    const run = runRef.current
+    if (!run || finishedRef.current || saving) return
+
+    finishedRef.current = true
+    clearTimers()
+    setSaving(true)
+    setSaveError('')
+
+    try {
+      const response = await api.finishSoloRun(getToken, run.id)
+      applyServerRun(response.run)
+      void refreshDailyObjectives()
+      setFeedbackTone('info')
+    } catch (error) {
+      finishedRef.current = false
+      setStatus('finished')
+      setRemainingSeconds(0)
+      setSaveError(error instanceof Error ? error.message : 'Finalisation impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }, [applyServerRun, clearTimers, getToken, refreshDailyObjectives, saving])
+
+  useEffect(() => {
+    const ownerId = user?.clerkUserId
+    if (!isAuthenticated || !ownerId || restoredOwnerRef.current === ownerId) return
+    let cancelled = false
+
+    void refreshDailyObjectives()
+
+    void api.getActiveSoloRun(getTokenRef.current)
+      .then(({ run }) => {
+        if (cancelled) return
+        restoredOwnerRef.current = ownerId
+        if (!run) return
+        applyServerRun(run)
+        armRunTimer(run)
+      })
+      .catch((error) => {
+        if (!cancelled) setSaveError(error instanceof Error ? error.message : 'Reprise de la partie impossible.')
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [applyServerRun, armRunTimer, isAuthenticated, refreshDailyObjectives, user?.clerkUserId])
 
   useEffect(() => clearTimers, [clearTimers])
 
@@ -281,36 +359,24 @@ export function GamePage() {
     }
   }, [])
 
-  function generateForConfig(nextConfig = configRef.current) {
-    const generatedQuestion = generateUniqueQuestion(
-      nextConfig.game,
-      nextConfig.level,
-      nextConfig.focusSkill,
-      questionKeysRef.current,
-    )
-
-    questionKeysRef.current.add(questionIdentity(generatedQuestion))
-    questionStartedAtRef.current = Date.now()
-    return generatedQuestion
-  }
-
   function resetSession(nextConfigInput: SoloChallengeConfig) {
     const nextConfig = normalizeSoloChallengeConfig(nextConfigInput)
     const nextState = createSoloSessionState(nextConfig)
 
     clearTimers()
     finishedRef.current = true
-    submittedTempoQuestionIndexesRef.current.clear()
-    questionKeysRef.current.clear()
+    answerSubmittingRef.current = false
+    runRef.current = null
+    startCommandIdRef.current = null
     configRef.current = nextConfig
     sessionStateRef.current = nextState
     setConfig(nextConfig)
     setSessionState(nextState)
-    setQuestion(generateForConfig(nextConfig))
+    setQuestion(null)
     setAnswer('')
     setRemainingSeconds(activeTimerSecondsForSoloConfig(nextConfig))
     setStatus('idle')
-    setFeedback(nextConfig.focusSkill ? `Session ciblee sur ${SKILL_LABELS[nextConfig.focusSkill]}.` : '')
+    setFeedback(nextConfig.focusSkill ? `Session ciblée sur ${SKILL_LABELS[nextConfig.focusSkill]}.` : '')
     setFeedbackTone('info')
     setAnswerFeedback(null)
     setSaveError('')
@@ -323,36 +389,41 @@ export function GamePage() {
     })
   }
 
-  function startSession() {
-    const nextConfig = normalizeSoloChallengeConfig(configRef.current)
-    const nextState = createSoloSessionState(nextConfig)
-    const startedAt = Date.now()
-
-    startedAtRef.current = startedAt
-    finishedRef.current = false
-    submittedTempoQuestionIndexesRef.current.clear()
-    questionKeysRef.current.clear()
-    configRef.current = nextConfig
-    sessionStateRef.current = nextState
-    const generatedQuestion = generateForConfig(nextConfig)
-    setConfig(nextConfig)
-    setSessionState(nextState)
-    setQuestion(generatedQuestion)
-    setAnswer('')
-    setRemainingSeconds(activeTimerSecondsForSoloConfig(nextConfig))
-    setStatus('running')
-    setFeedback('')
-    setFeedbackTone('info')
-    setAnswerFeedback(null)
-    setSaveError('')
-    window.scrollTo({ top: 0 })
-
-    if (nextConfig.mode === 'tempo') {
-      armCountdown(nextConfig.tempoQuestionSeconds, () => recordCurrentAnswer('timeout'))
+  async function startSession() {
+    if (saving) return
+    if (runRef.current && runRef.current.status !== 'completed') {
+      setSaveError('Terminez la partie en cours avant d’en commencer une nouvelle.')
       return
     }
 
-    armCountdown(nextConfig.sprintDurationSeconds, finishSession)
+    const nextConfig = normalizeSoloChallengeConfig(configRef.current)
+    const clientRunId = startCommandIdRef.current ?? createClientCommandId()
+    startCommandIdRef.current = clientRunId
+    setSaving(true)
+    setSaveError('')
+
+    try {
+      const { run } = await api.startSoloRun(getToken, {
+        clientRunId,
+        mode: nextConfig.mode,
+        game: nextConfig.game,
+        level: nextConfig.level,
+        practiceSkill: nextConfig.focusSkill,
+        sprintDurationSeconds: nextConfig.sprintDurationSeconds,
+        tempoQuestionCount: nextConfig.tempoQuestionCount,
+        tempoQuestionSeconds: nextConfig.tempoQuestionSeconds,
+      })
+      startCommandIdRef.current = null
+      setAnswerFeedback(null)
+      setFeedbackTone('info')
+      applyServerRun(run)
+      armRunTimer(run)
+      window.scrollTo({ top: 0 })
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Démarrage de la partie impossible.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   function goToModeHome(path: PlayModePath) {
@@ -378,21 +449,19 @@ export function GamePage() {
     return false
   }
 
-  function confirmPendingModeChange() {
-    if (pendingModePath) {
-      goToModeHome(pendingModePath)
-    }
+  async function confirmPendingModeChange() {
+    const target = pendingModePath
+    if (!target) return
+    await finishSession()
+    if (runRef.current?.status === 'completed') goToModeHome(target)
   }
 
-  function recordCurrentAnswer(source: AnswerFeedback['source']) {
-    if (statusRef.current !== 'running') {
-      return
-    }
+  async function recordCurrentAnswer(source: AnswerFeedback['source']) {
+    const run = runRef.current
+    const currentQuestion = run?.question
+    if (statusRef.current !== 'running' || !run || !currentQuestion || answerSubmittingRef.current) return
 
-    const currentConfig = configRef.current
-    const currentQuestion = questionRef.current
-    const currentState = sessionStateRef.current
-    const numericAnswer = parseAnswerInput(answerRef.current)
+    const numericAnswer = source === 'timeout' ? null : parseAnswerInput(answerRef.current)
 
     if (source === 'manual' && numericAnswer === null) {
       setFeedback('Entre un nombre valide.')
@@ -401,58 +470,75 @@ export function GamePage() {
       return
     }
 
-    if (currentConfig.mode === 'tempo') {
-      const currentQuestionIndex = currentState.activeQuestionIndex
+    answerSubmittingRef.current = true
+    setFeedback(source === 'timeout' ? 'Temps écoulé.' : '')
+    setSaveError('')
 
-      if (submittedTempoQuestionIndexesRef.current.has(currentQuestionIndex)) {
-        return
+    try {
+      const response = await api.submitSoloAnswer(getToken, run.id, {
+        questionIndex: currentQuestion.index,
+        userAnswer: numericAnswer,
+      })
+      applyServerRun(response.run)
+      if (response.run.status === 'completed') void refreshDailyObjectives()
+
+      if (response.correction) {
+        setFeedbackTone(response.correction.isCorrect ? 'success' : 'error')
+        setAnswerFeedback({
+          prompt: response.correction.prompt,
+          userAnswer: response.correction.userAnswer,
+          correctAnswer: response.correction.correctAnswer,
+          isCorrect: response.correction.isCorrect,
+          streak: response.run.progress.currentStreak,
+          source,
+        })
       }
 
-      submittedTempoQuestionIndexesRef.current.add(currentQuestionIndex)
-    }
+      if (response.run.status === 'active') armRunTimer(response.run)
+    } catch (error) {
+      try {
+        const { run: latestRun } = await api.getSoloRun(getToken, run.id)
+        const storedCorrection = latestRun.answers.find(
+          (storedAnswer) => storedAnswer.questionIndex === currentQuestion.index,
+        )
 
-    const responseTimeMs = Math.max(0, Date.now() - questionStartedAtRef.current)
-    const nextState = recordSoloAnswer(currentState, {
-      question: currentQuestion,
-      userAnswer: numericAnswer,
-      responseTimeMs,
-    })
-    const answerResult = nextState.answers.at(-1)
+        if (storedCorrection) {
+          applyServerRun(latestRun)
+          if (latestRun.status === 'completed') void refreshDailyObjectives()
+          setFeedbackTone(storedCorrection.isCorrect ? 'success' : 'error')
+          setAnswerFeedback({
+            prompt: storedCorrection.prompt,
+            userAnswer: storedCorrection.userAnswer,
+            correctAnswer: storedCorrection.correctAnswer,
+            isCorrect: storedCorrection.isCorrect,
+            streak: latestRun.progress.currentStreak,
+            source,
+          })
+          if (latestRun.status === 'active') armRunTimer(latestRun)
+          return
+        }
+      } catch {
+        // Le message initial est plus utile si la lecture de réconciliation échoue aussi.
+      }
 
-    if (!answerResult) {
-      return
-    }
-
-    sessionStateRef.current = nextState
-    setSessionState(nextState)
-    setFeedback(source === 'timeout' ? 'Temps ecoule.' : '')
-    setFeedbackTone(answerResult.isCorrect ? 'success' : 'error')
-    setAnswerFeedback({
-      prompt: answerResult.prompt,
-      userAnswer: answerResult.userAnswer,
-      correctAnswer: answerResult.correctAnswer,
-      isCorrect: answerResult.isCorrect,
-      streak: nextState.stats.currentStreak,
-      source,
-    })
-
-    if (currentConfig.mode === 'tempo' && isSoloTempoComplete(nextState)) {
-      finishSession()
-      return
-    }
-
-    const generatedQuestion = generateForConfig(currentConfig)
-    setQuestion(generatedQuestion)
-    setAnswer('')
-
-    if (currentConfig.mode === 'tempo') {
-      armCountdown(currentConfig.tempoQuestionSeconds, () => recordCurrentAnswer('timeout'))
+      setFeedbackTone('error')
+      setSaveError(error instanceof Error ? error.message : 'Réponse non enregistrée.')
+    } finally {
+      answerSubmittingRef.current = false
     }
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    recordCurrentAnswer('manual')
+    void recordCurrentAnswer('manual')
+  }
+
+  expireHandlerRef.current = () => {
+    if (runRef.current?.mode === 'tempo') {
+      void recordCurrentAnswer('timeout')
+      return
+    }
+    void finishSession()
   }
 
   const stats = sessionState.stats
@@ -472,10 +558,24 @@ export function GamePage() {
   const tempoQuestionProgressLabel = config.mode === 'tempo'
     ? `Question ${Math.min(sessionState.activeQuestionIndex + 1, config.tempoQuestionCount)}/${config.tempoQuestionCount}`
     : undefined
+  const completedDailyObjectives = dailyObjectives.filter((objective) => objective.completed || objective.claimed).length
+  const expandedDailyObjective = dailyObjectives.find((objective) => objective.key === expandedObjectiveKey) ?? null
 
   const setupModeSlot = (
     <div className="challenge-choice-section challenge-config-row challenge-config-mode solo-mode-section">
-      <strong>Mode</strong>
+      <div className="solo-mode-label">
+        <strong>Mode</strong>
+        <button
+          type="button"
+          className="solo-mode-help-trigger"
+          aria-label="Informations sur les modes de jeu"
+          aria-haspopup="dialog"
+          aria-expanded={modeHelpOpen}
+          onClick={() => setModeHelpOpen(true)}
+        >
+          ?
+        </button>
+      </div>
       <div className="segmented-grid challenge-mode-grid">
         {(['sprint', 'tempo'] as ChallengeMode[]).map((mode) => (
           <button
@@ -492,29 +592,121 @@ export function GamePage() {
     </div>
   )
 
-  const setupOptionsSlot = (
-    <>
-      {config.focusSkill ? (
-        <div className="focus-note">
-          <span>Entrainement cible</span>
-          <strong>{SKILL_LABELS[config.focusSkill]}</strong>
-          <button
-            type="button"
-            className="secondary-button full-width"
-            onClick={() => updateConfig({ game: 'mixte', focusSkill: null })}
-          >
-            Revenir au mixte
-          </button>
+  const dailyObjectivesPanel = dailyObjectives.length || dailyObjectivesLoading ? (
+    <section className="solo-daily-objectives" aria-labelledby="solo-daily-objectives-title">
+      <header className="solo-daily-objectives-header">
+        <div className="solo-daily-objectives-title">
+          <span aria-hidden="true">◎</span>
+          <strong id="solo-daily-objectives-title">Objectifs du jour</strong>
+        </div>
+        <span>{dailyObjectivesLoading && !dailyObjectives.length ? 'Actualisation…' : `${completedDailyObjectives}/${dailyObjectives.length} terminés`}</span>
+      </header>
+
+      {dailyObjectives.length ? (
+        <div className="solo-daily-objectives-list">
+          {dailyObjectives.map((objective, index) => {
+            const complete = objective.completed || objective.claimed
+
+            return (
+              <button
+                type="button"
+                className={`solo-daily-objective ${complete ? 'is-complete' : ''} ${expandedObjectiveKey === objective.key ? 'is-expanded' : ''}`}
+                key={`${objective.key}-${objective.scopeKey}`}
+                aria-expanded={expandedObjectiveKey === objective.key}
+                aria-controls={expandedObjectiveKey === objective.key ? 'solo-daily-objective-detail' : undefined}
+                onClick={() => setExpandedObjectiveKey((current) => current === objective.key ? null : objective.key)}
+              >
+                <span className="solo-daily-objective-state" aria-hidden="true">{complete ? '✓' : index + 1}</span>
+                <div className="solo-daily-objective-copy">
+                  <span className="solo-daily-objective-name">
+                    <strong>{objective.title}</strong>
+                    <small aria-hidden="true">?</small>
+                  </span>
+                  <div className="solo-daily-objective-meta">
+                    <span>{objective.current}/{objective.target}</span>
+                    <small>+{objective.rewardXp} XP</small>
+                  </div>
+                  <progress
+                    aria-label={`Progression de ${objective.title}`}
+                    max={objective.target}
+                    value={Math.min(objective.current, objective.target)}
+                  />
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      ) : (
+        <p className="solo-daily-objectives-loading">Chargement de votre progression…</p>
+      )}
+
+      {expandedDailyObjective ? (
+        <div className="solo-daily-objective-detail" id="solo-daily-objective-detail" role="region" aria-live="polite">
+          <span aria-hidden="true">À faire</span>
+          <p>
+            <strong>{expandedDailyObjective.title}</strong>
+            {expandedDailyObjective.description}
+          </p>
         </div>
       ) : null}
+    </section>
+  ) : null
 
-      <div className="challenge-choice-section challenge-config-rules solo-rules-section">
-        <strong>Regles</strong>
-        <div className="solo-rule-panel">
+  const setupOptionsSlot = config.focusSkill ? (
+    <div className="focus-note">
+      <span>Entrainement cible</span>
+      <strong>{SKILL_LABELS[config.focusSkill]}</strong>
+      <button
+        type="button"
+        className="secondary-button full-width"
+        onClick={() => updateConfig({ game: 'mixte', focusSkill: null })}
+      >
+        Revenir au mixte
+      </button>
+    </div>
+  ) : null
+
+  const modeHelpDialog = modeHelpOpen ? (
+    <div
+      className="solo-mode-help-backdrop"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) setModeHelpOpen(false)
+      }}
+    >
+      <section
+        className="solo-mode-help-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="solo-mode-help-title"
+      >
+        <header>
+          <div>
+            <span>Comment ça marche ?</span>
+            <h2 id="solo-mode-help-title">{modeLabel}</h2>
+          </div>
+          <button
+            type="button"
+            className="solo-mode-help-close"
+            aria-label="Fermer"
+            autoFocus
+            onClick={() => setModeHelpOpen(false)}
+          >
+            ×
+          </button>
+        </header>
+
+        <p>
+          {config.mode === 'tempo'
+            ? 'Réponds à chaque question avant la fin de son chrono. La partie se termine après le nombre de questions choisi.'
+            : 'Réponds correctement au plus grand nombre de questions avant la fin du chrono.'}
+        </p>
+
+        <div className="solo-mode-help-settings">
           {config.mode === 'tempo' ? (
             <>
               <label>
-                Questions
+                <span>Nombre de questions</span>
                 <input
                   type="number"
                   min={MIN_TEMPO_QUESTION_COUNT}
@@ -530,25 +722,28 @@ export function GamePage() {
                 />
               </label>
               <label>
-                Temps par question
-                <input
-                  type="number"
-                  min={MIN_TEMPO_QUESTION_SECONDS}
-                  max={MAX_TEMPO_QUESTION_SECONDS}
-                  aria-label="Temps par question Tempo"
-                  value={config.tempoQuestionSeconds}
-                  onChange={(event) => {
-                    const nextValue = event.currentTarget.valueAsNumber
-                    updateConfig({
-                      tempoQuestionSeconds: Number.isFinite(nextValue) ? nextValue : configRef.current.tempoQuestionSeconds,
-                    })
-                  }}
-                />
+                <span>Temps par question</span>
+                <span className="solo-mode-help-input-unit">
+                  <input
+                    type="number"
+                    min={MIN_TEMPO_QUESTION_SECONDS}
+                    max={MAX_TEMPO_QUESTION_SECONDS}
+                    aria-label="Temps par question Tempo"
+                    value={config.tempoQuestionSeconds}
+                    onChange={(event) => {
+                      const nextValue = event.currentTarget.valueAsNumber
+                      updateConfig({
+                        tempoQuestionSeconds: Number.isFinite(nextValue) ? nextValue : configRef.current.tempoQuestionSeconds,
+                      })
+                    }}
+                  />
+                  <em>secondes</em>
+                </span>
               </label>
             </>
           ) : (
             <label>
-              Duree
+              <span>Durée du sprint</span>
               <select
                 aria-label="Duree Sprint"
                 value={config.sprintDurationSeconds}
@@ -563,13 +758,36 @@ export function GamePage() {
             </label>
           )}
         </div>
-      </div>
-    </>
-  )
 
-  const feedbackSlot = saveError ? (
+        <button type="button" className="solo-mode-help-done" onClick={() => setModeHelpOpen(false)}>
+          C’est compris
+        </button>
+      </section>
+    </div>
+  ) : null
+
+  const saveStatusSlot = saveError ? (
     <div className="answer-feedback error">
       <strong>Erreur</strong>
+      <span>{saveError}</span>
+      {runRef.current && runRef.current.status !== 'completed' ? (
+        <button
+          className="secondary-button"
+          type="button"
+          disabled={saving}
+          onClick={() => void finishSession()}
+        >
+          {saving ? 'Nouvel essai...' : 'Réessayer la finalisation'}
+        </button>
+      ) : null}
+    </div>
+  ) : saving ? (
+    <p className="muted">Synchronisation en cours...</p>
+  ) : null
+
+  const feedbackSlot = saveError ? (
+    <div className="answer-feedback error" role="alert">
+      <strong>Connexion interrompue</strong>
       <span>{saveError}</span>
     </div>
   ) : answerFeedback ? (
@@ -599,13 +817,12 @@ export function GamePage() {
       <strong>{feedbackTone === 'error' ? 'A corriger' : modeLabel}</strong>
       <span>{feedback}</span>
     </div>
-  ) : saving ? (
-    <p className="muted">Enregistrement en cours...</p>
   ) : null
 
   return (
     <PageFrame className={`game-page sprint-${status} solo-${status} ${config.mode}-${status} ${status === 'running' ? 'session-active' : ''} ${timerCritical ? 'timer-critical' : ''}`}>
       <PlayModeTabs onSelectMode={handleSelectPlayMode} />
+      {status === 'idle' ? dailyObjectivesPanel : null}
       {pendingModePath ? (
         <PlayModeNavigationDialog
           targetPath={pendingModePath}
@@ -613,6 +830,8 @@ export function GamePage() {
           onConfirm={confirmPendingModeChange}
         />
       ) : null}
+      {modeHelpDialog}
+      {status !== 'running' ? saveStatusSlot : null}
 
       {status === 'idle' ? (
         <ChallengeSetupScreen
@@ -630,9 +849,11 @@ export function GamePage() {
       ) : status === 'running' ? (
         <ChallengeArenaScreen
           answer={answer}
+          answerCount={stats.totalQuestions}
           answerInputRef={inputRef}
           answerPulse={answerFeedback ? (answerFeedback.isCorrect ? 'correct' : 'wrong') : ''}
           contextLabel={`${modeLabel} - ${LEVEL_RUN_LABELS[config.level]}`}
+          correctAnswerCount={stats.correctAnswers}
           elapsedLabel={`${elapsedSeconds}/${activeTimerTotalSeconds}`}
           feedbackSlot={feedbackSlot}
           metrics={statsCards}
@@ -641,48 +862,24 @@ export function GamePage() {
           onExit={finishSession}
           onSubmit={handleSubmit}
           progressPercent={sessionProgress}
-          question={question.prompt}
+          question={question?.prompt ?? 'Question en préparation...'}
           questionProgressLabel={tempoQuestionProgressLabel}
           criticalRemainingSeconds={criticalRemainingSeconds(activeTimerTotalSeconds)}
           remainingSeconds={remainingSeconds}
         />
       ) : null}
 
-      {status === 'finished' ? (
-        <article className="card sprint-card">
-          <div className="sprint-topline">
-            <span className="eyebrow">{sessionLabel}</span>
-            <div className="score-block">
-              <strong>+{stats.xp} xp</strong>
-            </div>
-          </div>
-
-          <div className="result-panel">
-            <div className="result-grid">
-              <div>
-                <strong>{stats.scorePoints} </strong>
-                <span>Score</span>
-              </div>
-              <div>
-                <strong>{stats.bestStreak}</strong>
-                <span>Serie</span>
-              </div>
-              <div>
-                <strong>{accuracy}%</strong>
-                <span>Precision</span>
-              </div>
-            </div>
-
-            <ActionBar className="sprint-result-actions">
-              <button className="challenge-start-button sprint-result-replay" type="button" onClick={startSession}>
-                <span>{config.mode === 'tempo' ? 'Rejouer le tempo' : 'Rejouer le sprint'}</span>
-              </button>
-              <button className="challenge-start-button sprint-result-menu" type="button" onClick={() => goToModeHome('/jeu/solo')}>
-                <span>Menu</span>
-              </button>
-            </ActionBar>
-          </div>
-        </article>
+      {status === 'finished' && runRef.current?.status === 'completed' ? (
+        <SoloResultStage
+          accuracy={accuracy}
+          answers={sessionState.answers}
+          modeLabel={modeLabel}
+          sessionLabel={sessionLabel}
+          skillLabel={(skill) => SKILL_LABELS[skill]}
+          stats={stats}
+          onReplay={startSession}
+          onReturn={() => goToModeHome('/jeu/solo')}
+        />
       ) : null}
     </PageFrame>
   )

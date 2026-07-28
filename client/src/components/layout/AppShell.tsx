@@ -25,10 +25,6 @@ type AppShellProps = {
 function initialExpandedGroups(pathname: string) {
   const groups = new Set<string>()
 
-  if (pathname === '/dashboard') {
-    groups.add('Mon espace')
-  }
-
   if (pathname.startsWith('/jeu')) {
     groups.add('Jouer')
   }
@@ -58,10 +54,6 @@ export function AppShell({
     setDrawerOpen(false)
     setExpandedGroups((current) => {
       const next = new Set(current)
-
-      if (location.pathname === '/dashboard') {
-        next.add('Mon espace')
-      }
 
       if (location.pathname.startsWith('/jeu')) {
         next.add('Jouer')

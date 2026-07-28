@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useEffect, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { isNavigationItemActive, mainNavigationItems, type NavigationMatchContext } from './navigation'
 import { LogoutNavIcon } from './navigationIcons'
@@ -28,6 +28,28 @@ export function MobileDrawer({
   onLogout,
   onToggleGroup,
 }: MobileDrawerProps) {
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+
+    const previousBodyOverflow = document.body.style.overflow
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        onClose()
+      }
+    }
+
+    document.body.style.overflow = 'hidden'
+    window.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      document.body.style.overflow = previousBodyOverflow
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [onClose, open])
+
   if (!open) {
     return null
   }

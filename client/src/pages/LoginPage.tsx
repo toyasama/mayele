@@ -3,6 +3,7 @@ import { type FormEvent, useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/auth'
 import { clerkErrorMessage } from '../lib/clerkErrors'
+import '../styles/routes/auth.css'
 
 type LoginStep = 'credentials' | 'verify-client' | 'reset-request' | 'reset-code' | 'reset-password'
 
@@ -13,7 +14,7 @@ type PasswordResetFactorResult = {
 export function LoginPage() {
   const { isAuthenticated, loading } = useAuth()
   const clerk = useClerk()
-  const signIn = clerk.client.signIn
+  const signIn = clerk.client?.signIn
   const setActive = clerk.setActive
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
@@ -500,6 +501,7 @@ export function LoginPage() {
         ) : (
           <>
             <span className="eyebrow">Connexion</span>
+            <h1>Se connecter</h1>
             <form className="stacked-form" onSubmit={handleSubmit}>
               <label>
                 Email

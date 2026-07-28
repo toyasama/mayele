@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path'
 
 const clientRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
 const viteCli = join(clientRoot, 'node_modules', 'vite', 'bin', 'vite.js')
+const outDir = process.env.E2E_DIST_DIR?.trim() || 'dist'
 const e2eEnvironment = {
   ...process.env,
   // The E2E bundle deliberately targets a local HTTP API. This is a build
@@ -31,9 +32,9 @@ function runVite(args) {
   })
 }
 
-await runVite(['build', '--mode', 'e2e'])
+await runVite(['build', '--mode', 'e2e', '--outDir', outDir])
 
-const preview = spawn(process.execPath, [viteCli, 'preview', '--host', '127.0.0.1', ...process.argv.slice(2)], {
+const preview = spawn(process.execPath, [viteCli, 'preview', '--host', '127.0.0.1', '--outDir', outDir, ...process.argv.slice(2)], {
   cwd: clientRoot,
   env: e2eEnvironment,
   stdio: 'inherit',

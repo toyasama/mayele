@@ -167,6 +167,10 @@ jobs:
         working-directory: client
         run: npm run test:e2e
 
+      - name: Verify route performance architecture
+        working-directory: client
+        run: npm run test:performance
+
       - name: Summarize E2E failures
         if: failure()
         working-directory: client
@@ -209,10 +213,10 @@ jobs:
           retention-days: 7
 
   responsive-e2e:
-    name: Responsive E2E
+    name: Responsive and Safari E2E
     needs: quality
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:16-alpine
@@ -256,13 +260,17 @@ jobs:
         working-directory: server
         run: npm run prisma:migrate:deploy
 
-      - name: Install Playwright Chromium
+      - name: Install Playwright Chromium and WebKit
         working-directory: client
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install --with-deps chromium webkit
 
       - name: Run responsive E2E smoke
         working-directory: client
         run: npm run test:responsive
+
+      - name: Run complete responsive and Safari validation
+        working-directory: client
+        run: npm run test:visual-v5
 
       - name: Summarize responsive E2E failures
         if: failure()
@@ -334,7 +342,9 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-          cache-dependency-path: client/package-lock.json
+          cache-dependency-path: |
+            client/package-lock.json
+            server/package-lock.json
 
       - name: Validate release secrets
         shell: bash
@@ -364,6 +374,18 @@ jobs:
           echo "L'API Railway n'est pas devenue prete a temps." >&2
           exit 1
 
+      - name: Install server verification tools
+        working-directory: server
+        run: npm ci
+
+      - name: Verify production database after migration
+        working-directory: server
+        shell: bash
+        run: |
+          npx --yes @railway/cli@5.26.1 run --no-local --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_ENVIRONMENT" --service "$RAILWAY_SERVICE" -- npx prisma migrate status
+          npx --yes @railway/cli@5.26.1 run --no-local --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_ENVIRONMENT" --service "$RAILWAY_SERVICE" -- npm run db:check-domain
+          npx --yes @railway/cli@5.26.1 run --no-local --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_ENVIRONMENT" --service "$RAILWAY_SERVICE" -- npm run db:verify-ledger
+
       - name: Install client
         working-directory: client
         run: npm ci
@@ -373,6 +395,8 @@ jobs:
         shell: bash
         run: |
           npx --yes vercel@56.2.0 pull --yes --environment=production --token="$VERCEL_TOKEN"
+          npx --yes vercel@56.2.0 env pull .env.production.local --yes --environment=production --token="$VERCEL_TOKEN"
+          npm run check:release-config
           npx --yes vercel@56.2.0 deploy --yes --force --prod --token="$VERCEL_TOKEN"
 
       - name: Install production smoke browser

@@ -1,12 +1,18 @@
-import { useEffect, useMemo, useState, type SyntheticEvent } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { PageFrame } from '../components/layout/PageFrame'
 import { ResponsiveTabs } from '../components/layout/ResponsiveTabs'
 import { useAuth } from '../context/auth'
+import { DashboardPlayerHeader } from '../features/dashboard/DashboardPlayerHeader'
+import { PerformanceCockpit } from '../features/dashboard/PerformanceCockpit'
+import { QuestPath } from '../features/dashboard/QuestPath'
+import { SessionTimeline } from '../features/dashboard/SessionTimeline'
+import { TrophyShelf } from '../features/dashboard/TrophyShelf'
 import { DASHBOARD_CACHE_PREFIX, readCache, userCacheKey, writeCache } from '../lib/appCache'
 import { api, type DashboardData } from '../lib/api'
 import { GAME_LABELS, LEVEL_LABELS, SKILL_LABELS, getPlayerProgress, type GameLevel, type GameType, type SkillTag } from '../lib/game'
 import { formatDisplayName } from '../lib/profile'
+import '../styles/routes/dashboard.css'
 
 type ProgressItem = DashboardData['progressByMode'][number]
 type BadgeItem = DashboardData['badges'][number]
@@ -21,7 +27,6 @@ type DashboardProfileSource = {
 
 const LEVEL_ORDER: GameLevel[] = ['debutant', 'intermediaire', 'avance', 'expert']
 const GAME_ORDER: GameType[] = ['addition', 'soustraction', 'multiplication', 'division', 'mixte']
-const BADGE_FAMILY_ORDER = ['mastery', 'speed', 'streak', 'volume']
 const DASHBOARD_VIEWS: DashboardMobileTab[] = ['overview', 'stats', 'missions', 'history']
 
 function dashboardCacheKey(clerkUserId: string) {
@@ -91,22 +96,6 @@ function formatResponseTime(value: number | null | undefined) {
   return `${seconds >= 10 ? Math.round(seconds) : seconds.toFixed(1)}s`
 }
 
-function formatSignedPercent(value: number) {
-  if (!value) {
-    return 'stable'
-  }
-
-  return `${value > 0 ? '+' : ''}${value}%`
-}
-
-function formatSignedNumber(value: number) {
-  if (!value) {
-    return 'stable'
-  }
-
-  return `${value > 0 ? '+' : ''}${value}`
-}
-
 function gameLabel(value: string) {
   return GAME_LABELS[value as GameType] ?? value
 }
@@ -147,62 +136,6 @@ function badgeFamilyIcon(badge: BadgeItem) {
   return badge.family === 'mastery' ? levelLabel(badge.level) : badge.familyLabel
 }
 
-function groupBadgesByLevel(badges: BadgeItem[]) {
-  return LEVEL_ORDER.map((level) => ({
-    level,
-    label: LEVEL_LABELS[level],
-    badges: badges.filter((badge) => badge.level === level),
-  })).filter((group) => group.badges.length > 0)
-}
-
-function badgeLevelCaption(familyKey: string, levelLabel: string) {
-  if (familyKey === 'mastery') {
-    return `Jeune, Confirmé, Maître ${levelLabel}`
-  }
-
-  if (familyKey === 'speed') {
-    return `Apprenti, précis, éclair en ${levelLabel}`
-  }
-
-  if (familyKey === 'streak') {
-    return `Stable, solide, longue en ${levelLabel}`
-  }
-
-  if (familyKey === 'volume') {
-    return `Habitué, pilier, marathonien en ${levelLabel}`
-  }
-
-  return `Badges ${levelLabel}`
-}
-
-function groupBadgeFamilies(badges: BadgeItem[]) {
-  const familyMap = new Map<string, { key: string; label: string; description: string; badges: BadgeItem[] }>()
-
-  badges.forEach((badge) => {
-    const current = familyMap.get(badge.family) ?? {
-      key: badge.family,
-      label: badge.familyLabel,
-      description: badge.familyDescription,
-      badges: [],
-    }
-
-    current.badges.push(badge)
-    familyMap.set(badge.family, current)
-  })
-
-  return Array.from(familyMap.values())
-    .map((family) => {
-      const completedCount = family.badges.filter((badge) => badge.completed).length
-
-      return {
-        ...family,
-        completedCount,
-        progress: clampPercent((completedCount / Math.max(1, family.badges.length)) * 100),
-      }
-    })
-    .sort((left, right) => BADGE_FAMILY_ORDER.indexOf(left.key) - BADGE_FAMILY_ORDER.indexOf(right.key))
-}
-
 function weightedAverage(items: ProgressItem[], field: 'averageAccuracy' | 'averageScore') {
   const attempts = items.reduce((sum, item) => sum + item.attempts, 0)
 
@@ -237,55 +170,6 @@ function playLink(options: { game?: GameType; level?: GameLevel; focus?: SkillTa
 
   const query = params.toString()
   return query ? `/jeu?${query}` : '/jeu'
-}
-
-function DashboardBadgeCard({ badge, onSelect }: { badge: BadgeItem; onSelect?: (badge: BadgeItem) => void }) {
-  return (
-    <article
-      className={`card badge-card badge-objective-card badge-${badge.tier} badge-family-${badge.family} ${badgeRankClass(badge.tier)} ${
-        badge.completed ? 'earned' : 'locked'
-      }`}
-    >
-      <button
-        type="button"
-        className="badge-objective-action"
-        aria-label={`Afficher le detail du badge ${badge.title}`}
-        onClick={() => onSelect?.(badge)}
-      >
-        <div className="badge-objective-header">
-        <span className={`badge-art ${badgeRankClass(badge.tier)}`} aria-hidden="true">
-          <span className="badge-core">
-            <span className="badge-family-icon">{badgeFamilyIcon(badge)}</span>
-          </span>
-          <span className="badge-tier-flourish" />
-          {badge.completed ? null : <span className="badge-lock-icon" aria-hidden="true" />}
-        </span>
-        <div>
-          <strong>{badge.title}</strong>
-          <p>{badge.description}</p>
-          <small className="badge-progress-copy">
-            {badge.completedObjectives}/{badge.totalObjectives} objectifs validés
-          </small>
-          {badge.completed ? <span className="badge-status-chip earned">Débloqué</span> : null}
-        </div>
-        </div>
-        <div className="goal-bar" aria-hidden="true">
-          <span style={{ width: `${clampPercent(badge.progress)}%` }} />
-        </div>
-      </button>
-      <div className="objective-check-list">
-        {badge.objectives.map((objective) => (
-          <div className={`objective-check-row ${objective.completed ? 'done' : ''}`} key={objective.key}>
-            <span aria-hidden="true">{objective.completed ? 'OK' : '—'}</span>
-            <div className="objective-check-copy">
-              <strong>{objective.label}</strong>
-              <em>{objective.detail}</em>
-            </div>
-          </div>
-        ))}
-      </div>
-    </article>
-  )
 }
 
 function DashboardBadgeDetailSheet({ badge, onClose }: { badge: BadgeItem; onClose: () => void }) {
@@ -380,43 +264,6 @@ function DashboardUnlockedBadgePlaceholder() {
   )
 }
 
-function DashboardBadgeMobileSummary({ families }: { families: ReturnType<typeof groupBadgeFamilies> }) {
-  if (!families.length) {
-    return null
-  }
-
-  return (
-    <div className="dashboard-badge-mobile-summary" aria-label="Synthese des badges">
-      {families.map((family) => {
-        const nextBadges = family.badges.filter((badge) => !badge.completed).slice(0, 2)
-        const highlightedBadges = nextBadges.length ? nextBadges : family.badges.filter((badge) => badge.completed).slice(0, 2)
-
-        return (
-          <article className={`dashboard-badge-summary-card badge-family-${family.key}`} key={family.key}>
-            <div className="dashboard-badge-summary-main">
-              <span className="dashboard-badge-family-mark" aria-hidden="true">
-                <span className="badge-family-icon">{family.label}</span>
-              </span>
-              <div>
-                <strong>{family.label}</strong>
-                <span>{family.completedCount}/{family.badges.length} debloques</span>
-              </div>
-            </div>
-            <div className="goal-bar" aria-hidden="true">
-              <span style={{ width: `${clampPercent(family.progress)}%` }} />
-            </div>
-            <div className="dashboard-badge-summary-chips" aria-label={nextBadges.length ? 'Prochains badges' : 'Badges debloques'}>
-              {highlightedBadges.map((badge) => (
-                <span key={badge.key}>{badge.title}</span>
-              ))}
-            </div>
-          </article>
-        )
-      })}
-    </div>
-  )
-}
-
 function DashboardLoadingState({ profile, profileName }: { profile: DashboardProfileSource | null; profileName: string }) {
   return (
     <PageFrame className="dashboard-page" aria-busy="true">
@@ -448,11 +295,16 @@ export function DashboardPage() {
   const cachedDashboard = useMemo(() => (cacheKey ? readCachedDashboard(cacheKey) : null), [cacheKey])
   const [liveDashboard, setLiveDashboard] = useState<{ cacheKey: string; payload: DashboardData } | null>(null)
   const [error, setError] = useState('')
+  const [refreshRequestId, setRefreshRequestId] = useState(0)
   const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null)
   const [selectedBadge, setSelectedBadge] = useState<BadgeItem | null>(null)
   const viewParam = searchParams.get('view') as DashboardMobileTab | null
   const activeView = viewParam && DASHBOARD_VIEWS.includes(viewParam) ? viewParam : 'overview'
   const data = liveDashboard?.cacheKey === cacheKey ? liveDashboard.payload : cachedDashboard
+  const loadOperationHistory = useCallback(
+    async (game: GameType, level: GameLevel) => (await api.getOperationHistory(getToken, game, level)).sessions,
+    [getToken],
+  )
 
   function selectDashboardView(view: DashboardMobileTab) {
     const nextParams = new URLSearchParams(searchParams)
@@ -465,24 +317,6 @@ export function DashboardPage() {
 
     setSearchParams(nextParams)
     window.scrollTo({ top: 0 })
-  }
-
-  function handleBadgeFamilyToggle(event: SyntheticEvent<HTMLDetailsElement>) {
-    const panel = event.currentTarget
-
-    if (!panel.open || window.innerWidth > 767) {
-      return
-    }
-
-    window.requestAnimationFrame(() => {
-      const topbarOffset = 92
-      const targetTop = panel.getBoundingClientRect().top + window.scrollY - topbarOffset
-
-      window.scrollTo({
-        top: Math.max(0, targetTop),
-        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
-      })
-    })
   }
 
   useEffect(() => {
@@ -533,7 +367,7 @@ export function DashboardPage() {
     return () => {
       active = false
     }
-  }, [cacheKey, cachedDashboard, getToken, isAuthenticated])
+  }, [cacheKey, cachedDashboard, getToken, isAuthenticated, refreshRequestId])
 
   const levelGroups = useMemo(() => {
     if (!data) {
@@ -586,7 +420,6 @@ export function DashboardPage() {
   const dashboardBadges = data.badges ?? []
   const completedDashboardBadges = dashboardBadges.filter((badge) => badge.completed)
   const completedBadgesCount = completedDashboardBadges.length
-  const badgeFamilies = groupBadgeFamilies(dashboardBadges)
   const dashboardStats = data.stats ?? {
     averageResponseTimeMs: 0,
     byGame: GAME_ORDER.map((game) => {
@@ -627,27 +460,6 @@ export function DashboardPage() {
       fastestAverageResponseTimeMs: null,
     },
   }
-  const levelStatsByLevel = new Map(dashboardStats.byLevel.map((item) => [item.level, item]))
-  const bestCombination = dashboardStats.bestCombination
-  const estimatedGamesToNext =
-    playerLevel.xpRemaining && dashboardStats.recentTrend.averageXp
-      ? Math.ceil(playerLevel.xpRemaining / dashboardStats.recentTrend.averageXp)
-      : null
-  const statsFocusItems = dashboardStats.byGame
-    .filter((item) => item.attempts === 0 || item.averageAccuracy < 75)
-    .sort((a, b) => {
-      if (a.attempts === 0 && b.attempts !== 0) {
-        return -1
-      }
-
-      if (a.attempts !== 0 && b.attempts === 0) {
-        return 1
-      }
-
-      return a.averageAccuracy - b.averageAccuracy || b.attempts - a.attempts
-    })
-    .slice(0, 3)
-
   const stats = [
     { label: 'Sessions', value: data.summary.totalSessions, tone: 'coral', mark: 'S' },
     { label: 'XP totale', value: totalXp, tone: 'mint', mark: 'XP' },
@@ -656,7 +468,7 @@ export function DashboardPage() {
   ]
 
   const mobileTabs: Array<{ key: DashboardMobileTab; label: string }> = [
-    { key: 'overview', label: 'Vue' },
+    { key: 'overview', label: 'Aperçu' },
     { key: 'stats', label: 'Stats' },
     { key: 'missions', label: 'Missions' },
     { key: 'history', label: 'Historique' },
@@ -664,43 +476,61 @@ export function DashboardPage() {
 
   return (
     <PageFrame className={`dashboard-page dashboard-active-${activeView}`}>
-      <div id="overview" className="dashboard-hero dashboard-hero-v2">
-        <DashboardProfileAvatar profile={data.player} />
-        <div>
-          <span className="eyebrow">Mon espace</span>
-          <h1 className="dashboard-profile-title">{profileName}</h1>
-          <p className="lead small-lead dashboard-profile-meta">
-            {profileHandle(data.player)} · Niveau {playerLevel.level}
-          </p>
-        </div>
-      </div>
-
-      {error ? <div className="card form-error dashboard-refresh-error">{error}</div> : null}
-
-      <section className="dashboard-profile-badges-section" aria-label="Badges recents">
-        {completedDashboardBadges.length ? (
-          <div className="dashboard-profile-badge-window" aria-label="Badges debloques">
-            {completedDashboardBadges.map((badge) => (
-              <DashboardUnlockedBadgeCard badge={badge} key={badge.key} />
-            ))}
-          </div>
-        ) : (
-          <DashboardUnlockedBadgePlaceholder />
-        )}
-      </section>
-
       <ResponsiveTabs
         ariaLabel="Sections de mon espace"
         className="dashboard-section-nav"
-        options={mobileTabs.map((tab) => ({ label: tab.label === 'Vue' ? "Vue d'ensemble" : tab.label, value: tab.key }))}
+        options={mobileTabs.map((tab) => ({ label: tab.label, value: tab.key }))}
         value={activeView}
         onChange={selectDashboardView}
       />
 
+      {activeView === 'overview' ? (
+        <DashboardPlayerHeader
+          avatar={<DashboardProfileAvatar profile={data.player} />}
+          name={profileName}
+          handle={profileHandle(data.player)}
+          progress={playerLevel}
+          bestStreak={data.summary.bestStreak}
+          todaySessions={data.summary.todaySessions}
+          dailyGoal={data.summary.dailyGoal}
+          lastPlayedAt={data.summary.lastPlayedAt}
+          formatDate={formatDate}
+        />
+      ) : null}
+
+      {error ? (
+        <div className="card form-error dashboard-refresh-error" role="alert">
+          <span>{error}</span>
+          <button
+            type="button"
+            onClick={() => {
+              setError('')
+              setRefreshRequestId((current) => current + 1)
+            }}
+          >
+            Réessayer
+          </button>
+        </div>
+      ) : null}
+
+      {activeView === 'overview' ? (
+        <section className="dashboard-profile-badges-section" aria-label="Badges récents">
+          {completedDashboardBadges.length ? (
+            <div className="dashboard-profile-badge-window" aria-label="Badges débloqués">
+              {completedDashboardBadges.slice(0, 6).map((badge) => (
+                <DashboardUnlockedBadgeCard badge={badge} key={badge.key} />
+              ))}
+            </div>
+          ) : (
+            <DashboardUnlockedBadgePlaceholder />
+          )}
+        </section>
+      ) : null}
+
       <section className={`dashboard-view-panel dashboard-section dashboard-mobile-panel dashboard-overview-section ${activeView === 'overview' ? 'active' : ''}`}>
         <div className="section-kicker compact-kicker">
-          <span className="eyebrow">Synthèse</span>
-          <h2>Vos repères clés.</h2>
+          <span className="eyebrow">Bilan</span>
+          <h2>Vos résultats</h2>
         </div>
 
         <div className="stats-grid dashboard-stats-grid">
@@ -715,372 +545,46 @@ export function DashboardPage() {
           ))}
         </div>
 
-        <article className="card player-level-card">
-          <div>
-            <span className="eyebrow">Progression joueur</span>
-            <h3>Niveau {playerLevel.level}</h3>
-            <p>{totalXp} XP cumulée</p>
-          </div>
-          <div className="goal-bar" aria-hidden="true">
-            <span style={{ width: `${playerLevel.progress}%` }} />
-          </div>
-          <p className="muted">
-            {playerLevel.nextLevel ? `${playerLevel.xpRemaining} XP restantes avant le niveau ${playerLevel.nextLevel}.` : 'Palier maximal atteint.'}
-          </p>
-        </article>
       </section>
 
       <section className={`dashboard-view-panel dashboard-section dashboard-mobile-panel dashboard-level-section ${activeView === 'stats' ? 'active' : ''}`}>
         <div className="section-kicker">
-          <span className="eyebrow">Statistiques</span>
-          <h2>Vos statistiques détaillées.</h2>
         </div>
 
-        <div className="stats-insight-grid">
-          <article className="card stats-insight-card">
-            <span>Temps moyen</span>
-            <strong className="insight-main">{formatResponseTime(dashboardStats.averageResponseTimeMs)}</strong>
-            <p>Temps moyen de réponse calculé sur toutes les réponses enregistrées.</p>
-          </article>
-
-          <article className="card stats-insight-card">
-            <span>Meilleure combinaison</span>
-            {bestCombination ? (
-              <>
-                <strong className="insight-main">
-                  {gameLabel(bestCombination.game)} - {levelLabel(bestCombination.level)}
-                </strong>
-                <div className="insight-detail-list">
-                  <div className="insight-detail-row">
-                    <span>Précision</span>
-                    <strong>{bestCombination.averageAccuracy}%</strong>
-                  </div>
-                  <div className="insight-detail-row">
-                    <span>Sprints</span>
-                    <strong>{bestCombination.attempts}</strong>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <>
-                <strong className="insight-main">À construire</strong>
-                <p>Quelques sprints suffiront pour identifier votre combinaison la plus solide.</p>
-              </>
-            )}
-          </article>
-
-          <article className="card stats-insight-card">
-            <span>Tendance récente</span>
-            <strong className="insight-main">{dashboardStats.recentTrend.averageAccuracy}%</strong>
-            <p>
-              {dashboardStats.recentTrend.sessions
-                ? `Moyenne sur les ${dashboardStats.recentTrend.sessions} dernières parties.`
-                : 'Aucune partie récente à comparer.'}
-            </p>
-            <div className="trend-chip-row">
-              <span className={`trend-chip ${dashboardStats.recentTrend.accuracyDelta > 0 ? 'positive' : dashboardStats.recentTrend.accuracyDelta < 0 ? 'negative' : ''}`}>
-                Précision {formatSignedPercent(dashboardStats.recentTrend.accuracyDelta)}
-              </span>
-              <span className={`trend-chip ${dashboardStats.recentTrend.xpDelta > 0 ? 'positive' : dashboardStats.recentTrend.xpDelta < 0 ? 'negative' : ''}`}>
-                XP {formatSignedNumber(dashboardStats.recentTrend.xpDelta)}
-              </span>
-            </div>
-          </article>
-
-          <article className="card stats-insight-card">
-            <span>Objectif niveau</span>
-            <strong className="insight-main">{playerLevel.progress}%</strong>
-            <p>
-              {playerLevel.nextLevel
-                ? `${playerLevel.xpRemaining} XP avant le niveau ${playerLevel.nextLevel}.`
-                : 'Palier maximal atteint.'}
-            </p>
-            <div className="goal-bar" aria-hidden="true">
-              <span style={{ width: `${playerLevel.progress}%` }} />
-            </div>
-            {estimatedGamesToNext ? <p className="muted">Environ {estimatedGamesToNext} sprint{estimatedGamesToNext > 1 ? 's' : ''} au rythme actuel.</p> : null}
-          </article>
-
-          <article className="card stats-insight-card">
-            <span>Records personnels</span>
-            <div className="record-grid">
-              <div>
-                <span>Score</span>
-                <strong>{dashboardStats.records.bestScore}%</strong>
-              </div>
-              <div>
-                <span>Série</span>
-                <strong>{dashboardStats.records.bestStreak}</strong>
-              </div>
-              <div>
-                <span>XP</span>
-                <strong>{dashboardStats.records.bestXp}</strong>
-              </div>
-              <div>
-                <span>Temps</span>
-                <strong>{formatResponseTime(dashboardStats.records.fastestAverageResponseTimeMs)}</strong>
-              </div>
-            </div>
-          </article>
-        </div>
-
-        <div className="section-kicker compact-kicker stats-subsection-title">
-          <span className="eyebrow">Modes</span>
-          <h3>Progression par type de sprint.</h3>
-        </div>
-
-        <div className="operation-stats-grid">
-          {dashboardStats.byGame.map((item) => (
-            <article className={`card operation-stat-card ${item.attempts ? 'played' : 'unplayed'}`} key={item.game}>
-              <div className="operation-stat-topline">
-                <span>{gameLabel(item.game)}</span>
-                <strong>{item.attempts ? `${item.averageAccuracy}%` : '—'}</strong>
-              </div>
-              <div className="goal-bar" aria-hidden="true">
-                <span style={{ width: `${item.attempts ? clampPercent(item.averageAccuracy) : 0}%` }} />
-              </div>
-              <div className="stat-detail-grid">
-                <div>
-                  <span>Sprints</span>
-                  <strong>{item.attempts}</strong>
-                </div>
-                <div>
-                  <span>Record</span>
-                  <strong>{item.bestScore}%</strong>
-                </div>
-                <div>
-                  <span>Série</span>
-                  <strong>{item.bestStreak}</strong>
-                </div>
-                <div>
-                  <span>Temps</span>
-                  <strong>{formatResponseTime(item.averageResponseTimeMs)}</strong>
-                </div>
-              </div>
-            </article>
-          ))}
-        </div>
-
-        <article className="card stats-focus-panel">
-          <div>
-            <span className="eyebrow">À renforcer</span>
-            <h3>Priorités utiles.</h3>
-          </div>
-          {statsFocusItems.length ? (
-            <div className="stats-focus-list">
-              {statsFocusItems.map((item) => (
-                <div className="stats-focus-row" key={item.game}>
-                  <strong>{gameLabel(item.game)}</strong>
-                  <span>
-                    {item.attempts
-                      ? `${item.averageAccuracy}% de précision sur ${item.attempts} sprint${item.attempts > 1 ? 's' : ''}.`
-                      : 'Aucune partie jouée sur ce mode.'}
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="muted">Aucune priorité nette pour le moment. Continuez à varier les modes pour confirmer ces résultats.</p>
-          )}
-        </article>
-
-        <div className="section-kicker compact-kicker stats-subsection-title">
-          <span className="eyebrow">Niveaux</span>
-          <h3>Répartition par difficulté.</h3>
-        </div>
-
-        <div className="level-ladder">
-          {levelGroups.map((group) => {
-            const levelStats = levelStatsByLevel.get(group.level)
-
-            return (
-              <article className={`card level-card ${group.attempts ? 'played' : ''}`} key={group.level}>
-                <div className="level-card-header">
-                  <div>
-                    <span>Niveau</span>
-                    <h3>{levelLabel(group.level)}</h3>
-                  </div>
-                  <strong>{group.status}</strong>
-                </div>
-
-                <div className="level-metrics">
-                  <div>
-                    <span>Sprints</span>
-                    <strong>{group.attempts}</strong>
-                  </div>
-                  <div>
-                    <span>Précision</span>
-                    <strong>{group.averageAccuracy}%</strong>
-                  </div>
-                  <div>
-                    <span>Record</span>
-                    <strong>{group.bestScore}%</strong>
-                  </div>
-                  <div>
-                    <span>Temps</span>
-                    <strong>{formatResponseTime(levelStats?.averageResponseTimeMs)}</strong>
-                  </div>
-                </div>
-
-                <div className="goal-bar" aria-hidden="true">
-                  <span style={{ width: `${clampPercent(group.averageAccuracy)}%` }} />
-                </div>
-
-                {group.items.length ? (
-                  <div className="mode-chip-list">
-                    {group.items.map((item) => (
-                      <span className="mode-chip" key={`${item.game}-${item.level}`}>
-                        <strong>{gameLabel(item.game)}</strong>
-                        <em>{item.bestScore}% · {item.attempts}x</em>
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="muted">Pas encore de session sur ce niveau.</p>
-                )}
-
-                <Link className="secondary-button full-width" to={playLink({ game: 'mixte', level: group.level })}>
-                  {group.attempts ? 'Rejouer ce niveau' : 'Essayer ce niveau'}
-                </Link>
-              </article>
-            )
-          })}
-        </div>
+        <PerformanceCockpit
+          stats={dashboardStats}
+          progressByMode={data.progressByMode}
+          recentSessions={data.recentSessions}
+          loadOperationHistory={loadOperationHistory}
+          gameLabel={gameLabel}
+          levelLabel={levelLabel}
+          formatResponseTime={formatResponseTime}
+          playHref={(level, game) => playLink({ level, game })}
+        />
       </section>
 
       <section className={`dashboard-view-panel dashboard-section dashboard-mobile-panel dashboard-plan-section ${activeView === 'missions' ? 'active' : ''}`}>
-        <div className="section-kicker">
-          <span className="eyebrow">Missions XP</span>
-          <h2>Atteignez les objectifs et gagnez des XP.</h2>
-        </div>
 
-        <div className="mission-board-grid">
-          {dashboardMissions.map((mission) => (
-            <article className={`card mission-card mission-xp-card ${mission.claimed ? 'completed' : ''}`} key={`${mission.key}-${mission.scopeKey}`}>
-              <div className="mission-topline">
-                <span className="mission-mark" aria-hidden="true">XP</span>
-                <span>{mission.scope === 'daily' ? 'Quotidienne' : 'Progression'}</span>
-                <strong>+{mission.rewardXp}</strong>
-              </div>
-              <h3>{mission.title}</h3>
-              <p>{mission.description}</p>
-              <div className="mission-progress-row">
-                <span>{mission.current}/{mission.target}</span>
-                <strong>{mission.claimed ? 'XP reçue' : mission.completed ? 'Validée' : `${mission.progress}%`}</strong>
-              </div>
-              <div className="goal-bar" aria-hidden="true">
-                <span style={{ width: `${clampPercent(mission.progress)}%` }} />
-              </div>
-            </article>
-          ))}
-        </div>
+        <QuestPath missions={dashboardMissions} />
 
         <div className="section-kicker compact-kicker badge-subsection-title">
           <span className="eyebrow">Badges</span>
           <h3>{completedBadgesCount}/{dashboardBadges.length} badges débloqués.</h3>
         </div>
 
-        <DashboardBadgeMobileSummary families={badgeFamilies} />
-
-        <div className="badge-family-stack dashboard-badge-detail-stack">
-          {badgeFamilies.map((family) => (
-            <details className={`badge-family-panel badge-family-${family.key}`} key={family.key} onToggle={handleBadgeFamilyToggle}>
-              <summary>
-                <div>
-                  <strong>{family.label}</strong>
-                  <span>{family.description}</span>
-                </div>
-                <em>{family.completedCount}/{family.badges.length}</em>
-              </summary>
-              <div className="goal-bar" aria-hidden="true">
-                <span style={{ width: `${clampPercent(family.progress)}%` }} />
-              </div>
-              <div className="badge-level-stack">
-                {groupBadgesByLevel(family.badges).map((levelGroup) => (
-                  <section className="badge-level-group" key={levelGroup.level}>
-                    <div className="badge-level-heading">
-                      <strong>{levelGroup.label}</strong>
-                      <span>{badgeLevelCaption(family.key, levelGroup.label)}</span>
-                    </div>
-                    <div className="badge-objective-grid badge-level-grid">
-                      {levelGroup.badges.map((badge) => (
-                        <DashboardBadgeCard badge={badge} key={badge.key} onSelect={setSelectedBadge} />
-                      ))}
-                    </div>
-                  </section>
-                ))}
-              </div>
-            </details>
-          ))}
-        </div>
+        <TrophyShelf badges={dashboardBadges} onSelect={setSelectedBadge} />
       </section>
 
-      <article className={`dashboard-view-panel card dashboard-history dashboard-mobile-panel dashboard-history-section ${activeView === 'history' ? 'active' : ''}`}>
-        <div className="section-header compact-header">
-          <div>
-            <span className="eyebrow">Historique</span>
-            <h2>Parties récentes</h2>
-          </div>
-          <Link className="secondary-button" to="/jeu">
-            Nouveau sprint
-          </Link>
-        </div>
-        {data.recentSessions.length ? (
-          <div className="session-list detailed-session-list">
-            {data.recentSessions.map((session) => (
-              <div className="session-row enriched-session-row detailed-session-row" key={session.id}>
-                <div>
-                  <strong>{gameLabel(session.game)}</strong>
-                  <div className="session-tags">
-                    <span>{levelLabel(session.level)}</span>
-                    <span>{session.correctAnswers}/{session.totalQuestions} bonnes réponses</span>
-                    <span>série {session.bestStreak}</span>
-                    <span>{session.durationSeconds}s</span>
-                    {session.practiceSkill ? <span>{skillLabel(session.practiceSkill)}</span> : null}
-                  </div>
-                </div>
-                <div className="history-score-grid">
-                  <span><strong>{session.score}%</strong> précision</span>
-                  <span><strong>{session.xp}</strong> XP</span>
-                  <span>{formatDate(session.playedAt)}</span>
-                  <button
-                    className="secondary-button history-answers-button"
-                    type="button"
-                    aria-expanded={expandedSessionId === session.id}
-                    onClick={() => setExpandedSessionId((current) => (current === session.id ? null : session.id))}
-                  >
-                    {expandedSessionId === session.id ? 'Masquer les réponses' : 'Voir les réponses'}
-                  </button>
-                  {expandedSessionId === session.id ? (
-                    <div className="answer-history-panel">
-                      {session.answers.length ? (
-                        <div className="answer-history-list">
-                          {session.answers.map((answer, index) => (
-                            <div className={`answer-history-row ${answer.isCorrect ? 'correct' : 'wrong'}`} key={answer.id}>
-                              <span className="answer-index">{index + 1}</span>
-                              <strong>{answer.prompt}</strong>
-                              <span>
-                                Votre réponse <b>{answer.userAnswer}</b>
-                              </span>
-                              <span>
-                                Attendu <b>{answer.correctAnswer}</b>
-                              </span>
-                              <span>{Math.round(answer.responseTimeMs / 100) / 10}s</span>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="muted">Aucune réponse enregistrée pour cette partie.</p>
-                      )}
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="muted">Vos sprints apparaîtront ici après vos premières parties.</p>
-        )}
+      <article className={`dashboard-view-panel dashboard-mobile-panel dashboard-history-section ${activeView === 'history' ? 'active' : ''}`}>
+        <SessionTimeline
+          sessions={data.recentSessions}
+          expandedSessionId={expandedSessionId}
+          onToggleSession={(sessionId) => setExpandedSessionId((current) => (current === sessionId ? null : sessionId))}
+          gameLabel={gameLabel}
+          levelLabel={levelLabel}
+          skillLabel={skillLabel}
+          formatDate={formatDate}
+        />
       </article>
       {selectedBadge ? <DashboardBadgeDetailSheet badge={selectedBadge} onClose={() => setSelectedBadge(null)} /> : null}
     </PageFrame>

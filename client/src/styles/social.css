@@ -1,11 +1,17 @@
 .friends-page {
   width: min(100%, 1280px);
+  max-width: 100%;
+  min-width: 0;
   margin: 0 auto;
   gap: 18px;
 }
 
 .friends-panel {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
 }
 
@@ -17,6 +23,7 @@
 }
 
 .friends-panel-heading {
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -40,6 +47,7 @@
 .friends-filter-bar {
   width: fit-content;
   max-width: 100%;
+  min-width: 0;
   display: inline-flex;
   gap: 8px;
   overflow-x: auto;
@@ -173,6 +181,86 @@
   padding: clamp(16px, 3vw, 28px) 2px;
 }
 
+.friend-versus-stage {
+  grid-template-columns: minmax(0, 1.2fr) minmax(310px, 0.8fr);
+  align-items: stretch;
+  gap: clamp(18px, 3vw, 32px);
+  padding: clamp(22px, 4vw, 38px);
+  border: 1px solid var(--border);
+  border-radius: 26px;
+  background:
+    radial-gradient(circle at 18% 26%, rgba(10, 159, 143, 0.13), transparent 30%),
+    radial-gradient(circle at 80% 80%, rgba(241, 238, 75, 0.16), transparent 28%),
+    rgba(255, 255, 255, 0.78);
+  box-shadow: 0 24px 55px rgba(0, 48, 72, 0.1);
+}
+
+.friend-versus-player {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: clamp(18px, 3vw, 30px);
+}
+
+.friend-challenge-card {
+  display: grid;
+  gap: 18px;
+  padding: clamp(20px, 3vw, 28px);
+  border-radius: 20px;
+  background: var(--primary-dark);
+  color: #ffffff;
+  box-shadow: 0 18px 34px rgba(0, 48, 72, 0.2);
+}
+
+.friend-challenge-heading {
+  display: grid;
+  gap: 6px;
+}
+
+.friend-challenge-heading .eyebrow {
+  color: #9fe5da;
+}
+
+.friend-challenge-heading strong {
+  font-size: clamp(1.45rem, 3vw, 2rem);
+  line-height: 1.05;
+}
+
+.friend-challenge-heading small {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.friend-challenge-card .friend-profile-summary {
+  grid-column: auto;
+  gap: 8px;
+}
+
+.friend-challenge-card .friend-profile-summary div {
+  min-height: 62px;
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow: none;
+}
+
+.friend-challenge-card .friend-profile-summary span {
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.friend-challenge-card .friend-profile-summary strong {
+  color: #ffffff;
+  font-size: clamp(1.05rem, 2vw, 1.4rem);
+  white-space: nowrap;
+}
+
+.friend-challenge-card .primary-button {
+  width: 100%;
+  background: #ffffff;
+  color: var(--primary-dark);
+}
+
 .friend-profile-avatar {
   width: clamp(82px, 10vw, 118px);
   height: clamp(82px, 10vw, 118px);
@@ -299,7 +387,7 @@
 }
 
 .friend-stat-grid {
-  grid-template-columns: repeat(auto-fit, minmax(188px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
 }
 
 .friend-level-grid {
@@ -473,9 +561,10 @@
 
 .friend-stat-metrics strong {
   color: var(--text);
-  font-size: 1.2rem;
+  font-size: clamp(1rem, 2vw, 1.2rem);
   line-height: 1.05;
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
+  white-space: nowrap;
 }
 
 .dashboard-page .dashboard-hero-v2 h1.dashboard-profile-title {
@@ -506,89 +595,8 @@
   box-shadow: 0 10px 22px rgba(16, 24, 40, 0.05);
 }
 
-.dashboard-profile-badges-section,
-.dashboard-unlocked-badges-section {
-  display: grid;
-  gap: 12px;
-}
-
-.dashboard-profile-badge-window {
-  width: 100%;
-  display: flex;
-  gap: 12px;
-  overflow-x: auto;
-  overscroll-behavior-inline: contain;
-  scroll-snap-type: x proximity;
-  padding: 4px 2px 8px;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(111, 134, 153, 0.28) transparent;
-}
-
-.dashboard-profile-badge-window::-webkit-scrollbar {
-  height: 6px;
-}
-
-.dashboard-profile-badge-window::-webkit-scrollbar-thumb {
-  border-radius: 999px;
-  background: rgba(111, 134, 153, 0.28);
-}
-
-.dashboard-profile-badge-window::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.dashboard-profile-badge-card.friend-badge-card {
-  width: 96px;
-  min-width: 96px;
-  min-height: 108px;
-  grid-template-columns: 1fr;
-  justify-items: center;
-  align-content: center;
-  gap: 7px;
-  scroll-snap-align: start;
-  padding: 10px 8px;
-  border-color: rgba(217, 231, 236, 0.72);
-  background: rgba(255, 255, 255, 0.62);
-  box-shadow: 0 10px 22px rgba(16, 24, 40, 0.045);
-  text-align: center;
-}
-
-.dashboard-profile-badge-card.friend-badge-card .badge-art {
-  width: 46px;
-  height: 46px;
-}
-
-.dashboard-profile-badge-card.friend-badge-card .badge-core {
-  width: 33px;
-  height: 33px;
-}
-
-.dashboard-profile-badge-card.friend-badge-card .badge-family-icon {
-  width: 24px;
-  height: 24px;
-}
-
-.dashboard-profile-badge-card.friend-badge-card strong {
-  max-width: 100%;
-  font-size: 0.74rem;
-  line-height: 1.08;
-  font-weight: 900;
-  overflow-wrap: anywhere;
-}
-
-.dashboard-profile-badge-card.friend-badge-card div {
-  min-width: 0;
-  display: grid;
-  justify-items: center;
-}
-
 .dashboard-unlocked-badge-grid {
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-}
-
-.dashboard-profile-badges-section .friend-badge-placeholder {
-  width: 96px;
-  min-width: 96px;
 }
 
 .profile-presence {
@@ -836,6 +844,71 @@
   color: var(--danger);
 }
 
+.confirmation-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(5, 20, 35, 0.28);
+  backdrop-filter: blur(6px);
+}
+
+.confirmation-dialog {
+  width: min(100%, 420px);
+  display: grid;
+  gap: 12px;
+  padding: 24px;
+}
+
+.confirmation-dialog h2,
+.confirmation-dialog p {
+  margin: 0;
+}
+
+.confirmation-dialog h2 {
+  font-size: 1.35rem;
+  line-height: 1.15;
+}
+
+.confirmation-dialog p {
+  color: var(--muted);
+}
+
+.confirmation-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.confirmation-dialog-confirm {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--danger);
+  color: #ffffff;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.2s ease;
+}
+
+.confirmation-dialog-confirm:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: #b91c1c;
+}
+
+.confirmation-dialog-confirm:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .friends-empty-panel {
   min-height: 116px;
   display: grid;
@@ -885,6 +958,15 @@
   .friend-profile-hero {
     align-items: flex-start;
     gap: 14px;
+  }
+
+  .friend-versus-stage {
+    grid-template-columns: 1fr;
+    padding: 18px;
+  }
+
+  .friend-versus-player {
+    align-items: flex-start;
   }
 
   .friend-profile-avatar {

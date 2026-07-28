@@ -13,6 +13,7 @@ import {
   profileMutationRateLimit,
   searchRateLimit,
   sessionRateLimit,
+  soloRunRateLimit,
   socialMutationRateLimit,
 } from './middleware/rateLimits.js'
 import { requestContext } from './middleware/requestContext.js'
@@ -85,7 +86,9 @@ export function createApp(options: CreateAppOptions = {}) {
   app.use('/api', authMiddleware, matchRoutes())
   app.use('/api', authMiddleware, notificationRoutes())
   app.use('/api', authMiddleware, dashboardRoutes())
-  app.use('/api', authMiddleware, sessionRateLimit, sessionRoutes())
+  app.use('/api/sessions', authMiddleware, sessionRateLimit)
+  app.use('/api/solo-runs', authMiddleware, soloRunRateLimit)
+  app.use('/api', sessionRoutes())
   app.use(errorHandler)
 
   return app

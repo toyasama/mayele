@@ -1,0 +1,460 @@
+/* Route-owned mobile layer. Loaded last so lazy route CSS cannot restore desktop layouts. */
+@media (max-width: 767px) {
+  .dashboard-page {
+    --dashboard-mobile-card: min(292px, 82vw);
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-content: start;
+    gap: 12px;
+    padding-bottom: 18px;
+  }
+
+  .dashboard-page > *,
+  .dashboard-page .dashboard-mobile-panel,
+  .dashboard-page .dashboard-view-panel.active,
+  .dashboard-page .dashboard-plan-section,
+  .dashboard-page .dashboard-badge-section,
+  .dashboard-page .dashboard-history-section,
+  .dashboard-page .quest-path-board,
+  .dashboard-page .trophy-cabinet {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .dashboard-page:not(.dashboard-active-overview) {
+    height: auto;
+    overflow: visible;
+  }
+
+  .dashboard-page:not(.dashboard-active-overview) .dashboard-player-header,
+  .dashboard-page:not(.dashboard-active-overview) .dashboard-hero,
+  .dashboard-page:not(.dashboard-active-overview) .dashboard-profile-badges-section {
+    display: none;
+  }
+
+  .dashboard-page .dashboard-section-nav {
+    order: 1;
+    position: sticky !important;
+    top: calc(var(--app-topbar-height) + 8px) !important;
+    z-index: 20;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    gap: 4px;
+    overflow: visible;
+    padding: 5px;
+    border: 1px solid rgba(207, 225, 230, 0.96);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 12px 28px rgba(0, 48, 72, 0.1);
+    backdrop-filter: blur(18px);
+  }
+
+  .dashboard-page .dashboard-section-nav button,
+  .dashboard-page .dashboard-section-nav button:first-child {
+    width: auto;
+    min-width: 0;
+    max-width: 100%;
+    min-height: 42px;
+    padding: 7px 3px;
+    border: 0;
+    border-radius: 11px;
+    background: transparent;
+    box-shadow: none;
+    color: var(--muted);
+    font-size: clamp(0.66rem, 3vw, 0.78rem);
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  .dashboard-page .dashboard-section-nav button.active {
+    background: var(--primary);
+    color: #fff;
+    box-shadow: 0 8px 18px rgba(10, 159, 143, 0.2);
+  }
+
+  .dashboard-page .dashboard-player-header,
+  .dashboard-page .dashboard-hero-v2 {
+    order: 2;
+  }
+
+  .dashboard-page .dashboard-profile-badges-section {
+    order: 3;
+  }
+
+  .dashboard-page .dashboard-mobile-panel,
+  .dashboard-page .dashboard-view-panel.active {
+    order: 4;
+    min-height: 0;
+    overflow: visible;
+    padding: 0;
+  }
+
+  .dashboard-page .dashboard-level-section > .section-kicker {
+    display: none;
+  }
+
+  .dashboard-page .performance-v2 {
+    gap: 12px;
+  }
+
+  .dashboard-page .performance-v2-header {
+    display: grid;
+    gap: 4px;
+    padding-inline: 2px;
+  }
+
+  .dashboard-page .performance-v2-header .eyebrow,
+  .dashboard-page .performance-v2-header > p {
+    display: none;
+  }
+
+  .dashboard-page .performance-v2-header h3 {
+    font-size: clamp(1.35rem, 6.8vw, 1.7rem);
+    line-height: 1.08;
+  }
+
+  .dashboard-page .performance-level-tabs {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+    padding: 1px 1px 7px;
+  }
+
+  .dashboard-page .performance-level-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .dashboard-page .performance-level-tab {
+    flex: 0 0 142px;
+    min-height: 82px;
+    grid-template-columns: minmax(0, 1fr) 40px;
+    grid-template-rows: auto;
+    align-items: center;
+    gap: 7px;
+    padding: 10px;
+    border-radius: 14px;
+    scroll-snap-align: start;
+  }
+
+  .dashboard-page .performance-level-tab-heading {
+    grid-column: 1;
+    gap: 2px;
+  }
+
+  .dashboard-page .performance-level-tab-heading > span {
+    display: none;
+  }
+
+  .dashboard-page .performance-level-tab-heading > strong {
+    font-size: 0.92rem;
+    line-height: 1.05;
+  }
+
+  .dashboard-page .performance-level-ring {
+    width: 40px;
+    height: 40px;
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .dashboard-page .performance-level-ring::before {
+    inset: 4px;
+  }
+
+  .dashboard-page .performance-level-ring strong {
+    font-size: 0.7rem;
+  }
+
+  .dashboard-page .performance-level-sample {
+    grid-column: 1;
+    align-self: auto;
+    padding: 0;
+    border: 0;
+  }
+
+  .dashboard-page .performance-level-sample strong {
+    font-size: 0.72rem;
+  }
+
+  .dashboard-page .performance-level-sample small {
+    display: none;
+  }
+
+  .dashboard-page .performance-level-detail {
+    grid-template-columns: 1fr;
+    border-radius: 18px;
+  }
+
+  .dashboard-page .performance-level-summary {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+    padding: 16px;
+  }
+
+  .dashboard-page .performance-level-summary-heading {
+    align-content: center;
+    gap: 4px;
+  }
+
+  .dashboard-page .performance-level-summary-heading h3 {
+    font-size: 1.55rem;
+  }
+
+  .dashboard-page .performance-level-summary-heading p {
+    font-size: 0.8rem;
+    line-height: 1.25;
+  }
+
+  .dashboard-page .performance-level-score {
+    align-content: center;
+    justify-items: end;
+    gap: 2px;
+    padding: 0;
+    border: 0;
+  }
+
+  .dashboard-page .performance-level-score > strong {
+    font-size: 2.35rem;
+  }
+
+  .dashboard-page .performance-level-score > span {
+    font-size: 0.72rem;
+  }
+
+  .dashboard-page .performance-level-score > small {
+    display: none;
+  }
+
+  .dashboard-page .performance-level-metrics {
+    grid-column: 1 / -1;
+    gap: 7px;
+  }
+
+  .dashboard-page .performance-level-metrics > div {
+    min-height: 56px;
+    padding: 8px;
+  }
+
+  .dashboard-page .performance-level-metrics dt {
+    font-size: 0.66rem;
+  }
+
+  .dashboard-page .performance-level-metrics dd {
+    font-size: 1rem;
+  }
+
+  .dashboard-page .performance-mode-detail {
+    gap: 12px;
+    padding: 14px;
+  }
+
+  .dashboard-page .performance-mode-heading {
+    align-items: center;
+    flex-direction: row;
+  }
+
+  .dashboard-page .performance-mode-heading h4 {
+    font-size: 1.2rem;
+  }
+
+  .dashboard-page .performance-mode-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 5px 10px;
+    padding: 9px 0;
+  }
+
+  .dashboard-page .performance-mode-track {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    height: 7px;
+  }
+
+  .dashboard-page .performance-mode-score {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .dashboard-page .performance-mode-score small {
+    display: none;
+  }
+
+  .dashboard-page .performance-level-action {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 9px;
+    padding: 11px;
+  }
+
+  .dashboard-page .performance-level-action .primary-button {
+    width: 100%;
+    min-height: 42px;
+  }
+
+  .dashboard-page .performance-extra-grid {
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+    padding-bottom: 6px;
+  }
+
+  .dashboard-page .performance-extra-grid::-webkit-scrollbar {
+    display: none;
+  }
+
+  .dashboard-page .performance-recent-card,
+  .dashboard-page .performance-record-card {
+    flex: 0 0 var(--dashboard-mobile-card);
+    gap: 12px;
+    padding: 14px;
+    border-radius: 16px;
+    scroll-snap-align: start;
+  }
+
+  .dashboard-page .performance-recent-card dl,
+  .dashboard-page .performance-record-card dl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+  }
+
+  .dashboard-page .performance-recent-card dl > div,
+  .dashboard-page .performance-record-card dl > div {
+    padding: 9px;
+  }
+
+  .dashboard-page .quest-path-heading,
+  .dashboard-page .trophy-cabinet-heading {
+    align-items: center;
+    flex-direction: row;
+    gap: 12px;
+    padding: 14px;
+  }
+
+  .dashboard-page .quest-path-heading h3,
+  .dashboard-page .trophy-cabinet-heading h3 {
+    font-size: 1.2rem;
+  }
+
+  .dashboard-page .quest-path-heading > strong,
+  .dashboard-page .trophy-cabinet-heading > strong {
+    flex: 0 0 auto;
+    padding: 7px 9px;
+    font-size: 0.78rem;
+  }
+
+  .dashboard-page .quest-path-list.mission-board-grid {
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    padding: 10px 14px 16px;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+  }
+
+  .dashboard-page .quest-path-list.mission-board-grid::-webkit-scrollbar {
+    display: none;
+  }
+
+  .dashboard-page .quest-path-list::before {
+    content: none;
+  }
+
+  .dashboard-page .quest-path-step.mission-xp-card {
+    flex: 0 0 var(--dashboard-mobile-card);
+    min-height: 118px;
+    grid-template-columns: 42px minmax(0, 1fr) 58px;
+    gap: 9px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 15px;
+    scroll-snap-align: start;
+  }
+
+  .dashboard-page .quest-node {
+    width: 40px;
+    height: 40px;
+    border-width: 5px;
+  }
+
+  .dashboard-page .quest-step-copy p {
+    display: block;
+    font-size: 0.76rem;
+    line-height: 1.2;
+  }
+
+  .dashboard-page .quest-reward {
+    min-width: 56px;
+    padding: 8px 4px;
+  }
+
+  .dashboard-page .trophy-family-tabs {
+    display: flex;
+    gap: 7px;
+    overflow-x: auto;
+    padding: 10px 14px;
+    scrollbar-width: none;
+  }
+
+  .dashboard-page .trophy-family-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .dashboard-page .trophy-family-tabs button {
+    flex: 0 0 auto;
+    min-height: 38px;
+    padding: 7px 10px;
+  }
+
+  .dashboard-page .trophy-shelf-stack.badge-family-stack {
+    width: 100%;
+    min-width: 0;
+    padding-inline: 14px;
+  }
+
+  .dashboard-page .trophy-shelf {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    overflow-x: auto;
+    padding: 6px 0 12px;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+  }
+
+  .dashboard-page .trophy-shelf::-webkit-scrollbar {
+    display: none;
+  }
+
+  .dashboard-page .trophy-item.badge-objective-card {
+    flex: 0 0 144px;
+    width: 144px;
+    min-width: 0;
+    max-width: 144px;
+    min-height: 196px;
+    padding: 10px 7px;
+    scroll-snap-align: start;
+  }
+
+  .dashboard-page .session-timeline {
+    padding: 14px;
+  }
+}
+
+@media (max-width: 390px) {
+  .dashboard-page .dashboard-section-nav button,
+  .dashboard-page .dashboard-section-nav button:first-child {
+    font-size: 0.66rem;
+  }
+}

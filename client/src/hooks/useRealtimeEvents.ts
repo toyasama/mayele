@@ -90,6 +90,8 @@ export type RealtimeTempoAnswerPayload = {
   source: 'manual' | 'timeout'
 }
 
+export type RealtimeSprintAnswerPayload = RealtimeTempoAnswerPayload
+
 export type RealtimeMatchResultPayload = {
   durationSeconds: number
   bestStreak: number
@@ -126,6 +128,7 @@ export function realtimeCommandTimeoutMs(eventName: string) {
     case 'match:update-config':
     case 'match:update-progress':
     case 'match:submit-tempo-answer':
+    case 'match:submit-sprint-answer':
       return REALTIME_FAST_COMMAND_TIMEOUT_MS
     case 'match:submit-result':
       return REALTIME_LONG_COMMAND_TIMEOUT_MS
@@ -150,7 +153,10 @@ type RealtimeHandlers = {
 type UseRealtimeEventsOptions = RealtimeHandlers & {
   isAuthenticated: boolean
   getToken: TokenProvider
+  connectionPriority?: RealtimeConnectionPriority
 }
+
+export type RealtimeConnectionPriority = 'background' | 'critical'
 
 type ReadyWaiter = {
   resolve: (socket: Socket) => void
@@ -160,6 +166,8 @@ type ReadyWaiter = {
 type RealtimeSubscriber = {
   handlersRef: { current: RealtimeHandlers }
   setIsRealtimeReady: (ready: boolean) => void
+  getToken: TokenProvider
+  connectionPriority: RealtimeConnectionPriority
 }
 
 const realtimeSubscribers = new Set<RealtimeSubscriber>()
@@ -169,6 +177,10 @@ let sharedSocketReady = false
 let sharedSocketConnecting = false
 let sharedConnectionAttempt = 0
 let sharedReadyWaiters: ReadyWaiter[] = []
+let backgroundConnectionIdleId: number | null = null
+let backgroundConnectionFallbackId: number | null = null
+
+const REALTIME_BACKGROUND_MAX_WAIT_MS = 3_000
 
 function realtimeUrl() {
   return resolveRealtimeBase({
@@ -201,6 +213,78 @@ function rejectReadyWaiters(error: unknown) {
   const waiters = sharedReadyWaiters
   sharedReadyWaiters = []
   waiters.forEach((waiter) => waiter.reject(error))
+}
+
+function cancelBackgroundConnection() {
+  const idleWindow = window as unknown as {
+    cancelIdleCallback?: (handle: number) => void
+  }
+
+  if (backgroundConnectionIdleId !== null) {
+    idleWindow.cancelIdleCallback?.(backgroundConnectionIdleId)
+  }
+
+  if (backgroundConnectionFallbackId !== null) {
+    window.clearTimeout(backgroundConnectionFallbackId)
+  }
+
+  backgroundConnectionIdleId = null
+  backgroundConnectionFallbackId = null
+}
+
+function startRealtimeFromCurrentDemand() {
+  if (sharedSocket || sharedSocketConnecting) {
+    return
+  }
+
+  const subscriber = realtimeSubscribers.values().next().value as RealtimeSubscriber | undefined
+  if (subscriber) {
+    void ensureRealtimeSocket(subscriber.getToken)
+  }
+}
+
+function scheduleBackgroundConnection() {
+  if (backgroundConnectionIdleId !== null || backgroundConnectionFallbackId !== null || sharedSocket || sharedSocketConnecting) {
+    return
+  }
+
+  const start = () => {
+    cancelBackgroundConnection()
+    startRealtimeFromCurrentDemand()
+  }
+
+  const idleWindow = window as unknown as {
+    requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number
+  }
+
+  if (idleWindow.requestIdleCallback) {
+    backgroundConnectionIdleId = idleWindow.requestIdleCallback(start, { timeout: REALTIME_BACKGROUND_MAX_WAIT_MS })
+    return
+  }
+
+  // Safari ne fournit pas requestIdleCallback. Un tour de boucle laisse tout de
+  // même React peindre le contenu utile avant de charger le transport temps réel.
+  backgroundConnectionFallbackId = window.setTimeout(start, 0)
+}
+
+function reconcileRealtimeConnectionDemand() {
+  if (realtimeSubscribers.size === 0) {
+    cancelBackgroundConnection()
+    disconnectSharedSocket()
+    return
+  }
+
+  const hasCriticalSubscriber = Array.from(realtimeSubscribers).some(
+    (subscriber) => subscriber.connectionPriority === 'critical',
+  )
+
+  if (hasCriticalSubscriber) {
+    cancelBackgroundConnection()
+    startRealtimeFromCurrentDemand()
+    return
+  }
+
+  scheduleBackgroundConnection()
 }
 
 function reportConnectionError(error: unknown) {
@@ -259,6 +343,7 @@ function waitForReadySocket() {
 }
 
 function disconnectSharedSocket() {
+  cancelBackgroundConnection()
   sharedConnectionAttempt += 1
   sharedSocketConnecting = false
 
@@ -281,7 +366,10 @@ async function ensureRealtimeSocket(getToken: TokenProvider) {
   const attempt = ++sharedConnectionAttempt
 
   try {
+    ;(window as typeof window & { __mayeleRealtimeImportStartedAt?: number }).__mayeleRealtimeImportStartedAt = performance.now()
     const [module, token] = await Promise.all([import('socket.io-client'), waitForAuthToken(getToken)])
+
+    ;(window as typeof window & { __mayeleRealtimeModuleLoadedAt?: number }).__mayeleRealtimeModuleLoadedAt = performance.now()
 
     if (attempt !== sharedConnectionAttempt) {
       return
@@ -299,6 +387,7 @@ async function ensureRealtimeSocket(getToken: TokenProvider) {
       path: '/socket.io',
       transports: ['websocket', 'polling'],
     })
+    let refreshingAuth = false
 
     sharedSocket = socket
     socket.on('realtime:ready', () => {
@@ -309,6 +398,33 @@ async function ensureRealtimeSocket(getToken: TokenProvider) {
     })
     socket.on('connect_error', (error) => {
       notifyRealtimeReady(false)
+
+      if (error instanceof Error && error.message === 'unauthorized' && !refreshingAuth) {
+        refreshingAuth = true
+        socket.disconnect()
+        void waitForAuthToken(getToken)
+          .then((refreshedToken) => {
+            if (sharedSocket !== socket) {
+              return
+            }
+
+            if (!refreshedToken) {
+              reportConnectionError(error)
+              return
+            }
+
+            socket.auth = { token: refreshedToken }
+            socket.connect()
+          })
+          .catch((refreshError) => {
+            reportConnectionError(refreshError)
+          })
+          .finally(() => {
+            refreshingAuth = false
+          })
+        return
+      }
+
       reportConnectionError(error)
     })
     socket.on('disconnect', () => {
@@ -324,6 +440,7 @@ async function ensureRealtimeSocket(getToken: TokenProvider) {
     socket.on('match:tempo-progress', (payload: MatchTempoProgressPayload) => dispatchRealtimeEvent('onMatchTempoProgress', payload))
     socket.on('notifications:changed', (payload: NotificationsRealtimePayload) => dispatchRealtimeEvent('onNotificationsChanged', payload))
     socket.auth = { token }
+    ;(window as typeof window & { __mayeleRealtimeConnectStartedAt?: number }).__mayeleRealtimeConnectStartedAt = performance.now()
     socket.connect()
   } catch (error) {
     if (attempt === sharedConnectionAttempt) {
@@ -340,6 +457,7 @@ async function ensureRealtimeSocket(getToken: TokenProvider) {
 export function useRealtimeEvents({
   isAuthenticated,
   getToken,
+  connectionPriority = 'critical',
   onSocialChanged,
   onPresenceChanged,
   onPresenceVisibilityChanged,
@@ -359,8 +477,13 @@ export function useRealtimeEvents({
     subscriberRef.current = {
       handlersRef,
       setIsRealtimeReady,
+      getToken,
+      connectionPriority,
     }
   }
+
+  subscriberRef.current.getToken = getToken
+  subscriberRef.current.connectionPriority = connectionPriority
 
   useEffect(() => {
     handlersRef.current = {
@@ -400,23 +523,22 @@ export function useRealtimeEvents({
     const subscriber = subscriberRef.current!
     realtimeSubscribers.add(subscriber)
     setIsRealtimeReady(sharedSocketReady && Boolean(sharedSocket?.connected))
-    void ensureRealtimeSocket(getToken)
+    reconcileRealtimeConnectionDemand()
 
     return () => {
       realtimeSubscribers.delete(subscriber)
       setIsRealtimeReady(false)
-
-      if (realtimeSubscribers.size === 0) {
-        disconnectSharedSocket()
-      }
+      reconcileRealtimeConnectionDemand()
     }
-  }, [getToken, isAuthenticated])
+  }, [connectionPriority, getToken, isAuthenticated])
 
   const emitRealtimeCommand = useCallback(async <T,>(eventName: string, payload: unknown) => {
     let socket = sharedSocket
 
     if (!socket?.connected) {
       try {
+        cancelBackgroundConnection()
+        await ensureRealtimeSocket(getToken)
         socket = await waitForReadySocket()
       } catch {
         throw realtimeUnavailableError()
@@ -456,7 +578,7 @@ export function useRealtimeEvents({
         },
       )
     })
-  }, [])
+  }, [getToken])
 
   const setPresenceActivity = useCallback((active: boolean) => {
     if (sharedSocket?.connected) {
@@ -521,6 +643,10 @@ export function useRealtimeEvents({
     return emitRealtimeCommand<{ match: MatchData; progress: TempoProgressData }>('match:submit-tempo-answer', { matchId, answer })
   }, [emitRealtimeCommand])
 
+  const submitSprintAnswer = useCallback((matchId: string, answer: RealtimeSprintAnswerPayload) => {
+    return emitRealtimeCommand<{ match: MatchData }>('match:submit-sprint-answer', { matchId, answer })
+  }, [emitRealtimeCommand])
+
   const submitMatchResult = useCallback((matchId: string, result: RealtimeMatchResultPayload) => {
     return emitRealtimeCommand<{ match: MatchData }>('match:submit-result', { matchId, result })
   }, [emitRealtimeCommand])
@@ -546,6 +672,7 @@ export function useRealtimeEvents({
     proposeMatch,
     requestMatchRematch,
     submitMatchResult,
+    submitSprintAnswer,
     submitTempoAnswer,
     setPresenceActivity,
     setPresenceVisibility,

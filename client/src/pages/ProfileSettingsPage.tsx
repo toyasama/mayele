@@ -8,6 +8,7 @@ import { useProfile } from '../context/profile-context'
 import { api, type AuthUser } from '../lib/api'
 import { dateInputLimit, formatDisplayName, isValidBirthDate, USERNAME_PATTERN } from '../lib/profile'
 import { detectBrowserTimeZone, isValidTimeZone, timeZoneOptionsFor } from '../lib/timeZone'
+import '../styles/routes/profile-settings.css'
 
 type ProfileDraft = {
   firstName: string
@@ -134,6 +135,14 @@ export function ProfileSettingsPage() {
   const maxBirthDate = useMemo(() => dateInputLimit('max'), [])
   const minBirthDate = useMemo(() => dateInputLimit('min'), [])
   const timeZoneOptions = useMemo(() => timeZoneOptionsFor(profile?.timeZone, draft.timeZone, detectBrowserTimeZone()), [draft.timeZone, profile?.timeZone])
+  const baselineDraft = useMemo(() => initialDraftFromUser(profile), [profile])
+  const profileDirty = avatarFile !== null
+    || avatarRemoved
+    || draft.firstName !== baselineDraft.firstName
+    || draft.lastName !== baselineDraft.lastName
+    || draft.birthDate !== baselineDraft.birthDate
+    || (!usernameLocked && draft.username !== baselineDraft.username)
+  const systemDirty = draft.timeZone !== baselineDraft.timeZone
   const canSubmitProfile = useMemo(() => {
     return !bootLoading && !saving && validateProfileDraft(draft, usernameLocked) === null
   }, [bootLoading, draft, saving, usernameLocked])
@@ -332,18 +341,20 @@ export function ProfileSettingsPage() {
           {activeTab === 'profile' ? (
           <>
           <span className="eyebrow">Profil</span>
-          <h1>Configuration du compte</h1>
-          <p className="muted">Renseignez vos informations personnelles.</p>
+          <h1>Votre profil</h1>
 
-          <div className="profile-public-preview">
-            {previewAvatarUrl ? (
-              <img src={previewAvatarUrl} alt="" />
-            ) : (
-              <span className="profile-public-avatar-initials" aria-hidden="true">
-                {profileInitials(draft)}
-              </span>
-            )}
+          <div className={`profile-public-preview ${profileComplete ? 'is-complete' : 'needs-completion'}`}>
+            <div className="profile-preview-avatar-shell">
+              {previewAvatarUrl ? (
+                <img src={previewAvatarUrl} alt="" />
+              ) : (
+                <span className="profile-public-avatar-initials" aria-hidden="true">
+                  {profileInitials(draft)}
+                </span>
+              )}
+            </div>
             <div>
+              <span className="profile-preview-status">{profileComplete ? 'Profil prêt' : 'À compléter'}</span>
               <strong>{formatDisplayName(draft, 'Votre profil')}</strong>
               <span>{draft.username ? `@${draft.username}` : 'Nom d’utilisateur à définir'}</span>
             </div>
@@ -417,16 +428,21 @@ export function ProfileSettingsPage() {
             {error ? <div className="form-error">{error}</div> : null}
             {success ? <div className="form-success">{success}</div> : null}
 
-            <button className="primary-button full-width" type="submit" disabled={!canSubmitProfile}>
-              {saving ? 'Enregistrement...' : 'Enregistrer mes informations'}
-            </button>
+            {profileDirty ? (
+              <div className="profile-save-bar">
+                <span>Modifications non enregistrées</span>
+                <button className="primary-button" type="submit" disabled={!canSubmitProfile}>
+                  {saving ? 'Enregistrement...' : 'Enregistrer'}
+                </button>
+              </div>
+            ) : null}
           </form>
           </>
           ) : (
           <>
           <span className="eyebrow">Système</span>
-          <h1>Configuration système</h1>
-          <p className="muted">Gérez les préférences utilisées par Mayele pour vos missions et statistiques.</p>
+          <h1>Heure locale</h1>
+          <p className="muted">Vos nouvelles quêtes commencent à minuit dans ce fuseau.</p>
 
           <form className="stacked-form profile-settings-form" onSubmit={handleSystemSubmit}>
             <label>
@@ -443,9 +459,14 @@ export function ProfileSettingsPage() {
             {error ? <div className="form-error">{error}</div> : null}
             {success ? <div className="form-success">{success}</div> : null}
 
-            <button className="primary-button full-width" type="submit" disabled={!canSubmitSystem}>
-              {saving ? 'Enregistrement...' : 'Enregistrer la configuration'}
-            </button>
+            {systemDirty ? (
+              <div className="profile-save-bar">
+                <span>Fuseau horaire modifié</span>
+                <button className="primary-button" type="submit" disabled={!canSubmitSystem}>
+                  {saving ? 'Enregistrement...' : 'Enregistrer'}
+                </button>
+              </div>
+            ) : null}
           </form>
           </>
           )}

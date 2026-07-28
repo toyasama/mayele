@@ -1,14 +1,21 @@
 import { DAILY_GOAL, VALID_GAMES, VALID_LEVELS, type GameLevel, type GameType, type SkillTag } from '../domain/constants.js'
 import { getDailyScopeKey } from '../domain/daily.js'
 import { getPlayerProgress } from '../domain/progression.js'
-import { MASTERY_CONFIRMED_MIN_CORRECT_ANSWERS, MASTERY_MASTER_MIN_CORRECT_ANSWERS, buildBadgeStates, buildMissionStates } from '../domain/rewards.js'
+import { buildMissionStates } from '../domain/rewards.js'
 import { prisma } from '../lib/prisma.js'
+import { getPlayerBadgeStates } from './badgeService.js'
 
-const DASHBOARD_CACHE_TTL_MS = 15 * 1000
-const dashboardCache = new Map<string, { expiresAt: number; payload: Awaited<ReturnType<typeof loadDashboard>> }>()
+const DASHBOARD_CACHE_TTL_MS = 60 * 1000
+type DashboardPayload = Awaited<ReturnType<typeof loadDashboard>>
+type DashboardCacheEntry = {
+  expiresAt: number
+  payload?: DashboardPayload
+  pending?: Promise<DashboardPayload>
+}
+const dashboardCache = new Map<string, DashboardCacheEntry>()
 
-function dashboardCacheKey(playerId: string, timeZone?: string | null) {
-  return `${playerId}:${timeZone ?? ''}`
+function dashboardCacheKey(playerId: string, timeZone: string | null | undefined, day: string) {
+  return `${playerId}:${timeZone ?? ''}:${day}`
 }
 
 export function invalidateDashboardCache(playerId: string) {
@@ -35,10 +42,6 @@ function average(values: number[]) {
   }
 
   return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length)
-}
-
-function countByGameLevel(groups: Array<{ game: string; level: string; _count: { _all: number } }>) {
-  return new Map(groups.map((group) => [`${group.level}:${group.game}`, group._count._all]))
 }
 
 function buildRecentTrend(sessions: Array<{ score: number; xp: number; bestStreak: number }>) {
@@ -121,23 +124,112 @@ export async function getPracticePlan(playerId: string) {
   return buildPracticePlan(weakSkills, lastSession?.level ?? null)
 }
 
-export async function getDashboard(playerId: string, timeZone?: string | null) {
-  const key = dashboardCacheKey(playerId, timeZone)
+export async function getDailyObjectives(playerId: string, timeZone?: string | null) {
+  const day = getDailyScopeKey(undefined, timeZone)
+  const [todayStats, missionCompletions] = await Promise.all([
+    prisma.dailyStat.findUnique({ where: { playerId_day: { playerId, day } } }),
+    prisma.missionCompletion.findMany({
+      where: { playerId, scopeKey: day },
+      select: {
+        missionKey: true,
+        scopeKey: true,
+        completedAt: true,
+        xpAwarded: true,
+      },
+    }),
+  ])
+
+  return buildMissionStates(
+    {
+      todaySessions: todayStats?.sessionsCount ?? 0,
+      todayCorrectAnswers: todayStats?.correctAnswers ?? 0,
+      todayQuestionsAnswered: todayStats?.totalQuestions ?? 0,
+    },
+    missionCompletions,
+    day,
+    playerId,
+  )
+}
+
+export async function getOperationHistory(
+  playerId: string,
+  game: GameType,
+  level: GameLevel,
+  limit = 20,
+) {
+  const sessions = await prisma.gameSession.findMany({
+    where: { playerId, game, level },
+    orderBy: { playedAt: 'desc' },
+    take: Math.min(20, Math.max(1, limit)),
+    select: {
+      id: true,
+      score: true,
+      correctAnswers: true,
+      totalQuestions: true,
+      bestStreak: true,
+      playedAt: true,
+      answers: {
+        select: { responseTimeMs: true },
+      },
+    },
+  })
+
+  return sessions.map((session) => ({
+    id: session.id,
+    score: session.score,
+    correctAnswers: session.correctAnswers,
+    totalQuestions: session.totalQuestions,
+    bestStreak: session.bestStreak,
+    playedAt: session.playedAt.toISOString(),
+    averageResponseTimeMs: average(session.answers.map((answer) => answer.responseTimeMs)),
+  }))
+}
+
+export async function getDashboard(playerId: string, timeZone?: string | null, knownTotalXp?: number) {
+  // Daily missions follow the player's local calendar day. Keeping that day
+  // in the cache key prevents a dashboard cached before midnight from leaking
+  // into the new local day.
+  const day = getDailyScopeKey(undefined, timeZone)
+  const key = dashboardCacheKey(playerId, timeZone, day)
   const now = Date.now()
   const cached = dashboardCache.get(key)
 
-  if (cached && cached.expiresAt > now) {
+  if (cached?.payload && cached.expiresAt > now) {
     return cached.payload
   }
 
-  const payload = await loadDashboard(playerId, timeZone)
-  dashboardCache.set(key, { expiresAt: now + DASHBOARD_CACHE_TTL_MS, payload })
-  return payload
+  if (cached?.pending) {
+    return cached.pending
+  }
+
+  const pending = loadDashboard(playerId, day, knownTotalXp)
+  dashboardCache.set(key, { expiresAt: 0, pending })
+
+  try {
+    const payload = await pending
+    const current = dashboardCache.get(key)
+
+    // An explicit invalidation that happened while the query was running must
+    // not repopulate the cache with the now stale snapshot.
+    if (current?.pending === pending) {
+      dashboardCache.set(key, { expiresAt: Date.now() + DASHBOARD_CACHE_TTL_MS, payload })
+    }
+
+    return payload
+  } catch (error) {
+    if (dashboardCache.get(key)?.pending === pending) {
+      dashboardCache.delete(key)
+    }
+    throw error
+  }
 }
 
-async function loadDashboard(playerId: string, timeZone?: string | null) {
-  const day = getDailyScopeKey(undefined, timeZone)
+async function loadDashboard(playerId: string, day: string, knownTotalXp?: number) {
+  // This is a read-only analytical projection. Running independent aggregates
+  // concurrently avoids serializing many network round-trips inside a DB
+  // transaction. Authoritative writes still invalidate the completed cache.
   const [
+    playerProjection,
     summaryStats,
     progressGroups,
     levelGroups,
@@ -151,12 +243,11 @@ async function loadDashboard(playerId: string, timeZone?: string | null) {
     todayStats,
     achievements,
     missionCompletions,
-    qualifiedScore80Groups,
-    qualifiedScore100Groups,
-    fastCorrect2500Groups,
-    fastCorrect1800Groups,
-    fastCorrect1200Groups,
-  ] = await prisma.$transaction([
+    badges,
+  ] = await Promise.all([
+    knownTotalXp === undefined
+      ? prisma.player.findUniqueOrThrow({ where: { id: playerId }, select: { totalXp: true } })
+      : Promise.resolve({ totalXp: knownTotalXp }),
     prisma.gameSession.aggregate({
       where: { playerId },
       _count: { _all: true },
@@ -242,68 +333,20 @@ async function loadDashboard(playerId: string, timeZone?: string | null) {
         xpAwarded: true,
       },
     }),
-    prisma.gameSession.groupBy({
-      by: ['game', 'level'],
-      where: {
-        playerId,
-        score: { gte: 80 },
-        correctAnswers: { gte: MASTERY_CONFIRMED_MIN_CORRECT_ANSWERS },
-      },
-      _count: { _all: true },
-    }),
-    prisma.gameSession.groupBy({
-      by: ['game', 'level'],
-      where: {
-        playerId,
-        score: 100,
-        correctAnswers: { gte: MASTERY_MASTER_MIN_CORRECT_ANSWERS },
-      },
-      _count: { _all: true },
-    }),
-    prisma.answer.groupBy({
-      by: ['game', 'level'],
-      where: {
-        playerId,
-        isCorrect: true,
-        responseTimeMs: { lte: 2500 },
-      },
-      _count: { _all: true },
-    }),
-    prisma.answer.groupBy({
-      by: ['game', 'level'],
-      where: {
-        playerId,
-        isCorrect: true,
-        responseTimeMs: { lte: 1800 },
-      },
-      _count: { _all: true },
-    }),
-    prisma.answer.groupBy({
-      by: ['game', 'level'],
-      where: {
-        playerId,
-        isCorrect: true,
-        responseTimeMs: { lte: 1200 },
-      },
-      _count: { _all: true },
-    }),
+    getPlayerBadgeStates(playerId),
   ])
 
   const weakSkills = buildWeakSkills(Array.from(buildSkillStats(skillAnswerGroups).values()))
   const practicePlan = buildPracticePlan(weakSkills, recentSessions[0]?.level ?? null)
-  const totalXp = summaryStats._sum.xp ?? 0
+  const totalXp = playerProjection.totalXp
   const playerProgress = getPlayerProgress(totalXp)
   const missionStats = {
     todaySessions: todayStats?.sessionsCount ?? 0,
     todayCorrectAnswers: todayStats?.correctAnswers ?? 0,
+    todayQuestionsAnswered: todayStats?.totalQuestions ?? 0,
   }
   const responseTimeByGameMap = new Map(responseTimeByGame.map((item) => [item.game, roundStat(item._avg.responseTimeMs)]))
   const responseTimeByLevelMap = new Map(responseTimeByLevel.map((item) => [item.level, roundStat(item._avg.responseTimeMs)]))
-  const fastCorrect2500ByMode = countByGameLevel(fastCorrect2500Groups)
-  const fastCorrect1800ByMode = countByGameLevel(fastCorrect1800Groups)
-  const fastCorrect1200ByMode = countByGameLevel(fastCorrect1200Groups)
-  const qualifiedScore80ByMode = countByGameLevel(qualifiedScore80Groups)
-  const qualifiedScore100ByMode = countByGameLevel(qualifiedScore100Groups)
   const fastestAverageResponseTimeMs = responseTimeBySession.reduce<number | null>((fastest, item) => {
     const averageResponseTime = roundStat(item._avg.responseTimeMs)
 
@@ -354,22 +397,8 @@ async function loadDashboard(playerId: string, timeZone?: string | null) {
     },
     practicePlan,
     weakSkills,
-    missions: buildMissionStates(missionStats, missionCompletions, day),
-    badges: buildBadgeStates(
-      progressGroups.map((item) => ({
-        game: item.game,
-        level: item.level,
-        attempts: item._count._all,
-        bestScore: item._max.score ?? 0,
-        bestCorrectAnswers: item._max.correctAnswers ?? 0,
-        bestStreak: item._max.bestStreak ?? 0,
-        hasQualifiedScore80: qualifiedScore80ByMode.has(`${item.level}:${item.game}`),
-        hasQualifiedScore100: qualifiedScore100ByMode.has(`${item.level}:${item.game}`),
-        fastCorrectAnswers2500: fastCorrect2500ByMode.get(`${item.level}:${item.game}`) ?? 0,
-        fastCorrectAnswers1800: fastCorrect1800ByMode.get(`${item.level}:${item.game}`) ?? 0,
-        fastCorrectAnswers1200: fastCorrect1200ByMode.get(`${item.level}:${item.game}`) ?? 0,
-      })),
-    ),
+    missions: buildMissionStates(missionStats, missionCompletions, day, playerId),
+    badges,
     stats: {
       averageResponseTimeMs: roundStat(responseTimeStats._avg.responseTimeMs),
       byGame: VALID_GAMES.map((game) => {

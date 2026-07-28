@@ -1,17 +1,21 @@
 import { randomUUID } from 'node:crypto'
+import type { Prisma } from '../generated/prisma/client.js'
 import { canonicalPairIds, buildChallengeConfig, determineMatchWinner } from '../domain/matchRules.js'
+import { calculateSessionScorePoints } from '../domain/scoring.js'
 import { prisma } from '../lib/prisma.js'
 import type { TempoAnswerPayload, ChallengeConfigPayload, ChallengePayload, MatchResultPayload, ParticipantProgressPayload } from '../schemas/matchSchema.js'
 import { saveSession } from './sessionService.js'
 import { MatchServiceError } from './matchServiceErrors.js'
 import { challengeRunDurationSeconds, MATCH_IN_PROGRESS_GRACE_MS } from './matchServiceTiming.js'
-import { MATCH_INCLUDE, enrichMatchView, toMatchView } from './matchServiceView.js'
+import { MATCH_INCLUDE, enrichMatchView, enrichMatchViews, toMatchView, type MatchView } from './matchServiceView.js'
 import {
   buildValidatedSessionPayload,
   calculateAccuracy,
   expectedTempoQuestion,
+  expectedSprintQuestion,
   finalizeMatchIfDone,
   progressForParticipant,
+  recomputeBestStreak,
   tempoQuestionAnswerUpsert,
 } from './matchServiceResults.js'
 
@@ -51,6 +55,27 @@ export type PersistedChallengeConfig = {
   configVersion: number
 }
 
+export async function assertMatchRoomMembership(playerId: string, roomIdOrMatchId: string) {
+  const match = await prisma.match.findFirst({
+    where: {
+      OR: [
+        { id: roomIdOrMatchId },
+        { roomId: roomIdOrMatchId },
+      ],
+      participants: {
+        some: { playerId },
+      },
+    },
+    select: { id: true, roomId: true },
+  })
+
+  if (!match) {
+    throw new MatchServiceError('match_not_participant')
+  }
+
+  return match
+}
+
 function expiresIn(ms: number) {
   return new Date(Date.now() + ms)
 }
@@ -63,40 +88,13 @@ function isRecentHostHeartbeat(hostActiveAt: Date | null) {
   return Boolean(hostActiveAt && Date.now() - hostActiveAt.getTime() <= HOST_ROOM_GRACE_MS)
 }
 
-async function expireStaleMatches() {
-  const now = new Date()
-  const completedRoomCutoff = new Date(now.getTime() - COMPLETED_ROOM_TTL_MS)
-
-  await prisma.match.updateMany({
-    where: {
-      status: { in: [...ACTIVE_MATCH_STATUSES] },
-      expiresAt: { lte: now },
-    },
-    data: {
-      status: 'expired',
-      finishedAt: now,
-    },
-  })
-
-  await prisma.match.updateMany({
-    where: {
-      status: 'completed',
-      finishedAt: { lte: completedRoomCutoff },
-      expiresAt: { gt: now },
-    },
-    data: {
-      expiresAt: now,
-    },
-  })
-}
-
 function visibleMatchWhere(playerId: string, now: Date) {
   return {
     participants: {
       some: { playerId },
     },
     OR: [
-      { status: { in: [...ACTIVE_MATCH_STATUSES] } },
+      { status: { in: [...ACTIVE_MATCH_STATUSES] }, expiresAt: { gt: now } },
       {
         status: 'completed',
         expiresAt: { gt: now },
@@ -206,7 +204,10 @@ type CreateChallengeOptions = {
   roomId?: string
   creatorParticipantId?: string
   opponentParticipantId?: string
+  onPersisted?: MatchMutationEffects
 }
+
+export type MatchMutationEffects = (tx: Prisma.TransactionClient, match: MatchView) => Promise<void>
 
 export async function createChallenge(creatorPlayerId: string, payload: ChallengePayload, options: CreateChallengeOptions = {}) {
   if (creatorPlayerId === payload.opponentPlayerId) {
@@ -228,47 +229,51 @@ export async function createChallenge(creatorPlayerId: string, payload: Challeng
         perQuestionTimeLimitSeconds: payload.perQuestionTimeLimitSeconds,
       })
     : null
-  const match = await prisma.match.create({
-    data: {
-      id: options.matchId,
-      roomId: options.roomId ?? `room_${randomUUID()}`,
-      type: 'challenge',
-      challengeMode: config?.challengeMode ?? null,
-      status: 'pending',
-      game: payload.game ?? null,
-      level: payload.level ?? null,
-      practiceSkill: payload.practiceSkill ?? null,
-      durationSeconds: config?.durationSeconds ?? 60,
-      questionCount: config?.questionCount ?? null,
-      perQuestionTimeLimitSeconds: config?.perQuestionTimeLimitSeconds ?? null,
-      questionSeed: config?.questionSeed ?? null,
-      createdById: creatorPlayerId,
-      expiresAt: expiresIn(PENDING_MATCH_TTL_MS),
-      hostActiveAt: new Date(),
-      participants: {
-        create: [
-          {
-            id: options.creatorParticipantId,
-            playerId: creatorPlayerId,
-            status: 'accepted',
-            joinedAt: new Date(),
-          },
-          {
-            id: options.opponentParticipantId,
-            playerId: payload.opponentPlayerId,
-            status: 'invited',
-          },
-        ],
+  const match = await prisma.$transaction(async (tx) => {
+    const persistedMatch = await tx.match.create({
+      data: {
+        id: options.matchId,
+        roomId: options.roomId ?? `room_${randomUUID()}`,
+        type: 'challenge',
+        challengeMode: config?.challengeMode ?? null,
+        status: 'pending',
+        game: payload.game ?? null,
+        level: payload.level ?? null,
+        practiceSkill: payload.practiceSkill ?? null,
+        durationSeconds: config?.durationSeconds ?? 60,
+        questionCount: config?.questionCount ?? null,
+        perQuestionTimeLimitSeconds: config?.perQuestionTimeLimitSeconds ?? null,
+        questionSeed: config?.questionSeed ?? null,
+        createdById: creatorPlayerId,
+        expiresAt: expiresIn(PENDING_MATCH_TTL_MS),
+        hostActiveAt: new Date(),
+        participants: {
+          create: [
+            {
+              id: options.creatorParticipantId,
+              playerId: creatorPlayerId,
+              status: 'accepted',
+              joinedAt: new Date(),
+            },
+            {
+              id: options.opponentParticipantId,
+              playerId: payload.opponentPlayerId,
+              status: 'invited',
+            },
+          ],
+        },
       },
-    },
-    include: MATCH_INCLUDE,
+      include: MATCH_INCLUDE,
+    })
+    const matchView = toMatchView(persistedMatch)
+    await options.onPersisted?.(tx, matchView)
+    return persistedMatch
   })
 
   return toMatchView(match)
 }
 
 export async function listMatches(playerId: string) {
-  await expireStaleMatches()
   const now = new Date()
 
   const matches = await prisma.match.findMany({
@@ -278,11 +283,10 @@ export async function listMatches(playerId: string) {
     take: 30,
   })
 
-  return Promise.all(matches.map(enrichMatchView))
+  return enrichMatchViews(matches)
 }
 
 export async function getMatch(playerId: string, matchId: string) {
-  await expireStaleMatches()
   const now = new Date()
 
   const match = await prisma.match.findFirst({
@@ -300,9 +304,7 @@ export async function getMatch(playerId: string, matchId: string) {
   return enrichMatchView(match)
 }
 
-export async function acceptChallenge(playerId: string, matchId: string) {
-  await expireStaleMatches()
-
+export async function acceptChallenge(playerId: string, matchId: string, onPersisted?: MatchMutationEffects) {
   const match = await prisma.match.findFirst({
     where: {
       id: matchId,
@@ -329,23 +331,26 @@ export async function acceptChallenge(playerId: string, matchId: string) {
     throw new MatchServiceError('participant_not_invited')
   }
 
-  await prisma.$transaction([
-    prisma.matchParticipant.update({
+  const acceptedMatch = await prisma.$transaction(async (tx) => {
+    const claimed = await tx.match.updateMany({
+      where: { id: match.id, status: 'pending', expiresAt: { gt: new Date() } },
+      data: { status: 'accepted', expiresAt: expiresIn(ACCEPTED_MATCH_TTL_MS) },
+    })
+    if (claimed.count === 0) throw new MatchServiceError('match_not_pending')
+
+    await tx.matchParticipant.update({
       where: { id: participant.id },
       data: { status: 'accepted', joinedAt: new Date() },
-    }),
-    prisma.match.update({
-      where: { id: match.id },
-      data: { status: 'accepted', expiresAt: expiresIn(ACCEPTED_MATCH_TTL_MS) },
-    }),
-  ])
+    })
+    const persistedMatch = await tx.match.findUniqueOrThrow({ where: { id: match.id }, include: MATCH_INCLUDE })
+    await onPersisted?.(tx, toMatchView(persistedMatch))
+    return persistedMatch
+  })
 
-  return getMatch(playerId, matchId)
+  return enrichMatchView(acceptedMatch)
 }
 
-export async function declineChallenge(playerId: string, matchId: string) {
-  await expireStaleMatches()
-
+export async function declineChallenge(playerId: string, matchId: string, onPersisted?: MatchMutationEffects) {
   const match = await prisma.match.findFirst({
     where: {
       id: matchId,
@@ -373,16 +378,20 @@ export async function declineChallenge(playerId: string, matchId: string) {
   }
 
   const cancelledMatch = await prisma.$transaction(async (tx) => {
+    const claimed = await tx.match.updateMany({
+      where: { id: match.id, status: 'pending', expiresAt: { gt: new Date() } },
+      data: { status: 'cancelled', finishedAt: new Date() },
+    })
+    if (claimed.count === 0) throw new MatchServiceError('match_not_pending')
+
     await tx.matchParticipant.update({
       where: { id: participant.id },
       data: { status: 'declined' },
     })
 
-    return tx.match.update({
-      where: { id: match.id },
-      data: { status: 'cancelled', finishedAt: new Date() },
-      include: MATCH_INCLUDE,
-    })
+    const persistedMatch = await tx.match.findUniqueOrThrow({ where: { id: match.id }, include: MATCH_INCLUDE })
+    await onPersisted?.(tx, toMatchView(persistedMatch))
+    return persistedMatch
   })
 
   return enrichMatchView(cancelledMatch)
@@ -457,7 +466,6 @@ export async function updateChallengeConfig(playerId: string, matchId: string, p
   }
 
   if (match.expiresAt.getTime() <= now.getTime()) {
-    await expireStaleMatches()
     throw new MatchServiceError('match_not_pending')
   }
 
@@ -497,9 +505,7 @@ export async function updateChallengeConfig(playerId: string, matchId: string, p
   }
 }
 
-export async function proposeChallenge(playerId: string, matchId: string, config?: PersistedChallengeConfig) {
-  await expireStaleMatches()
-
+export async function proposeChallenge(playerId: string, matchId: string, config?: ChallengeConfigPayload | PersistedChallengeConfig) {
   const match = await prisma.match.findFirst({
     where: {
       id: matchId,
@@ -520,8 +526,35 @@ export async function proposeChallenge(playerId: string, matchId: string, config
     throw new MatchServiceError('match_not_accepted')
   }
 
-  if (config) {
-    assertStartableConfig(config)
+  let proposedConfig: PersistedChallengeConfig | null = null
+
+  if (config && 'questionSeed' in config) {
+    proposedConfig = config
+  } else if (config) {
+    const challengeMode = config.challengeMode ?? match.challengeMode
+
+    if (challengeMode !== 'sprint' && challengeMode !== 'tempo') {
+      throw new MatchServiceError('match_config_incomplete')
+    }
+
+    proposedConfig = {
+      game: config.game ?? match.game,
+      level: config.level ?? match.level,
+      practiceSkill: config.practiceSkill ?? match.practiceSkill,
+      ...buildChallengeConfig({
+        challengeMode,
+        durationSeconds: config.durationSeconds ?? match.durationSeconds,
+        questionCount: config.questionCount ?? match.questionCount ?? undefined,
+        perQuestionTimeLimitSeconds: config.perQuestionTimeLimitSeconds ?? match.perQuestionTimeLimitSeconds ?? undefined,
+      }),
+      configVersion: match.configVersion + 1,
+    }
+  }
+
+  if (proposedConfig) {
+    const expectedVersion = config && 'expectedConfigVersion' in config ? config.expectedConfigVersion : undefined
+    assertExpectedConfigVersion(match.configVersion, expectedVersion)
+    assertStartableConfig(proposedConfig)
   } else {
     assertCompleteConfig(match)
   }
@@ -533,9 +566,9 @@ export async function proposeChallenge(playerId: string, matchId: string, config
   }
 
   const updatedMatch = await prisma.match.updateMany({
-    where: { id: match.id, status: 'accepted' },
+    where: { id: match.id, status: 'accepted', configVersion: match.configVersion },
     data: {
-      ...(config ? persistedChallengeConfigData(config) : {}),
+      ...(proposedConfig ? persistedChallengeConfigData(proposedConfig) : {}),
       status: 'ready',
       expiresAt: expiresIn(ACCEPTED_MATCH_TTL_MS),
     },
@@ -560,8 +593,6 @@ export async function startChallengeProposal(
   config: PersistedChallengeConfig,
   startedAt: Date,
 ) {
-  await expireStaleMatches()
-
   const match = await prisma.match.findFirst({
     where: {
       id: matchId,
@@ -641,8 +672,6 @@ export async function startChallengeProposal(
 }
 
 export async function acceptChallengeProposal(playerId: string, matchId: string) {
-  await expireStaleMatches()
-
   const match = await prisma.match.findFirst({
     where: {
       id: matchId,
@@ -688,8 +717,6 @@ export async function acceptChallengeProposal(playerId: string, matchId: string)
 }
 
 export async function declineChallengeProposal(playerId: string, matchId: string) {
-  await expireStaleMatches()
-
   const match = await prisma.match.findFirst({
     where: {
       id: matchId,
@@ -723,8 +750,6 @@ export async function declineChallengeProposal(playerId: string, matchId: string
 }
 
 export async function completeChallengeResult(playerId: string, matchId: string, payload: MatchResultPayload, timeZone?: string | null) {
-  await expireStaleMatches()
-
   const match = await prisma.match.findFirst({
     where: {
       id: matchId,
@@ -774,7 +799,9 @@ export async function completeChallengeResult(playerId: string, matchId: string,
 
   if (totalQuestions > 0) {
     try {
-      sessionResult = await saveSession(playerId, sessionPayload, timeZone)
+      sessionResult = await saveSession(playerId, sessionPayload, timeZone, {
+        submissionKey: `match:${match.id}:participant:${participant.id}`,
+      })
     } catch (error) {
       await prisma.matchParticipant.update({
         where: { id: participant.id },
@@ -890,9 +917,83 @@ export async function submitTempoQuestionAnswer(playerId: string, matchId: strin
   }
 }
 
-export async function forfeitChallenge(playerId: string, matchId: string, participantProgressByPlayerId: Record<string, ParticipantProgressPayload> = {}) {
-  await expireStaleMatches()
+export async function submitSprintQuestionAnswer(playerId: string, matchId: string, payload: TempoAnswerPayload) {
+  const now = new Date()
+  const match = await prisma.match.findFirst({
+    where: {
+      id: matchId,
+      participants: { some: { playerId } },
+      expiresAt: { gt: now },
+    },
+    include: MATCH_INCLUDE,
+  })
 
+  if (!match) {
+    throw new MatchServiceError('match_not_found')
+  }
+
+  if (match.status !== 'in_progress') {
+    throw new MatchServiceError('match_not_in_progress')
+  }
+
+  const participant = match.participants.find((item) => item.playerId === playerId)
+
+  if (!participant || participant.status !== 'playing') {
+    throw new MatchServiceError('match_not_participant')
+  }
+
+  expectedSprintQuestion(match, payload)
+
+  await prisma.$transaction(async (tx) => {
+    await tx.matchQuestionAnswer.upsert({
+      where: {
+        matchId_playerId_questionIndex: {
+          matchId: match.id,
+          playerId,
+          questionIndex: payload.questionIndex,
+        },
+      },
+      update: {},
+      create: {
+        matchId: match.id,
+        playerId,
+        questionIndex: payload.questionIndex,
+        prompt: payload.prompt,
+        correctAnswer: payload.correctAnswer,
+        userAnswer: payload.userAnswer,
+        responseTimeMs: payload.responseTimeMs,
+        skill: payload.skill,
+      },
+    })
+
+    const answers = await tx.matchQuestionAnswer.findMany({
+      where: { matchId: match.id, playerId },
+      orderBy: { questionIndex: 'asc' },
+    })
+    const evaluatedAnswers = answers.map((answer) => ({
+      responseTimeMs: answer.responseTimeMs,
+      isCorrect: answer.userAnswer === answer.correctAnswer,
+    }))
+    const correctAnswers = evaluatedAnswers.filter((answer) => answer.isCorrect).length
+    const totalQuestions = evaluatedAnswers.length
+
+    await tx.matchParticipant.update({
+      where: { id: participant.id },
+      data: {
+        score: calculateAccuracy(correctAnswers, totalQuestions),
+        scorePoints: calculateSessionScorePoints(match.level as Parameters<typeof calculateSessionScorePoints>[0], evaluatedAnswers),
+        correctAnswers,
+        totalQuestions,
+        totalResponseTimeMs: answers.reduce((sum, answer) => sum + answer.responseTimeMs, 0),
+        bestStreak: recomputeBestStreak(evaluatedAnswers),
+      },
+    })
+  })
+
+  return getMatch(playerId, match.id)
+}
+
+export async function forfeitChallenge(playerId: string, matchId: string, participantProgressByPlayerId: Record<string, ParticipantProgressPayload> = {}) {
   const match = await prisma.match.findFirst({
     where: {
       id: matchId,
@@ -976,7 +1077,6 @@ export async function forfeitChallenge(playerId: string, matchId: string, partic
 }
 
 export async function requestChallengeRematch(playerId: string, matchId: string) {
-  await expireStaleMatches()
   const now = new Date()
 
   const match = await prisma.match.findFirst({
@@ -1067,8 +1167,6 @@ export async function requestChallengeRematch(playerId: string, matchId: string)
 }
 
 export async function heartbeatChallengeHost(playerId: string, matchId: string) {
-  await expireStaleMatches()
-
   const match = await prisma.match.findFirst({
     where: {
       id: matchId,
@@ -1106,8 +1204,6 @@ export async function heartbeatChallengeHost(playerId: string, matchId: string) 
 }
 
 export async function transferChallengeHost(playerId: string, matchId: string) {
-  await expireStaleMatches()
-
   const match = await prisma.match.findFirst({
     where: {
       id: matchId,
@@ -1148,9 +1244,7 @@ export async function transferChallengeHost(playerId: string, matchId: string) {
   return getMatch(playerId, matchId)
 }
 
-export async function leaveChallenge(playerId: string, matchId: string) {
-  await expireStaleMatches()
-
+export async function leaveChallenge(playerId: string, matchId: string, onPersisted?: MatchMutationEffects) {
   const match = await prisma.match.findFirst({
     where: {
       id: matchId,
@@ -1173,25 +1267,19 @@ export async function leaveChallenge(playerId: string, matchId: string) {
     if (match.status === 'completed') {
       const now = new Date()
 
-      await prisma.$transaction([
-        prisma.matchParticipant.updateMany({
+      const dismissedMatch = await prisma.$transaction(async (tx) => {
+        await tx.matchParticipant.updateMany({
           where: { matchId: match.id },
           data: { resultDismissedAt: now, rematchRequestedAt: null },
-        }),
-        prisma.match.update({
+        })
+        await tx.match.update({
           where: { id: match.id },
           data: { expiresAt: now },
-        }),
-      ])
-
-      const dismissedMatch = await prisma.match.findUnique({
-        where: { id: match.id },
-        include: MATCH_INCLUDE,
+        })
+        const persistedMatch = await tx.match.findUniqueOrThrow({ where: { id: match.id }, include: MATCH_INCLUDE })
+        await onPersisted?.(tx, toMatchView(persistedMatch))
+        return persistedMatch
       })
-
-      if (!dismissedMatch) {
-        throw new MatchServiceError('match_not_found')
-      }
 
       return enrichMatchView(dismissedMatch)
     }
@@ -1211,11 +1299,14 @@ export async function leaveChallenge(playerId: string, matchId: string) {
       },
     })
 
-    return tx.match.update({
+    const persistedMatch = await tx.match.update({
       where: { id: match.id },
       data: { status: 'cancelled', finishedAt: now, expiresAt: now },
       include: MATCH_INCLUDE,
     })
+    const matchView = toMatchView(persistedMatch)
+    await onPersisted?.(tx, matchView)
+    return persistedMatch
   })
 
   return enrichMatchView(closedMatch)

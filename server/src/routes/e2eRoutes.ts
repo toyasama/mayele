@@ -25,6 +25,14 @@ const E2E_PLAYERS = [
     username: 'bob-guest',
     name: 'Bob Guest',
   },
+  {
+    clerkUserId: 'e2e-target',
+    email: 'charlie.target@example.test',
+    firstName: 'Charlie',
+    lastName: 'Target',
+    username: 'charlie-target',
+    name: 'Charlie Target',
+  },
 ] as const
 
 function assertE2EEnabled() {
@@ -176,8 +184,45 @@ export function e2eRoutes() {
 
       const [host, guest] = players
       const playerIds = players.map((player) => player.id)
+      const socialRequestIds = await prisma.friendRequest.findMany({
+        where: {
+          OR: [{ senderId: { in: playerIds } }, { receiverId: { in: playerIds } }],
+        },
+        select: { id: true },
+      })
+      const socialNotificationIds = await prisma.notification.findMany({
+        where: {
+          OR: [{ playerId: { in: playerIds } }, { actorPlayerId: { in: playerIds } }],
+        },
+        select: { id: true },
+      })
+      const friendshipAggregateIds = playerIds.flatMap((playerId, index) =>
+        playerIds.slice(index + 1).map((otherPlayerId) => [playerId, otherPlayerId].sort().join(':')),
+      )
 
       await prisma.$transaction([
+        prisma.outboxEvent.deleteMany({
+          where: {
+            OR: [
+              {
+                aggregateType: 'friend_request',
+                aggregateId: { in: socialRequestIds.map((request) => request.id) },
+              },
+              {
+                aggregateType: 'notification',
+                aggregateId: { in: socialNotificationIds.map((notification) => notification.id) },
+              },
+              {
+                aggregateType: 'notification_inbox',
+                aggregateId: { in: playerIds },
+              },
+              {
+                aggregateType: 'friendship',
+                aggregateId: { in: friendshipAggregateIds },
+              },
+            ],
+          },
+        }),
         prisma.notification.deleteMany({
           where: {
             OR: [{ playerId: { in: playerIds } }, { actorPlayerId: { in: playerIds } }],
@@ -191,6 +236,12 @@ export function e2eRoutes() {
         prisma.answer.deleteMany({
           where: { playerId: { in: playerIds } },
         }),
+        prisma.xpLedgerEntry.deleteMany({
+          where: { playerId: { in: playerIds } },
+        }),
+        prisma.soloRun.deleteMany({
+          where: { playerId: { in: playerIds } },
+        }),
         prisma.gameSession.deleteMany({
           where: { playerId: { in: playerIds } },
         }),
@@ -199,6 +250,14 @@ export function e2eRoutes() {
             OR: [
               { senderId: { in: playerIds } },
               { receiverId: { in: playerIds } },
+            ],
+          },
+        }),
+        prisma.friendship.deleteMany({
+          where: {
+            OR: [
+              { playerAId: { in: playerIds } },
+              { playerBId: { in: playerIds } },
             ],
           },
         }),
@@ -234,14 +293,65 @@ export function e2eRoutes() {
         ),
       )
 
+      await prisma.xpLedgerEntry.createMany({
+        data: players.flatMap((player) => {
+          const totalXp = xpTotals.find((item) => item.playerId === player.id)?._sum.xp ?? 0
+          return totalXp === 0 ? [] : [{
+            playerId: player.id,
+            sourceType: 'historical_bootstrap',
+            sourceId: 'e2e-reset-balance',
+            amount: totalXp,
+            metadata: { reason: 'Projection déterministe E2E' },
+          }]
+        }),
+      })
+
       playerIds.forEach(invalidateDashboardCache)
 
       res.json({
         players: {
           host: { id: host.id, clerkUserId: host.clerkUserId, username: host.username },
           guest: { id: guest.id, clerkUserId: guest.clerkUserId, username: guest.username },
+          target: {
+            id: players[2].id,
+            clerkUserId: players[2].clerkUserId,
+            username: players[2].username,
+          },
         },
       })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  router.get('/e2e/outbox/:aggregateId', async (req, res, next) => {
+    try {
+      assertE2EEnabled()
+      const events = await prisma.outboxEvent.findMany({
+        where: { aggregateId: req.params.aggregateId },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true, topic: true, status: true, attempts: true, publishedAt: true },
+      })
+      res.json({ events })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  router.get('/e2e/player-ledger/:clerkUserId', async (req, res, next) => {
+    try {
+      assertE2EEnabled()
+      const player = await prisma.player.findUniqueOrThrow({
+        where: { clerkUserId: req.params.clerkUserId },
+        select: {
+          totalXp: true,
+          xpLedgerEntries: {
+            orderBy: { createdAt: 'asc' },
+            select: { sourceType: true, sourceId: true, amount: true },
+          },
+        },
+      })
+      res.json(player)
     } catch (error) {
       next(error)
     }

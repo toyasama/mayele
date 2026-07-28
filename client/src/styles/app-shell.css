@@ -221,8 +221,14 @@
 }
 
 @media (max-width: 767px) {
+  :root {
+    --mobile-bottom-nav-height: 62px;
+  }
+
   .authenticated-shell .main-content {
-    padding-inline: 12px;
+    padding-right: 12px;
+    padding-bottom: calc(var(--mobile-bottom-nav-height) + env(safe-area-inset-bottom) + 28px);
+    padding-left: 12px;
   }
 
   .authenticated-shell .topbar.app-topbar {
@@ -243,6 +249,28 @@
   .topbar-brand .brand-copy strong {
     font-size: 1.08rem;
   }
+
+  .mobile-bottom-nav {
+    right: max(8px, env(safe-area-inset-right));
+    bottom: max(7px, env(safe-area-inset-bottom));
+    left: max(8px, env(safe-area-inset-left));
+    gap: 4px;
+    padding: 5px;
+    border-radius: 18px;
+  }
+
+  .mobile-bottom-link {
+    min-height: 50px;
+    gap: 2px;
+    border-radius: 13px;
+    font-size: 0.68rem;
+  }
+
+  .mobile-bottom-icon {
+    width: 24px;
+    height: 24px;
+    border-radius: 8px;
+  }
 }
 
 @media (max-width: 420px) {
@@ -251,9 +279,9 @@
   }
 
   .mobile-bottom-nav {
-    right: 8px;
-    left: 8px;
-    border-radius: 18px;
+    right: 6px;
+    left: 6px;
+    border-radius: 16px;
   }
 
   .mobile-bottom-link {

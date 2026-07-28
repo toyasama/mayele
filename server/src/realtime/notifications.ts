@@ -9,6 +9,7 @@ import { prisma } from '../lib/prisma.js'
 import { captureException } from '../lib/sentry.js'
 import { listFriends } from '../services/friendService.js'
 import {
+  parseRealtimeSprintAnswerCommand,
   parseRealtimeTempoAnswerCommand,
   type TempoAnswerPayload,
 } from '../schemas/matchSchema.js'
@@ -24,9 +25,11 @@ import {
   type RoomRuntimeEvent,
 } from './roomRuntime.js'
 import {
+  assertMatchRoomMembership,
   completeChallengeResult,
   MatchServiceError,
   persistTempoQuestionAnswer,
+  submitSprintQuestionAnswer,
   type MatchView,
 } from '../services/matchService.js'
 import { serializeMatch, type SerializedMatch } from '../services/matchPresenter.js'
@@ -129,6 +132,9 @@ type MatchTempoAnswerCommandAck = RealtimeCommandAck<{
   match: SerializedMatch
   progress: TempoAnswerProgress
 }>
+type MatchSprintAnswerCommandAck = RealtimeCommandAck<{
+  match: SerializedMatch
+}>
 type RealtimeCommandErrorPayload = Extract<RealtimeCommandAck<unknown>, { ok: false }>['error']
 
 type InitRealtimeOptions = {
@@ -173,6 +179,7 @@ const REALTIME_COMMAND_EVENTS = new Set([
   'match:update-progress',
   'match:submit-result',
   'match:submit-tempo-answer',
+  'match:submit-sprint-answer',
 ])
 const REALTIME_COMMAND_LIMITS: Record<string, number> = {
   'presence:activity': 240,
@@ -191,6 +198,7 @@ const REALTIME_COMMAND_LIMITS: Record<string, number> = {
   'match:update-progress': 240,
   'match:submit-result': 60,
   'match:submit-tempo-answer': 240,
+  'match:submit-sprint-answer': 240,
 }
 const realtimeRateBuckets = new Map<string, { startedAtMs: number; count: number }>()
 
@@ -650,21 +658,12 @@ function tempoQuestionProgress(runtime: TempoMatchRuntime, question: TempoQuesti
   }
 }
 
-function persistTempoQuestionAnswerInBackground(matchId: string, playerId: string, answer: TempoAnswerPayload) {
-  void enqueueMatchPersistence(matchId, () =>
-    persistTempoQuestionAnswer(playerId, matchId, answer),
-  ).catch((error) => {
-    logger.error('Persistance reponse tempo impossible.', {
-      matchId,
-      playerId,
-      questionIndex: answer.questionIndex,
-      message: error instanceof Error ? error.message : String(error),
-    })
-  })
+function persistTempoQuestionAnswerCommitted(matchId: string, playerId: string, answer: TempoAnswerPayload) {
+  return enqueueMatchPersistence(matchId, () => persistTempoQuestionAnswer(playerId, matchId, answer))
 }
 
-function persistTempoFinalResultsInBackground(snapshot: SerializedMatch, runtime: TempoMatchRuntime) {
-  void enqueueMatchPersistence(snapshot.id, async () => {
+async function persistTempoFinalResults(snapshot: SerializedMatch, runtime: TempoMatchRuntime) {
+  const match = await enqueueMatchPersistence(snapshot.id, async () => {
     let latest: MatchView | null = null
 
     for (const playerId of runtime.expectedPlayerIds) {
@@ -676,21 +675,12 @@ function persistTempoFinalResultsInBackground(snapshot: SerializedMatch, runtime
     }
 
     return latest
-  }).then((match) => {
-    const persistedSnapshot = serializeMatch(match as MatchView)
-
-    if (persistedSnapshot.status === 'completed') {
-      publishMatchRuntimeEvent(persistedSnapshot, 'match_completed_persisted')
-    }
-  }).catch((error) => {
-    logger.error('Persistance resultat tempo impossible.', {
-      matchId: snapshot.id,
-      message: error instanceof Error ? error.message : String(error),
-    })
   })
+
+  return serializeMatch(match as MatchView)
 }
 
-function resolveTempoQuestion(runtime: TempoMatchRuntime, snapshot: SerializedMatch, question: TempoQuestionRuntime, reason: string) {
+async function resolveTempoQuestion(runtime: TempoMatchRuntime, snapshot: SerializedMatch, question: TempoQuestionRuntime, reason: string) {
   if (question.resolved) {
     return snapshot
   }
@@ -707,11 +697,18 @@ function resolveTempoQuestion(runtime: TempoMatchRuntime, snapshot: SerializedMa
 
   if (question.questionIndex + 1 >= runtime.questionCount) {
     const finalSnapshot = applyTempoFinalDraft(snapshot, runtime)
+    let persistedSnapshot: SerializedMatch
 
-    publishMatchRuntimeEvent(finalSnapshot, 'match_completed')
+    try {
+      persistedSnapshot = await persistTempoFinalResults(finalSnapshot, runtime)
+    } catch (error) {
+      question.resolved = false
+      throw error
+    }
+
+    publishMatchRuntimeEvent(persistedSnapshot, 'match_completed')
     clearTempoAnswerState(runtime.matchId)
-    persistTempoFinalResultsInBackground(finalSnapshot, runtime)
-    return finalSnapshot
+    return persistedSnapshot
   }
 
   runtime.currentQuestionIndex = question.questionIndex + 1
@@ -726,7 +723,7 @@ function scheduleTempoTimeout(runtime: TempoMatchRuntime, question: TempoQuestio
 
   const delayMs = Math.max(0, question.deadlineMs + TEMPO_TIMEOUT_GRACE_MS - Date.now())
 
-  question.timeoutId = setTimeout(() => {
+  question.timeoutId = setTimeout(async () => {
     const latestSnapshot = matchSnapshotCache.get(runtime.matchId)
 
     if (!latestSnapshot || latestSnapshot.status !== 'in_progress' || latestSnapshot.challengeMode !== 'tempo') {
@@ -749,14 +746,32 @@ function scheduleTempoTimeout(runtime: TempoMatchRuntime, question: TempoQuestio
       }
 
       const answer = tempoTimeoutAnswer(latestSnapshot, latestQuestion.questionIndex, timeoutResponseTimeMs)
+      try {
+        await persistTempoQuestionAnswerCommitted(latestSnapshot.id, playerId, answer)
+      } catch (error) {
+        logger.error('Persistance reponse tempo expiree impossible.', {
+          matchId: latestSnapshot.id,
+          playerId,
+          questionIndex: answer.questionIndex,
+          message: error instanceof Error ? error.message : String(error),
+        })
+        return
+      }
+
       latestQuestion.answers.set(playerId, answer)
       draftSnapshot = applyTempoAnswerProgressDraft(draftSnapshot, latestRuntime, playerId)
-      persistTempoQuestionAnswerInBackground(latestSnapshot.id, playerId, answer)
       emitMatchTempoAnswerRecorded(draftSnapshot, latestQuestion.questionIndex, playerId, 'match_tempo_timeout_recorded')
     }
 
     publishMatchRuntimeEvent(draftSnapshot, 'match_tempo_timeout_recorded')
-    resolveTempoQuestion(latestRuntime, draftSnapshot, latestQuestion, 'match_tempo_question_timeout')
+    try {
+      await resolveTempoQuestion(latestRuntime, draftSnapshot, latestQuestion, 'match_tempo_question_timeout')
+    } catch (error) {
+      logger.error('Finalisation tempo apres expiration impossible.', {
+        matchId: latestSnapshot.id,
+        message: error instanceof Error ? error.message : String(error),
+      })
+    }
   }, delayMs)
 }
 
@@ -796,7 +811,7 @@ function recordRealtimeTempoAnswer(snapshot: SerializedMatch, playerId: string, 
   }
 }
 
-function enqueueMatchPersistence(matchId: string, persist: () => Promise<unknown>) {
+function enqueueMatchPersistence<T>(matchId: string, persist: () => Promise<T>): Promise<T> {
   const previous = matchPersistenceQueue.get(matchId) ?? Promise.resolve()
   const next = previous.then(persist, persist).finally(() => {
     if (matchPersistenceQueue.get(matchId) === next) {
@@ -1183,7 +1198,7 @@ export function initRealtime(httpServer: HttpServer, options: InitRealtimeOption
       ack?.({ ok: true, data: { hidden } })
     })
 
-    socket.on('room:join', (value: unknown, ack?: (response: RealtimeCommandAck<{ joined: true }>) => void) => {
+    socket.on('room:join', async (value: unknown, ack?: (response: RealtimeCommandAck<{ joined: true }>) => void) => {
       try {
         if (!value || typeof value !== 'object' || !('roomId' in value)) {
           throw new MatchServiceError('match_not_found')
@@ -1196,6 +1211,7 @@ export function initRealtime(httpServer: HttpServer, options: InitRealtimeOption
           throw new MatchServiceError('match_not_found')
         }
 
+        await assertMatchRoomMembership(playerId, roomId)
         joinSocketToRoom(socket, roomId, typeof lastSeenEventId === 'string' ? lastSeenEventId : null)
         ack?.({ ok: true, data: { joined: true } })
       } catch (error) {
@@ -1205,21 +1221,30 @@ export function initRealtime(httpServer: HttpServer, options: InitRealtimeOption
 
     registerMatchCommandHandlers(socket, {
       playerId,
-      publicPlayer: socket.data.publicPlayer as RealtimePublicPlayer | undefined,
-      getConnectedPlayer: (targetPlayerId) => presenceRuntime.getConnectedPlayer(targetPlayerId),
       getCachedMatch: (matchId) => matchSnapshotCache.get(matchId) ?? null,
-      deleteCachedMatch: (matchId) => {
-        matchSnapshotCache.delete(matchId)
-      },
       commandIdFromValue,
       ackDuplicateMatchCommand,
       ackError,
       publishMatchRuntimeEvent,
-      publishMatchSnapshot,
-      persistMatchSnapshotInBackground,
-      emitMatchChanged,
       emitNotificationsChanged,
       emitNotificationCreated,
+      enqueueMatchPersistence,
+    })
+    socket.on('match:submit-sprint-answer', async (value: unknown, ack?: (response: MatchSprintAnswerCommandAck) => void) => {
+      try {
+        const command = parseRealtimeSprintAnswerCommand(value)
+        const commandId = commandIdFromValue(value)
+        const match = await enqueueMatchPersistence(
+          command.matchId,
+          () => submitSprintQuestionAnswer(playerId, command.matchId, command.answer),
+        )
+        const snapshot = serializeMatch(match as MatchView)
+
+        publishMatchRuntimeEvent(snapshot, 'match_sprint_answer_recorded', commandId)
+        ack?.({ ok: true, data: { match: snapshotWithFreshServerNow(snapshot) } })
+      } catch (error) {
+        ackError(ack, error)
+      }
     })
     socket.on('match:submit-tempo-answer', async (value: unknown, ack?: (response: MatchTempoAnswerCommandAck) => void) => {
       try {
@@ -1235,12 +1260,18 @@ export function initRealtime(httpServer: HttpServer, options: InitRealtimeOption
         let ackSnapshot = result.snapshot
 
         if (!result.isDuplicate) {
+          try {
+            await persistTempoQuestionAnswerCommitted(command.matchId, playerId, result.answer)
+          } catch (error) {
+            result.question?.answers.delete(playerId)
+            throw error
+          }
+
           publishMatchRuntimeEvent(result.snapshot, 'match_tempo_answer_recorded', commandId)
           emitMatchTempoAnswerRecorded(result.snapshot, result.answer.questionIndex, playerId, 'match_tempo_answer_recorded')
-          persistTempoQuestionAnswerInBackground(command.matchId, playerId, result.answer)
 
           if (result.shouldResolve && result.question) {
-            ackSnapshot = resolveTempoQuestion(ensureTempoRuntime(result.snapshot), result.snapshot, result.question, 'match_tempo_question_completed')
+            ackSnapshot = await resolveTempoQuestion(ensureTempoRuntime(result.snapshot), result.snapshot, result.question, 'match_tempo_question_completed')
           }
         }
 
@@ -1352,6 +1383,10 @@ export function emitMatchChanged(
 
 export function emitMatchSnapshot(match: MatchView, reason: string) {
   publishMatchRuntimeEvent(serializeMatch(match), reason)
+}
+
+export function emitSerializedMatchSnapshot(snapshot: SerializedMatch, reason: string, commandId?: string | null) {
+  publishMatchRuntimeEvent(snapshot, reason, commandId)
 }
 
 export function emitMatchTempoProgress(

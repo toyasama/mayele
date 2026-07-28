@@ -2,6 +2,7 @@ import { type FormEvent, type KeyboardEvent, type ReactNode, type Ref } from 're
 import { normalizeAnswerInput } from '../lib/answerInput'
 import { SPRINT_SESSION_SECONDS, criticalRemainingSeconds as criticalSecondsForTotal } from '../lib/challengeTiming'
 import { GAME_LABELS, LEVEL_LABELS, type GameLevel, type GameType } from '../lib/game'
+import { LaunchActionButton } from './LaunchActionButton'
 
 const GAME_SIGNS: Record<GameType, string> = {
   addition: '+',
@@ -39,15 +40,17 @@ type ChallengeSetupScreenProps = {
   extraSlot?: ReactNode
   onSelectGame: (game: GameType) => void
   onSelectLevel: (level: GameLevel) => void
-  onStart: () => void
+  onStart: () => void | Promise<void>
 }
 
 type ChallengeArenaScreenProps = {
   answer: string
+  answerCount?: number
   answerDisabled?: boolean
   answerInputRef?: Ref<HTMLInputElement>
   answerPulse?: 'correct' | 'wrong' | ''
   contextLabel: string
+  correctAnswerCount?: number
   elapsedLabel: string
   exitDisabled?: boolean
   exitLabel?: string
@@ -140,10 +143,11 @@ export function ChallengeSetupScreen({
 
         {extraSlot}
 
-        <button className="challenge-start-button" type="button" onClick={onStart}>
-          <span>{startLabel}</span>
-          <span aria-hidden="true">-&gt;</span>
-        </button>
+        <LaunchActionButton
+          className="challenge-start-button"
+          label={startLabel}
+          onLaunch={onStart}
+        />
       </section>
     </div>
   )
@@ -151,10 +155,12 @@ export function ChallengeSetupScreen({
 
 export function ChallengeArenaScreen({
   answer,
+  answerCount,
   answerDisabled = false,
   answerInputRef,
   answerPulse = '',
   contextLabel,
+  correctAnswerCount,
   elapsedLabel,
   exitDisabled = false,
   exitLabel = 'Quitter',
@@ -172,6 +178,8 @@ export function ChallengeArenaScreen({
 }: ChallengeArenaScreenProps) {
   const safeProgressPercent = Math.min(100, Math.max(0, progressPercent))
   const critical = remainingSeconds <= criticalRemainingSeconds
+  const answerLabel = answerCount === 1 ? 'réponse' : 'réponses'
+  const correctAnswerLabel = correctAnswerCount === 1 ? 'bonne réponse' : 'bonnes réponses'
   const submitAnswerFromKeyboard = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key !== 'Enter' || event.nativeEvent.isComposing || answerDisabled) {
       return
@@ -193,7 +201,18 @@ export function ChallengeArenaScreen({
           <span>{contextLabel}</span>
           {questionProgressLabel ? <small>{questionProgressLabel}</small> : null}
         </span>
-        <strong>{modeLabel}</strong>
+        <span className="challenge-run-mode">
+          <strong>{modeLabel}</strong>
+          {typeof answerCount === 'number' && typeof correctAnswerCount === 'number' ? (
+            <small
+              className="challenge-run-answer-summary"
+              aria-label={`${answerCount} ${answerCount === 1 ? 'réponse donnée' : 'réponses données'}, ${correctAnswerCount} ${correctAnswerLabel}`}
+            >
+              <span><b>{answerCount}</b> {answerLabel}</span>
+              <span><b>{correctAnswerCount}</b> {correctAnswerCount === 1 ? 'bonne' : 'bonnes'}</span>
+            </small>
+          ) : null}
+        </span>
       </header>
 
       <div className="challenge-clock" aria-label="Temps restant">
@@ -230,7 +249,7 @@ export function ChallengeArenaScreen({
               aria-keyshortcuts="Enter"
               inputMode="numeric"
               enterKeyHint="enter"
-              pattern="[0-9-]*"
+              pattern="-?[0-9]*"
               autoComplete="off"
               autoCapitalize="none"
               autoCorrect="off"

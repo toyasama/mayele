@@ -1,0 +1,115 @@
+/* Route-owned mobile lobby layer. Loaded last to preserve compact controls. */
+@media (max-width: 620px) {
+  .multiplayer-view-lobby .multiplayer-arena-hub {
+    gap: 12px;
+    padding: 14px;
+  }
+
+  .multiplayer-view-lobby .multiplayer-lobby-title-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    padding: 2px 2px 10px;
+  }
+
+  .multiplayer-view-lobby .multiplayer-lobby-title-row > div {
+    min-width: 0;
+    gap: 5px;
+  }
+
+  .multiplayer-view-lobby .multiplayer-lobby-title-row .eyebrow {
+    min-height: 24px;
+    justify-self: start;
+    padding: 4px 9px;
+    font-size: 0.65rem;
+  }
+
+  .multiplayer-view-lobby .multiplayer-lobby-card h1 {
+    margin-top: 0;
+    font-size: clamp(1.35rem, 6.2vw, 1.65rem);
+    line-height: 1;
+    letter-spacing: -0.035em;
+    white-space: nowrap;
+  }
+
+  .multiplayer-view-lobby .multiplayer-lobby-card .primary-button {
+    width: auto;
+    min-width: 0;
+    min-height: 40px;
+    align-self: center;
+    justify-self: end;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border-radius: 13px;
+    font-size: 0.78rem;
+    line-height: 1;
+    white-space: nowrap;
+    box-shadow: 0 8px 18px rgba(6, 50, 79, 0.16);
+  }
+
+  .multiplayer-view-lobby .multiplayer-lobby-card .primary-button > span {
+    width: 19px;
+    height: 19px;
+    font-size: 1rem;
+  }
+
+  .multiplayer-view-lobby .multiplayer-lobby-pulse {
+    gap: 6px;
+  }
+
+  .multiplayer-view-lobby .multiplayer-lobby-pulse > span {
+    min-height: 29px;
+    padding: 5px 9px;
+    font-size: 0.7rem;
+  }
+
+  .multiplayer-view-lobby .multiplayer-challenge-list.is-empty {
+    min-height: 0;
+    gap: 0;
+    padding: 14px;
+  }
+
+  .multiplayer-view-lobby .multiplayer-challenge-list .multiplayer-room-state {
+    align-items: center;
+  }
+
+  .multiplayer-view-lobby .multiplayer-challenge-list .multiplayer-room-state > div {
+    display: grid;
+    gap: 3px;
+  }
+
+  .multiplayer-view-lobby .multiplayer-challenge-list .multiplayer-room-state > div > strong {
+    min-width: 0;
+    min-height: 0;
+    display: block;
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--text);
+    font-size: 1.05rem;
+    line-height: 1.1;
+  }
+
+  .multiplayer-view-lobby .multiplayer-inbox-count {
+    width: 32px;
+    height: 32px;
+    font-size: 0.78rem;
+  }
+
+  .multiplayer-view-lobby .multiplayer-challenge-list.is-empty .multiplayer-inbox-empty {
+    display: none;
+  }
+}
+
+@media (max-width: 350px) {
+  .multiplayer-view-lobby .multiplayer-lobby-card h1 {
+    font-size: 1.25rem;
+  }
+
+  .multiplayer-view-lobby .multiplayer-lobby-card .primary-button {
+    padding-inline: 9px;
+    font-size: 0.72rem;
+  }
+}

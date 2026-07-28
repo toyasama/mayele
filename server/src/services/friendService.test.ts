@@ -34,14 +34,28 @@ const prismaMock = vi.hoisted(() => ({
     findMany: vi.fn(),
     findUnique: vi.fn(),
     update: vi.fn(),
+    updateMany: vi.fn(),
     create: vi.fn(),
+  },
+  gameSession: {
+    groupBy: vi.fn(),
+    findMany: vi.fn(),
+  },
+  answer: {
+    groupBy: vi.fn(),
+  },
+  match: {
+    groupBy: vi.fn(),
+    findMany: vi.fn(),
   },
   $transaction: vi.fn(),
 }))
 
 const transactionMock = vi.hoisted(() => ({
   friendRequest: {
+    findUnique: vi.fn(),
     update: vi.fn(),
+    updateMany: vi.fn(),
   },
   friendship: {
     upsert: vi.fn(),
@@ -56,6 +70,7 @@ const {
   acceptFriendRequest,
   cancelFriendRequest,
   FriendServiceError,
+  getFriendPublicProfile,
   getSocialOverview,
   listFriends,
   removeFriend,
@@ -67,6 +82,13 @@ describe('friendService', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     prismaMock.$transaction.mockImplementation(async (callback) => callback(transactionMock))
+    prismaMock.gameSession.groupBy.mockResolvedValue([])
+    prismaMock.gameSession.findMany.mockResolvedValue([])
+    prismaMock.answer.groupBy.mockResolvedValue([])
+    prismaMock.match.groupBy.mockResolvedValue([])
+    prismaMock.match.findMany.mockResolvedValue([])
+    prismaMock.friendRequest.updateMany.mockResolvedValue({ count: 1 })
+    transactionMock.friendRequest.updateMany.mockResolvedValue({ count: 1 })
   })
 
   it('recherche les joueurs par prefixe de username en excluant le joueur courant', async () => {
@@ -118,6 +140,42 @@ describe('friendService', () => {
       },
     ])
     expect(overview.outgoing).toEqual([])
+  })
+
+  it("charge le profil public sans construire le dashboard complet et inclut l'historique direct", async () => {
+    prismaMock.friendship.findUnique.mockResolvedValueOnce({ id: 'friendship_1' })
+    prismaMock.player.findUnique.mockResolvedValueOnce(playerB)
+    prismaMock.match.groupBy.mockResolvedValueOnce([
+      { winnerPlayerId: 'player_a', _count: { _all: 2 } },
+      { winnerPlayerId: 'player_b', _count: { _all: 1 } },
+      { winnerPlayerId: null, _count: { _all: 1 } },
+    ])
+    prismaMock.match.findMany.mockResolvedValueOnce([
+      {
+        id: 'match_1',
+        challengeMode: 'sprint',
+        game: 'addition',
+        level: 'debutant',
+        winnerPlayerId: 'player_a',
+        createdAt: new Date('2026-07-07T09:00:00.000Z'),
+        finishedAt: new Date('2026-07-07T10:00:00.000Z'),
+        participants: [
+          { playerId: 'player_a', score: 80 },
+          { playerId: 'player_b', score: 60 },
+        ],
+      },
+    ])
+
+    const profile = await getFriendPublicProfile('player_a', 'player_b')
+
+    expect(profile.headToHead.summary).toEqual({ wins: 2, losses: 1, draws: 1 })
+    expect(profile.headToHead.recent[0]).toMatchObject({
+      id: 'match_1',
+      myScore: 80,
+      friendScore: 60,
+      outcome: 'win',
+    })
+    expect(prismaMock.match.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 3 }))
   })
 
   it("rejette l'auto-demande d'ami", async () => {
@@ -188,7 +246,7 @@ describe('friendService', () => {
   })
 
   it("accepte une demande et cree l'amitie dans l'ordre canonique", async () => {
-    prismaMock.friendRequest.findUnique.mockResolvedValueOnce({
+    transactionMock.friendRequest.findUnique.mockResolvedValueOnce({
       id: 'request_1',
       senderId: 'player_b',
       receiverId: 'player_a',
@@ -199,8 +257,8 @@ describe('friendService', () => {
     const friend = await acceptFriendRequest('player_a', 'request_1')
 
     expect(friend).toEqual(playerB)
-    expect(transactionMock.friendRequest.update).toHaveBeenCalledWith({
-      where: { id: 'request_1' },
+    expect(transactionMock.friendRequest.updateMany).toHaveBeenCalledWith({
+      where: { id: 'request_1', receiverId: 'player_a', status: 'pending' },
       data: { status: 'accepted', respondedAt: expect.any(Date) },
     })
     expect(transactionMock.friendship.upsert).toHaveBeenCalledWith({
@@ -234,16 +292,9 @@ describe('friendService', () => {
       status: 'pending',
       receiver: playerB,
     })
-    prismaMock.friendRequest.update.mockResolvedValueOnce({
-      id: 'request_1',
-      senderId: 'player_a',
-      receiverId: 'player_b',
-      status: 'cancelled',
-    })
-
     await expect(cancelFriendRequest('player_a', 'request_1')).resolves.toEqual(playerB)
-    expect(prismaMock.friendRequest.update).toHaveBeenCalledWith({
-      where: { id: 'request_1' },
+    expect(prismaMock.friendRequest.updateMany).toHaveBeenCalledWith({
+      where: { id: 'request_1', senderId: 'player_a', status: 'pending' },
       data: { status: 'cancelled', respondedAt: expect.any(Date) },
     })
   })

@@ -463,11 +463,6 @@
 }
 
 @media (max-width: 640px) {
-  .authenticated-shell .main-content {
-    min-height: 100dvh;
-    padding: 78px 10px 14px;
-  }
-
   .dashboard-page {
     gap: 10px;
   }

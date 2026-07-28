@@ -85,9 +85,14 @@ function requireClerkPublishableKey(value) {
   return clerkKey
 }
 
+function requireSentryDsn(value) {
+  return requireHttpsUrl(value, 'VITE_SENTRY_DSN')
+}
+
 const env = loadViteProductionEnv()
 const apiUrl = requireHttpsUrl(env.VITE_API_URL, 'VITE_API_URL')
 const clerkPublishableKey = requireClerkPublishableKey(env.VITE_CLERK_PUBLISHABLE_KEY)
+const releaseCheck = process.argv.includes('--release')
 const apiPathname = apiUrl.pathname.replace(/\/+$/, '')
 
 if (apiPathname !== '/api') {
@@ -105,4 +110,12 @@ if (env.VITE_REALTIME_URL?.trim()) {
 
 const realtimeOrigin = env.VITE_REALTIME_URL?.trim() || apiUrl.origin
 const clerkEnvironment = clerkPublishableKey.startsWith('pk_live_') ? 'live' : 'test'
+
+if (releaseCheck) {
+  if (clerkEnvironment !== 'live') {
+    fail('VITE_CLERK_PUBLISHABLE_KEY doit etre une cle live pour une release.')
+  }
+  requireSentryDsn(env.VITE_SENTRY_DSN)
+}
+
 console.log(`Config frontend production OK: API=${apiUrl.origin}${apiUrl.pathname}, realtime=${realtimeOrigin}, Clerk=${clerkEnvironment}`)

@@ -26,6 +26,7 @@ function limit(windowMs: number, max: number, message: string, options: LimitOpt
 }
 
 export const sessionRateLimit = limit(60 * 1000, 30, 'Trop de requetes. Reessayez dans une minute.')
+export const soloRunRateLimit = limit(60 * 1000, 240, 'Trop d actions de jeu. Reessayez dans une minute.')
 export const profileMutationRateLimit = limit(60 * 1000, 40, 'Trop de mises a jour de profil. Reessayez dans une minute.', {
   skip: isSafeRead,
 })

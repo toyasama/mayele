@@ -10,12 +10,11 @@ import {
   getInFlightRealtimeMatchSnapshot,
   listInFlightRealtimeMatchSnapshots,
   getRealtimeHealth,
-  getPendingRealtimeHeartbeatSnapshot,
   initRealtime,
-  waitForRealtimePersistenceIdle,
 } from './notifications.js'
 
 const matchServiceMocks = vi.hoisted(() => ({
+  assertMatchRoomMembership: vi.fn(),
   acceptChallenge: vi.fn(),
   acceptChallengeProposal: vi.fn(),
   challengeRunDurationSeconds: (config: {
@@ -41,6 +40,7 @@ const matchServiceMocks = vi.hoisted(() => ({
   updateChallengeConfig: vi.fn(),
   requestChallengeRematch: vi.fn(),
   persistTempoQuestionAnswer: vi.fn(),
+  submitSprintQuestionAnswer: vi.fn(),
   MATCH_IN_PROGRESS_GRACE_MS: 2 * 60 * 1000,
   MatchServiceError: class MatchServiceError extends Error {
     constructor(public readonly code: string) {
@@ -60,11 +60,20 @@ const presenceServiceMocks = vi.hoisted(() => ({
   listFriends: vi.fn(),
   updatePlayerPresenceById: vi.fn(),
 }))
+const matchEffectMocks = vi.hoisted(() => ({
+  persistInvitationAcceptedEffects: vi.fn(),
+  persistInvitationCreatedEffects: vi.fn(),
+  persistInvitationDeclinedEffects: vi.fn(),
+  persistMatchLeftEffects: vi.fn(),
+}))
+const outboxDispatcherMocks = vi.hoisted(() => ({ requestOutboxDispatch: vi.fn() }))
 
 vi.mock('../services/matchService.js', () => matchServiceMocks)
 vi.mock('../services/notificationService.js', () => notificationServiceMocks)
 vi.mock('../services/friendService.js', () => ({ listFriends: presenceServiceMocks.listFriends }))
 vi.mock('../services/playerService.js', () => ({ updatePlayerPresenceById: presenceServiceMocks.updatePlayerPresenceById }))
+vi.mock('../services/matchOutboxEffects.js', () => matchEffectMocks)
+vi.mock('../services/outboxDispatcher.js', () => outboxDispatcherMocks)
 
 let httpServer: HttpServer | null = null
 const sockets: ClientSocket[] = []
@@ -318,6 +327,8 @@ function inProgressTempoMatchView() {
 
 describe('realtime notifications', () => {
   beforeEach(() => {
+    matchServiceMocks.assertMatchRoomMembership.mockReset()
+    matchServiceMocks.assertMatchRoomMembership.mockResolvedValue({ id: 'match_1', roomId: 'room_1' })
     matchServiceMocks.acceptChallenge.mockReset()
     matchServiceMocks.acceptChallengeProposal.mockReset()
     matchServiceMocks.completeChallengeResult.mockReset()
@@ -331,6 +342,7 @@ describe('realtime notifications', () => {
     matchServiceMocks.updateChallengeConfig.mockReset()
     matchServiceMocks.requestChallengeRematch.mockReset()
     matchServiceMocks.persistTempoQuestionAnswer.mockReset()
+    matchServiceMocks.submitSprintQuestionAnswer.mockReset()
     notificationServiceMocks.createNotification.mockReset()
     notificationServiceMocks.createNotification.mockResolvedValue(notificationView())
     notificationServiceMocks.dismissNotificationByDedupeKey.mockReset()
@@ -627,7 +639,13 @@ describe('realtime notifications', () => {
         return null
       },
     })
-    matchServiceMocks.updateChallengeConfig.mockResolvedValueOnce(matchView())
+    matchServiceMocks.updateChallengeConfig.mockResolvedValueOnce({
+      ...matchView(),
+      challengeMode: 'tempo',
+      questionCount: 10,
+      perQuestionTimeLimitSeconds: 5,
+      configVersion: 2,
+    })
     const port = await listen(httpServer)
     emitMatchSnapshot({ ...matchView(), configVersion: 1 }, 'match_seeded')
     const [clientA, clientB] = await Promise.all([connectClient(port, 'token_a'), connectClient(port, 'token_b')])
@@ -685,7 +703,13 @@ describe('realtime notifications', () => {
         return null
       },
     })
-    matchServiceMocks.updateChallengeConfig.mockResolvedValueOnce(matchView())
+    matchServiceMocks.updateChallengeConfig.mockResolvedValueOnce({
+      ...matchView(),
+      challengeMode: 'tempo',
+      questionCount: 10,
+      perQuestionTimeLimitSeconds: 5,
+      configVersion: 2,
+    })
     const port = await listen(httpServer)
     emitMatchSnapshot({ ...matchView(), configVersion: 1 }, 'match_seeded')
     const clientA = await connectClient(port, 'token_a')
@@ -758,7 +782,30 @@ describe('realtime notifications', () => {
     })
   })
 
-  it('cree une invitation de defi par commande Socket.IO avec match et notification diffuses', async () => {
+  it('refuse de rejoindre une room quand le joueur authentifie n est pas participant', async () => {
+    httpServer = createServer()
+    initRealtime(httpServer, {
+      authenticateToken: async (token) => token === 'token_intruder'
+        ? { clerkUserId: 'clerk_intruder', playerId: 'player_intruder' }
+        : null,
+    })
+    matchServiceMocks.assertMatchRoomMembership.mockRejectedValueOnce(new matchServiceMocks.MatchServiceError('match_not_participant'))
+    const port = await listen(httpServer)
+    emitMatchSnapshot({ ...matchView(), configVersion: 1 }, 'match_seeded')
+    const intruder = await connectClient(port, 'token_intruder')
+
+    const response = await new Promise<{ ok: boolean; error?: { code: string | null } }>((resolve) => {
+      intruder.emit('room:join', { roomId: 'room_1' }, resolve)
+    })
+
+    expect(response).toEqual({
+      ok: false,
+      error: expect.objectContaining({ code: 'match_not_participant' }),
+    })
+    expect(matchServiceMocks.assertMatchRoomMembership).toHaveBeenCalledWith('player_intruder', 'room_1')
+  })
+
+  it('cree une invitation de defi par commande Socket.IO et attache ses effets transactionnels', async () => {
     httpServer = createServer()
     initRealtime(httpServer, {
       authenticateToken: async (token) => {
@@ -774,16 +821,11 @@ describe('realtime notifications', () => {
       },
     })
     matchServiceMocks.createChallenge.mockResolvedValueOnce(pendingMatchView())
-    notificationServiceMocks.createNotification.mockResolvedValueOnce(notificationView())
     const port = await listen(httpServer)
     const [clientA, clientB] = await Promise.all([connectClient(port, 'token_a'), connectClient(port, 'token_b')])
     const matchToGuest = new Promise<{ reason: string; match: { id: string; status: string } }>((resolve) => {
       clientB.once('match:changed', resolve)
     })
-    const notificationToGuest = new Promise<{ reason: string; notification: { id: string; title: string; href: string } }>((resolve) => {
-      clientB.once('notifications:changed', resolve)
-    })
-
     const ack = await new Promise<{ ok: boolean; data?: { match: { id: string; status: string } } }>((resolve) => {
       clientA.emit(
         'match:create-invitation',
@@ -804,14 +846,6 @@ describe('realtime notifications', () => {
       reason: 'match_created',
       match: { id: 'match_1', status: 'pending' },
     })
-    await expect(notificationToGuest).resolves.toMatchObject({
-      reason: 'notification_created',
-      notification: {
-        id: 'notification_1',
-        title: 'Awa vous a defie.',
-        href: '/jeu/multijoueur?match=match_1',
-      },
-    })
     expect(matchServiceMocks.createChallenge).toHaveBeenCalledWith(
       'player_a',
       expect.objectContaining({ opponentPlayerId: 'player_b', challengeMode: 'sprint' }),
@@ -820,16 +854,13 @@ describe('realtime notifications', () => {
         roomId: expect.any(String),
         creatorParticipantId: expect.any(String),
         opponentParticipantId: expect.any(String),
+        onPersisted: expect.any(Function),
       }),
     )
-    expect(notificationServiceMocks.createNotification).toHaveBeenCalledWith(expect.objectContaining({
-      playerId: 'player_b',
-      actorPlayerId: 'player_a',
-      dedupeKey: 'match:match_1:invite',
-    }))
+    expect(outboxDispatcherMocks.requestOutboxDispatch).toHaveBeenCalled()
   })
 
-  it('autorise le heartbeat hote uniquement pendant la persistance realtime en attente', async () => {
+  it('ne publie ni ACK ni snapshot avant la validation persistée de la création', async () => {
     httpServer = createServer()
     initRealtime(httpServer, {
       authenticateToken: async (token) => {
@@ -877,7 +908,8 @@ describe('realtime notifications', () => {
 
     const port = await listen(httpServer)
     const [clientA] = await Promise.all([connectClient(port, 'token_a'), connectClient(port, 'token_b')])
-    const ack = await new Promise<{ ok: boolean; data?: { match: { id: string; status: string; hostActiveAt: string | null } } }>((resolve) => {
+    let ackReceived = false
+    const ackPromise = new Promise<{ ok: boolean; data?: { match: { id: string; status: string; hostActiveAt: string | null } } }>((resolve) => {
       clientA.emit(
         'match:create-invitation',
         {
@@ -888,38 +920,24 @@ describe('realtime notifications', () => {
           challengeMode: 'sprint',
           durationSeconds: 60,
         },
-        resolve,
+        (response: { ok: boolean; data?: { match: { id: string; status: string; hostActiveAt: string | null } } }) => {
+          ackReceived = true
+          resolve(response)
+        },
       )
     })
 
-    const matchId = ack.data?.match.id
-    expect(ack).toMatchObject({ ok: true, data: { match: { status: 'pending' } } })
-    expect(matchId).toEqual(expect.any(String))
-
-    const pendingSnapshot = getPendingRealtimeHeartbeatSnapshot('player_a', matchId!)
-
-    expect(pendingSnapshot).toMatchObject({
-      id: matchId,
-      status: 'pending',
-      createdBy: { id: 'player_a' },
-      hostActiveAt: expect.any(String),
-    })
-    const guestInFlightMatch = getInFlightRealtimeMatchSnapshot('player_b', matchId!)
-
-    expect(guestInFlightMatch).toMatchObject({ id: matchId })
-    expect(guestInFlightMatch?.participants.some((participant) => participant.player.id === 'player_b')).toBe(true)
-    expect(listInFlightRealtimeMatchSnapshots('player_b')).toEqual([
-      expect.objectContaining({ id: matchId }),
-    ])
-    expect(getInFlightRealtimeMatchSnapshot('player_unknown', matchId!)).toBeNull()
-    expect(getPendingRealtimeHeartbeatSnapshot('player_b', matchId!)).toBeNull()
-    expect(getPendingRealtimeHeartbeatSnapshot('player_a', 'match_missing')).toBeNull()
+    await expect.poll(() => matchServiceMocks.createChallenge.mock.calls.length).toBe(1)
+    const generatedIds = matchServiceMocks.createChallenge.mock.calls[0]?.[2] as { matchId: string }
+    expect(ackReceived).toBe(false)
+    expect(getInFlightRealtimeMatchSnapshot('player_a', generatedIds.matchId)).toBeNull()
+    expect(listInFlightRealtimeMatchSnapshots('player_b')).toEqual([])
 
     unblockCreate()
-    await waitForRealtimePersistenceIdle()
+    const ack = await ackPromise
 
-    expect(getPendingRealtimeHeartbeatSnapshot('player_a', matchId!)).toBeNull()
-    expect(listInFlightRealtimeMatchSnapshots('player_b')).toEqual([])
+    expect(ack).toMatchObject({ ok: true, data: { match: { id: generatedIds.matchId, status: 'pending' } } })
+    expect(getInFlightRealtimeMatchSnapshot('player_b', generatedIds.matchId)).toBeNull()
   })
 
   it("fait entrer l'invite dans le salon par commande Socket.IO avec ACK et broadcast", async () => {
@@ -960,7 +978,7 @@ describe('realtime notifications', () => {
         ]),
       },
     })
-    expect(matchServiceMocks.acceptChallenge).toHaveBeenCalledWith('player_b', 'match_1')
+    expect(matchServiceMocks.acceptChallenge).toHaveBeenCalledWith('player_b', 'match_1', expect.any(Function))
   })
 
   it("refuse une invitation par commande Socket.IO et annule le salon pour l'hote", async () => {
@@ -979,7 +997,6 @@ describe('realtime notifications', () => {
       },
     })
     matchServiceMocks.declineChallenge.mockResolvedValueOnce(cancelledMatchView())
-    notificationServiceMocks.dismissNotificationByDedupeKey.mockResolvedValueOnce(true)
     const port = await listen(httpServer)
     emitMatchSnapshot(pendingMatchView(), 'match_seeded')
     const [clientA, clientB] = await Promise.all([connectClient(port, 'token_a'), connectClient(port, 'token_b')])
@@ -1002,9 +1019,7 @@ describe('realtime notifications', () => {
         ]),
       },
     })
-    expect(matchServiceMocks.declineChallenge).toHaveBeenCalledWith('player_b', 'match_1')
-    await expect.poll(() => notificationServiceMocks.dismissNotificationByDedupeKey.mock.calls.length).toBe(1)
-    expect(notificationServiceMocks.dismissNotificationByDedupeKey).toHaveBeenCalledWith('player_b', 'match:match_1:invite')
+    expect(matchServiceMocks.declineChallenge).toHaveBeenCalledWith('player_b', 'match_1', expect.any(Function))
   })
 
   it('ignore les champs de configuration inactifs avant validation realtime', async () => {
@@ -1224,11 +1239,8 @@ describe('realtime notifications', () => {
         level: 'debutant',
         practiceSkill: null,
         challengeMode: 'tempo',
-        durationSeconds: 50,
         questionCount: 10,
         perQuestionTimeLimitSeconds: 5,
-        questionSeed: expect.any(String),
-        configVersion: 3,
       }),
     )
   })
@@ -1248,7 +1260,7 @@ describe('realtime notifications', () => {
         return null
       },
     })
-    matchServiceMocks.startChallengeProposal.mockResolvedValueOnce(startedMatchView())
+    matchServiceMocks.acceptChallengeProposal.mockResolvedValueOnce(startedMatchView())
     const port = await listen(httpServer)
     emitMatchSnapshot(readyMatchView(), 'match_seeded')
     const [clientA, clientB] = await Promise.all([connectClient(port, 'token_a'), connectClient(port, 'token_b')])
@@ -1274,20 +1286,8 @@ describe('realtime notifications', () => {
         ]),
       },
     })
-    expect(matchServiceMocks.startChallengeProposal).toHaveBeenCalledWith(
-      'player_b',
-      'match_1',
-      expect.objectContaining({
-        game: 'addition',
-        level: 'debutant',
-        challengeMode: 'sprint',
-        durationSeconds: 60,
-        questionSeed: 'seed_1',
-      }),
-      expect.any(Date),
-    )
+    expect(matchServiceMocks.acceptChallengeProposal).toHaveBeenCalledWith('player_b', 'match_1')
     expect(matchServiceMocks.updateChallengeConfig).not.toHaveBeenCalled()
-    expect(matchServiceMocks.acceptChallengeProposal).not.toHaveBeenCalled()
   })
 
   it("diffuse une duree d'execution tempo basee sur le nombre de questions", async () => {
@@ -1305,7 +1305,14 @@ describe('realtime notifications', () => {
         return null
       },
     })
-    matchServiceMocks.startChallengeProposal.mockResolvedValueOnce(startedMatchView())
+    matchServiceMocks.acceptChallengeProposal.mockResolvedValueOnce({
+      ...startedMatchView(),
+      challengeMode: 'tempo',
+      questionCount: 30,
+      perQuestionTimeLimitSeconds: 10,
+      endsAt: new Date('2026-07-09T10:10:00.000Z'),
+      expiresAt: new Date('2026-07-09T10:12:00.000Z'),
+    })
     const port = await listen(httpServer)
     emitMatchSnapshot({
       ...readyMatchView(),
@@ -1328,17 +1335,7 @@ describe('realtime notifications', () => {
     expect(ack.ok).toBe(true)
     expect(Date.parse(broadcast.match.endsAt) - startedAtMs).toBe(30 * 10 * 1000)
     expect(Date.parse(broadcast.match.expiresAt) - startedAtMs).toBe(30 * 10 * 1000 + 2 * 60 * 1000)
-    expect(matchServiceMocks.startChallengeProposal).toHaveBeenCalledWith(
-      'player_b',
-      'match_1',
-      expect.objectContaining({
-        challengeMode: 'tempo',
-        durationSeconds: 60,
-        questionCount: 30,
-        perQuestionTimeLimitSeconds: 10,
-      }),
-      expect.any(Date),
-    )
+    expect(matchServiceMocks.acceptChallengeProposal).toHaveBeenCalledWith('player_b', 'match_1')
   })
 
   it('termine un defi par abandon avec victoire adverse et badge abandon dans le snapshot realtime', async () => {
@@ -1431,9 +1428,48 @@ describe('realtime notifications', () => {
         ]),
       },
     })
-    expect(matchServiceMocks.forfeitChallenge).toHaveBeenCalledWith('player_b', 'match_1', expect.objectContaining({
-      player_a: expect.objectContaining(hostProgress),
-      player_b: expect.objectContaining(guestProgress),
+    expect(matchServiceMocks.forfeitChallenge).toHaveBeenCalledWith('player_b', 'match_1')
+  })
+
+  it('persiste une reponse sprint avant de diffuser sa progression canonique', async () => {
+    httpServer = createServer()
+    initRealtime(httpServer, {
+      authenticateToken: async (token) => token === 'token_a'
+        ? { clerkUserId: 'clerk_a', playerId: 'player_a' }
+        : null,
+    })
+    const question = generateMatchQuestion('seed_1', 0, 'addition', 'debutant')
+    const progressedMatch = {
+      ...startedMatchView(),
+      participants: startedMatchView().participants.map((participant) => participant.playerId === 'player_a'
+        ? { ...participant, score: 100, scorePoints: 8, correctAnswers: 1, totalQuestions: 1, totalResponseTimeMs: 800, bestStreak: 1 }
+        : participant),
+    }
+    matchServiceMocks.submitSprintQuestionAnswer.mockResolvedValueOnce(progressedMatch)
+    const port = await listen(httpServer)
+    emitMatchSnapshot(startedMatchView(), 'match_seeded')
+    const clientA = await connectClient(port, 'token_a')
+
+    const ack = await new Promise<{ ok: boolean; data?: { match: { participants: Array<{ player: { id: string }; totalQuestions: number }> } } }>((resolve) => {
+      clientA.emit('match:submit-sprint-answer', {
+        matchId: 'match_1',
+        answer: {
+          questionIndex: 0,
+          prompt: question.prompt,
+          correctAnswer: question.answer,
+          userAnswer: question.answer,
+          responseTimeMs: 800,
+          skill: question.skill,
+          source: 'manual',
+        },
+      }, resolve)
+    })
+
+    expect(ack.ok).toBe(true)
+    expect(ack.data?.match.participants.find((participant) => participant.player.id === 'player_a')?.totalQuestions).toBe(1)
+    expect(matchServiceMocks.submitSprintQuestionAnswer).toHaveBeenCalledWith('player_a', 'match_1', expect.objectContaining({
+      questionIndex: 0,
+      userAnswer: question.answer,
     }))
   })
 
@@ -1571,7 +1607,7 @@ describe('realtime notifications', () => {
       reason: 'match_left',
       match: { id: 'match_1', status: 'cancelled' },
     })
-    expect(matchServiceMocks.leaveChallenge).toHaveBeenCalledWith('player_a', 'match_1')
+    expect(matchServiceMocks.leaveChallenge).toHaveBeenCalledWith('player_a', 'match_1', expect.any(Function))
   })
 
   it('enregistre une reponse tempo sans avancer avant que les deux joueurs aient repondu', async () => {
@@ -1864,7 +1900,7 @@ describe('realtime notifications', () => {
       status: 'completed',
       match: {
         status: 'completed',
-        winnerPlayerId: null,
+        winnerPlayerId: 'player_a',
       },
     })
     await expect.poll(() => matchServiceMocks.completeChallengeResult.mock.calls.length).toBe(2)

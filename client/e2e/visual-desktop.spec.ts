@@ -90,11 +90,39 @@ test('dashboard desktop surfaces stay contained across browser engines', async (
     await expect(page.locator('.desktop-sidebar')).toBeVisible()
     await attachScreenshot(page, testInfo, view.name)
     await expectNoHorizontalOverflow(page, view.name)
-    await expectContained(page, '.dashboard-section-nav, .stats-insight-card, .operation-stat-card, .level-card, .mission-xp-card', view.name)
+    await expectContained(page, '.dashboard-section-nav, .performance-level-tab, .performance-level-detail, .performance-recent-card, .performance-record-card, .mission-xp-card', view.name)
 
     if (view.name === 'dashboard-stats') {
-      await expectGridChildrenContained(page, '.operation-stats-grid', '.operation-stat-card', view.name)
-      await expectGridChildrenContained(page, '.dashboard-level-section .level-ladder', '.level-card', view.name)
+      await expectGridChildrenContained(page, '.performance-level-tabs', '.performance-level-tab', view.name)
+      await expectGridChildrenContained(page, '.performance-extra-grid', '.performance-recent-card, .performance-record-card', view.name)
+      const operationRow = page.locator('.performance-mode-row').first()
+      await operationRow.click()
+      const operationDetail = page.getByRole('region', { name: /Détail .+ · .+/i })
+      await expect(operationDetail).toBeVisible()
+
+      const operationLayout = await page.locator('.performance-level-detail').evaluate((container) => {
+        const detail = container.querySelector('.operation-insight-panel')?.getBoundingClientRect()
+        const summary = container.querySelector('.performance-level-summary')
+        const modeDetail = container.querySelector('.performance-mode-detail')
+        const containerRect = container.getBoundingClientRect()
+        return {
+          detailWidth: detail?.width ?? 0,
+          containerWidth: containerRect.width,
+          summaryDisplay: summary ? window.getComputedStyle(summary).display : '',
+          modeDisplay: modeDetail ? window.getComputedStyle(modeDetail).display : '',
+        }
+      })
+
+      expect(operationLayout.summaryDisplay).toBe('none')
+      expect(operationLayout.modeDisplay).toBe('none')
+      expect(operationLayout.detailWidth).toBeGreaterThanOrEqual(operationLayout.containerWidth - 2)
+      await expect(operationDetail.getByRole('button', { name: /Retour au niveau/i })).toBeVisible()
+      const chartPoint = operationDetail.locator('.operation-insight-point').last()
+      await expect(chartPoint).toBeVisible()
+      await chartPoint.hover()
+      await expect(operationDetail.locator('.operation-insight-tooltip')).toBeVisible()
+      await expectContained(page, '.operation-insight-panel, .operation-insight-chart, .operation-insight-sparkline', 'operation detail')
+      await attachScreenshot(page, testInfo, 'dashboard-operation-detail')
     }
   }
 })

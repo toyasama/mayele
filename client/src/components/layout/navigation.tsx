@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { DEFAULT_AUTHENTICATED_ROUTE } from '../../lib/routes'
 import { DashboardNavIcon, DuelNavIcon, FriendsNavIcon } from './navigationIcons'
 
 export type NavigationMatchContext = {
@@ -20,40 +21,22 @@ export type NavigationItem = {
   activeMatch?: (context: NavigationMatchContext) => boolean
 }
 
-function dashboardViewIs(view: 'overview' | 'stats' | 'missions' | 'history') {
-  return ({ pathname, search }: NavigationMatchContext) => {
-    if (pathname !== '/dashboard') {
-      return false
-    }
-
-    const params = new URLSearchParams(search)
-    const activeView = params.get('view') ?? 'overview'
-    return activeView === view
-  }
-}
-
 export const mainNavigationItems: NavigationItem[] = [
   {
-    label: 'Mon espace',
-    to: '/dashboard',
-    icon: <DashboardNavIcon />,
-    activeMatch: ({ pathname }) => pathname === '/dashboard',
-    children: [
-      { label: "Vue d'ensemble", to: '/dashboard', activeMatch: dashboardViewIs('overview') },
-      { label: 'Statistiques', to: '/dashboard?view=stats', activeMatch: dashboardViewIs('stats') },
-      { label: 'Missions', to: '/dashboard?view=missions', activeMatch: dashboardViewIs('missions') },
-      { label: 'Historique', to: '/dashboard?view=history', activeMatch: dashboardViewIs('history') },
-    ],
-  },
-  {
     label: 'Jouer',
-    to: '/jeu/solo',
+    to: DEFAULT_AUTHENTICATED_ROUTE,
     icon: <DuelNavIcon />,
     activeMatch: ({ pathname }) => pathname.startsWith('/jeu'),
     children: [
       { label: 'Solo', to: '/jeu/solo', activeMatch: ({ pathname }) => pathname === '/jeu/solo' },
       { label: 'Multijoueur', to: '/jeu/multijoueur', activeMatch: ({ pathname }) => pathname === '/jeu/multijoueur' },
     ],
+  },
+  {
+    label: 'Mon espace',
+    to: '/dashboard',
+    icon: <DashboardNavIcon />,
+    activeMatch: ({ pathname }) => pathname === '/dashboard',
   },
   {
     label: 'Amis',

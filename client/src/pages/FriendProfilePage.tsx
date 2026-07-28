@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/auth'
+import { FriendChallengeHistory } from '../features/social/FriendChallengeHistory'
+import { FriendPerformanceSummary } from '../features/social/FriendPerformanceSummary'
 import { api, type FriendProfileData, type PublicPlayer } from '../lib/api'
-import { GAME_LABELS, LEVEL_LABELS, getPlayerProgress, type GameLevel, type GameType } from '../lib/game'
+import { LEVEL_LABELS, getPlayerProgress, type GameLevel } from '../lib/game'
+import '../styles/routes/friend-profile.css'
 
 type FriendBadge = FriendProfileData['badges'][number]
 
@@ -23,33 +26,8 @@ function playerHandle(player: PublicPlayer) {
   return player.username ? `@${player.username}` : 'Profil Mayele'
 }
 
-function gameLabel(value: string) {
-  return GAME_LABELS[value as GameType] ?? value
-}
-
 function levelLabel(value: string) {
   return LEVEL_LABELS[value as GameLevel] ?? value
-}
-
-function formatResponseTime(value: number | null | undefined) {
-  if (!value) {
-    return '-'
-  }
-
-  if (value < 1000) {
-    return `${value}ms`
-  }
-
-  const seconds = value / 1000
-  return `${seconds >= 10 ? Math.round(seconds) : seconds.toFixed(1)}s`
-}
-
-function formatNumber(value: number) {
-  return new Intl.NumberFormat('fr-FR').format(value)
-}
-
-function clampPercent(value: number) {
-  return Math.max(0, Math.min(100, Math.round(value)))
 }
 
 function badgeRankClass(tier: FriendBadge['tier']) {
@@ -123,8 +101,7 @@ export function FriendProfilePage() {
     }
 
     let active = true
-    api
-      .getFriendProfile(getToken, friendId)
+    api.getFriendProfile(getToken, friendId)
       .then((payload) => {
         if (active) {
           setProfile(payload)
@@ -177,30 +154,37 @@ export function FriendProfilePage() {
         </button>
       </div>
 
-      <header className="friend-profile-hero">
-        <FriendAvatar player={profile.player} />
-        <div className="friend-profile-hero-copy">
-          <span className="eyebrow">Profil ami</span>
-          <h1>{profile.player.name}</h1>
-          <p>
-            {playerHandle(profile.player)} - Niveau {playerLevel}
-          </p>
-        </div>
-        <div className="friend-profile-summary" aria-label="Résumé du profil ami">
-          <div>
-            <span>Niveau</span>
-            <strong>{playerLevel}</strong>
-          </div>
-          <div>
-            <span>XP</span>
-            <strong>{formatNumber(profile.player.totalXp)}</strong>
-          </div>
-          <div>
-            <span>Badges</span>
-            <strong>{profile.badges.length}</strong>
+      <header className="friend-profile-hero friend-versus-stage">
+        <div className="friend-versus-player">
+          <FriendAvatar player={profile.player} />
+          <div className="friend-profile-hero-copy">
+            <span className="eyebrow">Profil ami</span>
+            <h1>{profile.player.name}</h1>
+            <p>
+              {playerHandle(profile.player)} · Niveau {playerLevel}
+            </p>
           </div>
         </div>
+
+        <aside className="friend-challenge-card" aria-label="Défier cet ami">
+          <div className="friend-challenge-heading">
+            <span className="eyebrow">Face-à-face</span>
+            <strong>{profile.headToHead?.summary.wins ?? 0} — {profile.headToHead?.summary.losses ?? 0}</strong>
+          </div>
+          <div className="friend-versus-record" aria-label="Bilan des défis">
+            <span><strong>{profile.headToHead?.summary.wins ?? 0}</strong> gagnés</span>
+            <span><strong>{profile.headToHead?.summary.losses ?? 0}</strong> perdus</span>
+            <span><strong>{profile.headToHead?.summary.draws ?? 0}</strong> nuls</span>
+          </div>
+          <button className="primary-button" type="button" onClick={() => navigate('/jeu/multijoueur')}>
+            Défier {profile.player.name}
+          </button>
+        </aside>
       </header>
+
+      <FriendChallengeHistory friendName={profile.player.name} headToHead={profile.headToHead} />
+
+      <FriendPerformanceSummary stats={profile.stats} />
 
       {profile.badges.length ? (
         <section className="friend-profile-section">
@@ -230,80 +214,6 @@ export function FriendProfilePage() {
         </section>
       )}
 
-      <section className="friend-profile-section">
-        <FriendSectionHeader eyebrow="Modes" title="Progression par type de sprint" />
-
-        <div className="friend-stat-grid">
-          {profile.stats.byGame.map((item) => (
-            <article className="card friend-stat-card" key={item.game}>
-              <div className="friend-stat-topline">
-                <strong>{gameLabel(item.game)}</strong>
-                <span>{item.attempts ? `${item.averageAccuracy}%` : '-'}</span>
-              </div>
-              <div className="goal-bar" aria-hidden="true">
-                <span style={{ width: `${clampPercent(item.averageAccuracy)}%` }} />
-              </div>
-              <div className="friend-stat-metrics">
-                <div>
-                  <span>Sprints</span>
-                  <strong>{item.attempts}</strong>
-                </div>
-                <div>
-                  <span>Record</span>
-                  <strong>{item.bestScore}%</strong>
-                </div>
-                <div>
-                  <span>Série</span>
-                  <strong>{item.bestStreak}</strong>
-                </div>
-                <div>
-                  <span>Temps</span>
-                  <strong>{formatResponseTime(item.averageResponseTimeMs)}</strong>
-                </div>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="friend-profile-section">
-        <FriendSectionHeader eyebrow="Niveaux" title="Répartition par difficulté" />
-
-        <div className="friend-level-grid">
-          {profile.stats.byLevel.map((item) => (
-            <article className="card friend-level-card" key={item.level}>
-              <div className="friend-stat-topline">
-                <div>
-                  <span>Niveau</span>
-                  <strong>{levelLabel(item.level)}</strong>
-                </div>
-                <em>{item.attempts ? 'En cours' : 'À essayer'}</em>
-              </div>
-              <div className="friend-stat-metrics">
-                <div>
-                  <span>Sprints</span>
-                  <strong>{item.attempts}</strong>
-                </div>
-                <div>
-                  <span>Précision</span>
-                  <strong>{item.averageAccuracy}%</strong>
-                </div>
-                <div>
-                  <span>Record</span>
-                  <strong>{item.bestScore}%</strong>
-                </div>
-                <div>
-                  <span>Temps</span>
-                  <strong>{formatResponseTime(item.averageResponseTimeMs)}</strong>
-                </div>
-              </div>
-              <div className="goal-bar" aria-hidden="true">
-                <span style={{ width: `${clampPercent(item.averageAccuracy)}%` }} />
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
     </section>
   )
 }

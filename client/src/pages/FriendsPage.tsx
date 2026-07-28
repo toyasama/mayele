@@ -3,26 +3,20 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { PageFrame } from '../components/layout/PageFrame'
 import { ResponsiveTabs } from '../components/layout/ResponsiveTabs'
 import { useAuth } from '../context/auth'
+import { SocialRoster, type SocialRosterEntry, type SocialStatus } from '../features/social/SocialRoster'
 import { getRealtimePresence, useRealtimeEvents, type PresenceRealtimePayload } from '../hooks/useRealtimeEvents'
 import { readCache, SOCIAL_CACHE_PREFIX, userCacheKey, writeCache } from '../lib/appCache'
 import { api, type FriendRequestData, type PublicPlayer } from '../lib/api'
 import type { PresenceStatus } from '../lib/api'
 import { getPlayerProgress } from '../lib/game'
+import '../styles/routes/friends.css'
 
-type SocialStatus = 'friend' | 'outgoing' | 'incoming'
 type SocialFilter = 'all' | SocialStatus
 type RelationTab = 'friends' | 'search'
 type SocialOverview = {
   friends: PublicPlayer[]
   incoming: FriendRequestData[]
   outgoing: FriendRequestData[]
-}
-
-type SocialCard = {
-  key: string
-  status: SocialStatus
-  player: PublicPlayer
-  request?: FriendRequestData
 }
 
 const FILTERS: Array<{ key: SocialFilter; label: string }> = [
@@ -172,6 +166,63 @@ function SearchPromptCard({
   )
 }
 
+function RemoveFriendDialog({
+  friend,
+  removing,
+  onCancel,
+  onConfirm,
+}: {
+  friend: PublicPlayer
+  removing: boolean
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape' && !removing) {
+        onCancel()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [onCancel, removing])
+
+  return (
+    <div
+      className="confirmation-dialog-backdrop"
+      role="presentation"
+      onClick={(event) => {
+        if (event.target === event.currentTarget && !removing) {
+          onCancel()
+        }
+      }}
+    >
+      <section
+        aria-describedby="remove-friend-dialog-description"
+        aria-labelledby="remove-friend-dialog-title"
+        aria-modal="true"
+        className="card confirmation-dialog"
+        role="alertdialog"
+      >
+        <span className="eyebrow">Retirer un ami</span>
+        <h2 id="remove-friend-dialog-title">Retirer {friend.name} de vos amis ?</h2>
+        <p id="remove-friend-dialog-description">
+          Vous devrez envoyer une nouvelle demande pour redevenir amis.
+        </p>
+        <div className="confirmation-dialog-actions">
+          <button className="secondary-button" type="button" disabled={removing} autoFocus onClick={onCancel}>
+            Annuler
+          </button>
+          <button className="confirmation-dialog-confirm" type="button" disabled={removing} onClick={onConfirm}>
+            {removing ? 'Retrait...' : 'Retirer'}
+          </button>
+        </div>
+      </section>
+    </div>
+  )
+}
+
 export function FriendsPage() {
   const { getToken, isAuthenticated, user } = useAuth()
   const navigate = useNavigate()
@@ -188,6 +239,7 @@ export function FriendsPage() {
   const [loading, setLoading] = useState(!cachedOverview)
   const [searching, setSearching] = useState(false)
   const [actionId, setActionId] = useState<string | null>(null)
+  const [friendPendingRemoval, setFriendPendingRemoval] = useState<PublicPlayer | null>(null)
   const [error, setError] = useState('')
   const realtimePresenceByPlayerIdRef = useRef(new Map<string, PresenceRealtimePayload['player']>())
 
@@ -199,7 +251,7 @@ export function FriendsPage() {
   const outgoingByPlayerId = useMemo(() => new Map(outgoingRequests.map((request) => [request.player.id, request])), [outgoingRequests])
   const friendIds = useMemo(() => new Set(friends.map((friend) => friend.id)), [friends])
 
-  const socialCards = useMemo<SocialCard[]>(() => {
+  const socialCards = useMemo<SocialRosterEntry[]>(() => {
     const friendCards = friends.map((player) => ({ key: `friend:${player.id}`, status: 'friend' as const, player }))
     const outgoingCards = outgoingRequests.map((request) => ({
       key: `outgoing:${request.id}`,
@@ -306,6 +358,7 @@ export function FriendsPage() {
   const realtimeCommands = useRealtimeEvents({
     isAuthenticated,
     getToken,
+    connectionPriority: 'critical',
     onSocialChanged: refreshSocialDataFromRealtime,
     onPresenceChanged: applyRealtimePresence,
   })
@@ -457,6 +510,7 @@ export function FriendsPage() {
       setError(caughtError instanceof Error ? caughtError.message : "Impossible de supprimer cet ami.")
     } finally {
       setActionId(null)
+      setFriendPendingRemoval(null)
     }
   }
 
@@ -539,9 +593,10 @@ export function FriendsPage() {
             </div>
 
             {filteredCards.length ? (
-              <div className="profile-card-scroller" aria-label="Profils amis et demandes">
-                {filteredCards.map((card) => (
-                  <ProfileCard key={card.key} player={card.player} status={card.status}>
+              <SocialRoster
+                entries={filteredCards}
+                renderActions={(card) => (
+                  <>
                     {card.status === 'friend' ? (
                       <>
                         <button className="secondary-button" type="button" onClick={() => navigate(`/amis/${encodeURIComponent(card.player.id)}`)}>
@@ -553,13 +608,13 @@ export function FriendsPage() {
                           disabled={actionId === `challenge:${card.player.id}`}
                           onClick={() => void handleCreateChallenge(card.player)}
                         >
-                          {actionId === `challenge:${card.player.id}` ? 'Envoi...' : 'Defier'}
+                          {actionId === `challenge:${card.player.id}` ? 'Envoi...' : 'Défier'}
                         </button>
                         <button
                           className="ghost-button danger-button"
                           type="button"
                           disabled={actionId === `remove:${card.player.id}`}
-                          onClick={() => void handleRemoveFriend(card.player)}
+                          onClick={() => setFriendPendingRemoval(card.player)}
                         >
                           {actionId === `remove:${card.player.id}` ? 'Retrait...' : 'Retirer'}
                         </button>
@@ -567,39 +622,24 @@ export function FriendsPage() {
                     ) : null}
 
                     {card.status === 'outgoing' && card.request ? (
-                      <button
-                        className="secondary-button"
-                        type="button"
-                        disabled={actionId === `cancel:${card.request.id}`}
-                        onClick={() => void handleCancelRequest(card.request!)}
-                      >
-                        {actionId === `cancel:${card.request.id}` ? 'Annulation...' : 'Annuler'}
+                      <button className="secondary-button" type="button" disabled={actionId === `cancel:${card.request.id}`} onClick={() => void handleCancelRequest(card.request!)}>
+                        {actionId === `cancel:${card.request.id}` ? 'Annulation...' : 'Annuler la demande'}
                       </button>
                     ) : null}
 
                     {card.status === 'incoming' && card.request ? (
                       <>
-                        <button
-                          className="primary-button"
-                          type="button"
-                          disabled={actionId === `accept:${card.request.id}`}
-                          onClick={() => void handleAcceptRequest(card.request!)}
-                        >
+                        <button className="primary-button" type="button" disabled={actionId === `accept:${card.request.id}`} onClick={() => void handleAcceptRequest(card.request!)}>
                           {actionId === `accept:${card.request.id}` ? 'Validation...' : 'Accepter'}
                         </button>
-                        <button
-                          className="secondary-button"
-                          type="button"
-                          disabled={actionId === `decline:${card.request.id}`}
-                          onClick={() => void handleDeclineRequest(card.request!)}
-                        >
+                        <button className="secondary-button" type="button" disabled={actionId === `decline:${card.request.id}`} onClick={() => void handleDeclineRequest(card.request!)}>
                           {actionId === `decline:${card.request.id}` ? 'Refus...' : 'Refuser'}
                         </button>
                       </>
                     ) : null}
-                  </ProfileCard>
-                ))}
-              </div>
+                  </>
+                )}
+              />
             ) : (
               <EmptyPanel title="Aucun profil" text="Les amis et demandes apparaissent ici." />
             )}
@@ -672,7 +712,7 @@ export function FriendsPage() {
                             className="ghost-button danger-button"
                             type="button"
                             disabled={actionId === `remove:${player.id}`}
-                            onClick={() => void handleRemoveFriend(player)}
+                            onClick={() => setFriendPendingRemoval(player)}
                           >
                             Retirer
                           </button>
@@ -696,6 +736,15 @@ export function FriendsPage() {
           </div>
         )}
       </article>
+
+      {friendPendingRemoval ? (
+        <RemoveFriendDialog
+          friend={friendPendingRemoval}
+          removing={actionId === `remove:${friendPendingRemoval.id}`}
+          onCancel={() => setFriendPendingRemoval(null)}
+          onConfirm={() => void handleRemoveFriend(friendPendingRemoval)}
+        />
+      ) : null}
     </PageFrame>
   )
 }

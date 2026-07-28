@@ -7,13 +7,16 @@
     "dev": "vite --host",
     "serve:e2e": "node scripts/serve-e2e.mjs",
     "check:runtime-config": "node scripts/check-runtime-config.mjs",
+    "check:release-config": "node scripts/check-runtime-config.mjs --release",
     "build": "npm run check:runtime-config && tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview --host",
     "test": "vitest run",
     "test:e2e": "playwright test",
+    "test:performance": "playwright test --config=playwright.performance.config.ts",
     "test:responsive": "playwright test --config=playwright.responsive.config.ts",
     "test:visual": "playwright test --config=playwright.visual.config.ts",
+    "test:visual-v5": "playwright test --config=playwright.visual-v5.config.ts",
     "test:production-smoke": "node scripts/production-smoke.mjs"
   },
   "dependencies": {

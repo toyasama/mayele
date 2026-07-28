@@ -28,7 +28,19 @@ try {
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
     const pageErrors = []
+    const failedRequests = []
+    const serverErrors = []
     page.on('pageerror', (error) => pageErrors.push(error.message))
+    page.on('requestfailed', (request) => {
+      if (!request.url().startsWith('https://va.vercel-scripts.com/')) {
+        failedRequests.push(`${request.method()} ${request.url()}: ${request.failure()?.errorText ?? 'echec inconnu'}`)
+      }
+    })
+    page.on('response', (response) => {
+      if (response.status() >= 500) {
+        serverErrors.push(`${response.status()} ${response.url()}`)
+      }
+    })
 
     try {
       const target = new URL('/dashboard', appUrl)
@@ -40,6 +52,9 @@ try {
         return Boolean(root && root.childElementCount > 0 && root.textContent?.trim())
       }, { timeout: 15_000 })
 
+      await page.waitForURL(/\/connexion(?:[/?#]|$)/, { timeout: 15_000 })
+      await page.locator('.auth-card').waitFor({ state: 'visible', timeout: 15_000 })
+
       await page.screenshot({ path: screenshotPath, fullPage: true })
 
       if (await page.locator('.app-bootstrap-error').isVisible()) {
@@ -48,6 +63,14 @@ try {
 
       if (pageErrors.length > 0) {
         throw new Error(`Erreur JavaScript: ${pageErrors.join(' | ')}`)
+      }
+
+      if (failedRequests.length > 0) {
+        throw new Error(`Requete critique echouee: ${failedRequests.join(' | ')}`)
+      }
+
+      if (serverErrors.length > 0) {
+        throw new Error(`Reponse serveur en erreur: ${serverErrors.join(' | ')}`)
       }
 
       if (!response?.ok()) {

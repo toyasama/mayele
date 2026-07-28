@@ -1,8 +1,11 @@
 import { expect, type APIRequestContext, type Browser, type Page, type TestInfo, test } from '@playwright/test'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { waitForRealtimeReady } from './realtime'
 
 const APP_URL = process.env.E2E_APP_URL ?? 'http://127.0.0.1:5174'
 const API_URL = process.env.E2E_API_URL ?? 'http://127.0.0.1:4100'
+const CAPTURE_DIR = join(process.cwd(), '..', 'local_data', 'responsive-captures')
 
 async function authenticate(page: Page, user: 'host' | 'guest' = 'host') {
   await page.addInitScript((value) => {
@@ -61,6 +64,8 @@ async function expectNoHorizontalOverflow(page: Page, label: string) {
 
 async function attachScreenshot(page: Page, testInfo: TestInfo, name: string) {
   const body = await page.screenshot({ fullPage: true })
+  mkdirSync(CAPTURE_DIR, { recursive: true })
+  writeFileSync(join(CAPTURE_DIR, `${testInfo.project.name}-${name}.png`), body)
   await testInfo.attach(`${testInfo.project.name}-${name}`, { body, contentType: 'image/png' })
 }
 
@@ -73,12 +78,17 @@ async function assertShellNavigation(page: Page) {
     await expect(page.locator('.desktop-sidebar')).toBeHidden()
     await page.getByRole('button', { name: /Ouvrir le menu/i }).click()
     await expect(page.locator('#mobile-menu-panel')).toBeVisible()
-    await page.getByRole('link', { name: /Statistiques/i }).click()
+    await expect(page.locator('#mobile-menu-panel').getByRole('link', { name: /^Mon espace$/i })).toHaveAttribute('href', '/dashboard')
+    await page.keyboard.press('Escape')
+    await expect(page.locator('#mobile-menu-panel')).toHaveCount(0)
+    await page.locator('.dashboard-section-nav').getByRole('button', { name: /^Stats$/i }).click()
     await expect(page).toHaveURL(/\/dashboard\?view=stats/)
     await expect(page.locator('#mobile-menu-panel')).toHaveCount(0)
   } else {
     await expect(page.locator('.desktop-sidebar')).toBeVisible()
     await expect(page.locator('.mobile-bottom-nav')).toBeHidden()
+    await expect(page.locator('.desktop-sidebar').getByRole('link', { name: /^Mon espace$/i })).toHaveAttribute('href', '/dashboard')
+    await expect(page.locator('.desktop-sidebar').getByRole('link', { name: /Statistiques/i })).toHaveCount(0)
   }
 }
 
@@ -104,13 +114,37 @@ test('navigation shell et dashboard sans overflow', async ({ page }, testInfo) =
     await expect(page.locator(view.panel)).toBeVisible()
     await expect(page.locator('.dashboard-section-nav')).toBeVisible()
 
+    const desktopDashboardOrder = await page.evaluate(() => {
+      const pageRoot = document.querySelector('.dashboard-page')
+      const nav = document.querySelector('.dashboard-section-nav')
+      const hero = document.querySelector('.dashboard-player-header')
+      const badges = document.querySelector('.dashboard-profile-badges-section')
+
+      return {
+        navIndex: pageRoot && nav ? Array.from(pageRoot.children).indexOf(nav) : -1,
+        heroIndex: pageRoot && hero ? Array.from(pageRoot.children).indexOf(hero) : -1,
+        badgesIndex: pageRoot && badges ? Array.from(pageRoot.children).indexOf(badges) : -1,
+      }
+    })
+
+    expect(desktopDashboardOrder.navIndex).toBe(0)
+    if (view.name === 'dashboard-overview') {
+      expect(desktopDashboardOrder.heroIndex).toBeGreaterThan(desktopDashboardOrder.navIndex)
+      expect(desktopDashboardOrder.badgesIndex).toBeGreaterThan(desktopDashboardOrder.heroIndex)
+    } else {
+      expect(desktopDashboardOrder.heroIndex).toBe(-1)
+      expect(desktopDashboardOrder.badgesIndex).toBe(-1)
+    }
+
     if ((page.viewportSize()?.width ?? 1024) < 768) {
       const mobileDashboardLayout = await page.evaluate(() => {
-        const hero = document.querySelector('.dashboard-hero-v2')
+        const hero = document.querySelector('.dashboard-player-header')
         const badges = document.querySelector('.dashboard-profile-badges-section')
         const nav = document.querySelector('.dashboard-section-nav')
         const panel = document.querySelector('.dashboard-view-panel.active')
-        const missionsSummary = document.querySelector('.dashboard-badge-mobile-summary')
+        const trophyCabinet = document.querySelector('.trophy-cabinet')
+        const levelTabs = document.querySelector('.performance-level-tabs')
+        const missionRail = document.querySelector('.mission-board-grid')
         const heroRect = hero?.getBoundingClientRect()
         const badgesRect = badges?.getBoundingClientRect()
         const navRect = nav?.getBoundingClientRect()
@@ -118,15 +152,21 @@ test('navigation shell et dashboard sans overflow', async ({ page }, testInfo) =
 
         return {
           navPosition: nav ? window.getComputedStyle(nav).position : '',
+          navColumns: nav ? window.getComputedStyle(nav).gridTemplateColumns.split(' ').length : 0,
           navTop: navRect?.top ?? 0,
           heroTop: heroRect?.top ?? 0,
           badgesTop: badgesRect?.top ?? 0,
           panelTop: panelRect?.top ?? 0,
-          summaryDisplay: missionsSummary ? window.getComputedStyle(missionsSummary).display : '',
+          trophyDisplay: trophyCabinet ? window.getComputedStyle(trophyCabinet).display : '',
+          levelTabsDisplay: levelTabs ? window.getComputedStyle(levelTabs).display : '',
+          levelTabsOverflow: levelTabs ? window.getComputedStyle(levelTabs).overflowX : '',
+          missionRailDisplay: missionRail ? window.getComputedStyle(missionRail).display : '',
+          missionRailOverflow: missionRail ? window.getComputedStyle(missionRail).overflowX : '',
         }
       })
 
-      expect(mobileDashboardLayout.navPosition).toBe('static')
+      expect(mobileDashboardLayout.navPosition).toBe('sticky')
+      expect(mobileDashboardLayout.navColumns).toBe(4)
 
       if (view.name === 'dashboard-overview') {
         expect(mobileDashboardLayout.navTop).toBeLessThan(mobileDashboardLayout.heroTop)
@@ -134,37 +174,23 @@ test('navigation shell et dashboard sans overflow', async ({ page }, testInfo) =
         expect(mobileDashboardLayout.badgesTop).toBeLessThan(mobileDashboardLayout.panelTop)
       }
 
+      if (view.name === 'dashboard-stats') {
+        expect(mobileDashboardLayout.levelTabsDisplay).toBe('flex')
+        expect(['auto', 'scroll']).toContain(mobileDashboardLayout.levelTabsOverflow)
+      }
+
       if (view.name === 'dashboard-missions') {
-        expect(mobileDashboardLayout.summaryDisplay).toBe('flex')
-
-        const firstBadgePanel = page.locator('.dashboard-badge-detail-stack .badge-family-panel').first()
-        await firstBadgePanel.locator('summary').click()
-        await expect(firstBadgePanel).toHaveAttribute('open', '')
-
-        const expandedBadgeLayout = await firstBadgePanel.evaluate((panel) => {
-          const levelGrid = panel.querySelector('.badge-level-grid')
-          const objectiveCard = panel.querySelector('.badge-objective-card')
-          const objectiveList = panel.querySelector('.objective-check-list')
-          const panelRect = panel.getBoundingClientRect()
-          const cardRect = objectiveCard?.getBoundingClientRect()
-
-          return {
-            panelOverflowY: window.getComputedStyle(panel).overflowY,
-            levelGridOverflowX: levelGrid ? window.getComputedStyle(levelGrid).overflowX : '',
-            objectiveListDisplay: objectiveList ? window.getComputedStyle(objectiveList).display : '',
-            panelRight: panelRect.right,
-            cardRight: cardRect?.right ?? 0,
-            innerWidth: window.innerWidth,
-          }
-        })
-
-        expect(expandedBadgeLayout.panelOverflowY).toBe('visible')
-        expect(expandedBadgeLayout.levelGridOverflowX).toBe('visible')
-        expect(expandedBadgeLayout.objectiveListDisplay).toBe('none')
-        expect(expandedBadgeLayout.panelRight).toBeLessThanOrEqual(expandedBadgeLayout.innerWidth + 1)
-        expect(expandedBadgeLayout.cardRight).toBeLessThanOrEqual(expandedBadgeLayout.innerWidth + 1)
-
-        await firstBadgePanel.locator('.badge-objective-card').first().click()
+        expect(mobileDashboardLayout.trophyDisplay).not.toBe('none')
+        expect(mobileDashboardLayout.missionRailDisplay).toBe('flex')
+        expect(['auto', 'scroll']).toContain(mobileDashboardLayout.missionRailOverflow)
+        const visibleFamilyBadges = await page.locator('.trophy-cabinet .badge-objective-card').count()
+        const allBadgesTab = page.getByRole('tab', { name: /^Tous/i })
+        await allBadgesTab.click()
+        await expect(allBadgesTab).toHaveAttribute('aria-selected', 'true')
+        expect(await page.locator('.trophy-cabinet .badge-objective-card').count()).toBeGreaterThan(visibleFamilyBadges)
+        const firstBadge = page.locator('.trophy-cabinet .badge-objective-card').first()
+        await expect(firstBadge).toBeVisible()
+        await firstBadge.click()
         const badgeSheet = page.locator('.dashboard-badge-sheet')
         await expect(badgeSheet).toBeVisible()
 
@@ -187,6 +213,49 @@ test('navigation shell et dashboard sans overflow', async ({ page }, testInfo) =
         await page.getByRole('button', { name: /Fermer le detail du badge/i }).click()
         await expect(badgeSheet).toHaveCount(0)
       }
+    }
+
+    if (view.name === 'dashboard-stats') {
+      const operationRow = page.locator('.performance-mode-row').first()
+      await operationRow.click()
+      await expect(operationRow).toHaveAttribute('aria-expanded', 'true')
+
+      const isPhone = (page.viewportSize()?.width ?? 1024) < 768
+      const operationDetail = page.getByRole(isPhone ? 'dialog' : 'region', { name: /Détail .+ · .+/i })
+      await expect(operationDetail).toBeVisible()
+      await expect(operationDetail.getByRole('group', { name: /Mesure du graphique/i })).toBeVisible()
+      await operationDetail.getByRole('button', { name: /^Temps$/i }).click()
+      await expect(operationDetail.getByRole('button', { name: /^Temps$/i })).toHaveAttribute('aria-pressed', 'true')
+      const chartPoint = operationDetail.locator('.operation-insight-point').last()
+      await expect(chartPoint).toBeVisible()
+      await chartPoint.click()
+      await expect(operationDetail.locator('.operation-insight-tooltip')).toBeVisible()
+
+      if (isPhone) {
+        await expect(operationDetail).toHaveAttribute('aria-modal', 'true')
+        const dialogLayout = await operationDetail.evaluate((dialog) => {
+          const rect = dialog.getBoundingClientRect()
+          return {
+            position: window.getComputedStyle(dialog).position,
+            left: rect.left,
+            right: rect.right,
+            bottom: rect.bottom,
+            innerWidth: window.innerWidth,
+            innerHeight: window.innerHeight,
+          }
+        })
+        expect(dialogLayout.position).toBe('fixed')
+        expect(dialogLayout.left).toBeGreaterThanOrEqual(0)
+        expect(dialogLayout.right).toBeLessThanOrEqual(dialogLayout.innerWidth + 1)
+        expect(dialogLayout.bottom).toBeLessThanOrEqual(dialogLayout.innerHeight + 1)
+      }
+
+      await attachScreenshot(page, testInfo, 'dashboard-operation-detail')
+      const closeDetail = isPhone
+        ? operationDetail.getByRole('button', { name: /Fermer le détail de l’opération/i })
+        : operationDetail.getByRole('button', { name: /Retour au niveau/i })
+      await closeDetail.click()
+      await expect(operationDetail).toHaveCount(0)
     }
 
     await expectNoHorizontalOverflow(page, view.name)
@@ -221,8 +290,29 @@ test('solo setup puis arene restent utilisables', async ({ page }, testInfo) => 
   await expectNoHorizontalOverflow(page, 'solo setup')
   await attachScreenshot(page, testInfo, 'solo-setup')
 
-  await page.getByRole('button', { name: /Commencer le sprint/i }).click()
+  const helpButton = page.getByRole('button', { name: /Informations sur les modes de jeu/i })
+  await expect(helpButton).toBeVisible()
+  await helpButton.click()
+  const helpDialog = page.getByRole('dialog', { name: /Sprint/i })
+  await expect(helpDialog).toBeVisible()
+  await expect(helpDialog).toContainText(/plus grand nombre de questions/i)
+  await expect(helpDialog.getByLabel(/Duree Sprint/i)).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(helpDialog).toHaveCount(0)
+
+  const startButton = page.getByRole('button', { name: /Commencer le sprint/i })
+  const idleAnimations = await startButton.evaluate((button) => (
+    button.getAnimations({ subtree: true }).map((animation) => (
+      animation instanceof CSSAnimation ? animation.animationName : ''
+    ))
+  ))
+  expect(idleAnimations).toContain('launch-action-breathe')
+
+  await startButton.click()
+  await expect(page.locator('.launch-action-burst')).toBeVisible()
+  await attachScreenshot(page, testInfo, 'solo-launch-animation')
   await expect(page.locator('.question-line')).toBeVisible()
+  await expect(page.getByLabel('0 réponses données, 0 bonnes réponses')).toBeVisible()
   await expect(page.getByRole('textbox', { name: /Votre reponse/i })).toBeFocused()
   await expectNoHorizontalOverflow(page, 'solo arena')
   await attachScreenshot(page, testInfo, 'solo-arena')
@@ -231,6 +321,7 @@ test('solo setup puis arene restent utilisables', async ({ page }, testInfo) => 
   await page.getByRole('textbox', { name: /Votre reponse/i }).fill(String(solvePrompt(prompt)))
   await page.getByRole('button', { name: /Valider/i }).click()
   await expect(page.getByRole('textbox', { name: /Votre reponse/i })).toBeFocused()
+  await expect(page.getByLabel('1 réponse donnée, 1 bonne réponse')).toBeVisible()
 })
 
 test('amis et profil restent lisibles sans debordement', async ({ page }, testInfo) => {
@@ -238,28 +329,33 @@ test('amis et profil restent lisibles sans debordement', async ({ page }, testIn
   await expect(page.getByRole('button', { name: /Mes amis/i })).toBeVisible()
   if ((page.viewportSize()?.width ?? 1024) < 768) {
     await expect(page.locator('.profile-card-scroller').or(page.locator('.friends-empty-panel'))).toBeVisible()
-    const friendsLayout = await page.evaluate(() => {
-      const scroller = document.querySelector('.profile-card-scroller')
-      const card = document.querySelector('.profile-card')
-      const actions = card?.querySelector('.profile-card-actions')
-      const cardRect = card?.getBoundingClientRect()
+    const rosterItem = page.locator('.social-roster-item').first()
+    if (await rosterItem.count()) {
+      await expect(page.locator('.social-profile-detail')).toBeHidden()
+      await rosterItem.click()
+      const mobileDetail = page.locator('.social-profile-detail.mobile-open')
+      await expect(mobileDetail).toBeVisible()
 
-      return {
-        scrollerDisplay: scroller ? window.getComputedStyle(scroller).display : '',
-        scrollerOverflowX: scroller ? window.getComputedStyle(scroller).overflowX : '',
-        cardWidth: cardRect?.width ?? 0,
-        cardRight: cardRect?.right ?? 0,
-        actionsColumns: actions ? window.getComputedStyle(actions).gridTemplateColumns.split(' ').length : 0,
-        innerWidth: window.innerWidth,
-      }
-    })
+      const detailLayout = await mobileDetail.evaluate((card) => {
+        const rect = card.getBoundingClientRect()
+        const actions = card.querySelector('.profile-card-actions')
+        return {
+          left: rect.left,
+          right: rect.right,
+          bottom: rect.bottom,
+          innerWidth: window.innerWidth,
+          innerHeight: window.innerHeight,
+          actionsColumns: actions ? window.getComputedStyle(actions).gridTemplateColumns.split(' ').length : 0,
+        }
+      })
 
-    if (friendsLayout.scrollerDisplay) {
-      expect(friendsLayout.scrollerDisplay).toBe('grid')
-      expect(friendsLayout.scrollerOverflowX).toBe('visible')
-      expect(friendsLayout.cardWidth).toBeGreaterThan(300)
-      expect(friendsLayout.cardRight).toBeLessThanOrEqual(friendsLayout.innerWidth + 1)
-      expect(friendsLayout.actionsColumns).toBeGreaterThanOrEqual(1)
+      expect(detailLayout.left).toBeGreaterThanOrEqual(0)
+      expect(detailLayout.right).toBeLessThanOrEqual(detailLayout.innerWidth + 1)
+      expect(detailLayout.bottom).toBeLessThan(detailLayout.innerHeight)
+      expect(detailLayout.actionsColumns).toBe(2)
+      await attachScreenshot(page, testInfo, 'friends-mobile-detail')
+      await page.getByRole('button', { name: /Fermer le profil/i }).last().click()
+      await expect(mobileDetail).toBeHidden()
     } else {
       await expect(page.locator('.friends-empty-panel')).toBeVisible()
     }
@@ -308,35 +404,40 @@ test('amis et profil restent lisibles sans debordement', async ({ page }, testIn
 
     const friendProfileLayout = await page.evaluate(() => {
       const hero = document.querySelector('.friend-profile-hero')
-      const summary = document.querySelector('.friend-profile-summary')
+      const comparison = document.querySelector('.friend-versus-record')
       const badgeGrid = document.querySelector('.friend-badge-grid')
-      const statGrid = document.querySelector('.friend-stat-grid')
-      const levelGrid = document.querySelector('.friend-level-grid')
+      const operationGrid = document.querySelector('.friend-operation-strip')
+      const levelGrid = document.querySelector('.friend-level-rail')
+      const duelHistory = document.querySelector('.friend-duel-history')
       const heroRect = hero?.getBoundingClientRect()
 
       return {
         heroColumns: hero ? window.getComputedStyle(hero).gridTemplateColumns.split(' ').length : 0,
         heroRight: heroRect?.right ?? 0,
-        summaryColumns: summary ? window.getComputedStyle(summary).gridTemplateColumns.split(' ').length : 0,
+        comparisonDisplay: comparison ? window.getComputedStyle(comparison).display : '',
+        comparisonColumns: comparison ? window.getComputedStyle(comparison).gridTemplateColumns.split(' ').length : 0,
         badgeDisplay: badgeGrid ? window.getComputedStyle(badgeGrid).display : '',
         badgeOverflowX: badgeGrid ? window.getComputedStyle(badgeGrid).overflowX : '',
-        statDisplay: statGrid ? window.getComputedStyle(statGrid).display : '',
-        statOverflowX: statGrid ? window.getComputedStyle(statGrid).overflowX : '',
+        operationDisplay: operationGrid ? window.getComputedStyle(operationGrid).display : '',
+        operationColumns: operationGrid ? window.getComputedStyle(operationGrid).gridTemplateColumns.split(' ').length : 0,
         levelDisplay: levelGrid ? window.getComputedStyle(levelGrid).display : '',
-        levelOverflowX: levelGrid ? window.getComputedStyle(levelGrid).overflowX : '',
+        levelColumns: levelGrid ? window.getComputedStyle(levelGrid).gridTemplateColumns.split(' ').length : 0,
+        duelHistoryDisplay: duelHistory ? window.getComputedStyle(duelHistory).display : '',
         innerWidth: window.innerWidth,
       }
     })
 
-    expect(friendProfileLayout.heroColumns).toBe(2)
+    expect(friendProfileLayout.heroColumns).toBe(1)
     expect(friendProfileLayout.heroRight).toBeLessThanOrEqual(friendProfileLayout.innerWidth + 1)
-    expect(friendProfileLayout.summaryColumns).toBe(3)
+    expect(friendProfileLayout.comparisonDisplay).toBe('grid')
+    expect(friendProfileLayout.comparisonColumns).toBe(3)
     expect(friendProfileLayout.badgeDisplay).toBe('flex')
     expect(['auto', 'scroll']).toContain(friendProfileLayout.badgeOverflowX)
-    expect(friendProfileLayout.statDisplay).toBe('flex')
-    expect(['auto', 'scroll']).toContain(friendProfileLayout.statOverflowX)
-    expect(friendProfileLayout.levelDisplay).toBe('flex')
-    expect(['auto', 'scroll']).toContain(friendProfileLayout.levelOverflowX)
+    expect(friendProfileLayout.operationDisplay).toBe('grid')
+    expect(friendProfileLayout.operationColumns).toBe(1)
+    expect(friendProfileLayout.levelDisplay).toBe('grid')
+    expect(friendProfileLayout.levelColumns).toBe(1)
+    expect(friendProfileLayout.duelHistoryDisplay).toBe('grid')
 
     await expectNoHorizontalOverflow(page, 'friend profile')
     await attachScreenshot(page, testInfo, 'friend-profile')
@@ -346,8 +447,11 @@ test('amis et profil restent lisibles sans debordement', async ({ page }, testIn
   }
 
   await page.goto(`${APP_URL}/profil/configuration`)
-  await expect(page.getByLabel(/Prenom|Pr.*nom/i)).toBeVisible()
-  await expect(page.getByRole('button', { name: /Enregistrer mes informations/i })).toBeVisible()
+  const firstNameInput = page.getByLabel(/Prenom|Pr.*nom/i)
+  await expect(firstNameInput).toBeVisible()
+  await expect(page.locator('.profile-save-bar')).toHaveCount(0)
+  await firstNameInput.fill(`${await firstNameInput.inputValue()}a`)
+  await expect(page.getByRole('button', { name: /^Enregistrer$/i })).toBeVisible()
   await expectNoHorizontalOverflow(page, 'profile')
   await attachScreenshot(page, testInfo, 'profile')
 })
@@ -373,14 +477,23 @@ test('multijoueur lobby room et arene restent utilisables', async ({ page, brows
         const directList = document.querySelector('.multiplayer-direct-list')
         const titleRow = document.querySelector('.multiplayer-lobby-title-row')
         const createButton = titleRow?.querySelector('button')
+        const heading = titleRow?.querySelector('h1')
+        const emptyInvitations = document.querySelector('.multiplayer-challenge-list.is-empty')
+        const emptyIllustration = emptyInvitations?.querySelector('.multiplayer-inbox-empty')
         const titleRowRect = titleRow?.getBoundingClientRect()
         const createButtonRect = createButton?.getBoundingClientRect()
+        const headingRect = heading?.getBoundingClientRect()
+        const emptyInvitationsRect = emptyInvitations?.getBoundingClientRect()
 
         return {
           directListDisplay: directList ? window.getComputedStyle(directList).display : '',
           directListOverflowX: directList ? window.getComputedStyle(directList).overflowX : '',
           titleColumns: titleRow ? window.getComputedStyle(titleRow).gridTemplateColumns.split(' ').length : 0,
           createButtonWidth: createButtonRect?.width ?? 0,
+          createButtonHeight: createButtonRect?.height ?? 0,
+          headingHeight: headingRect?.height ?? 0,
+          emptyInvitationsHeight: emptyInvitationsRect?.height ?? 0,
+          emptyIllustrationDisplay: emptyIllustration ? window.getComputedStyle(emptyIllustration).display : '',
           titleRowWidth: titleRowRect?.width ?? 0,
         }
       })
@@ -389,7 +502,12 @@ test('multijoueur lobby room et arene restent utilisables', async ({ page, brows
       expect(mobileLobbyLayout.directListOverflowX).toBe('auto')
       expect(mobileLobbyLayout.titleColumns).toBe(2)
       expect(mobileLobbyLayout.createButtonWidth).toBeLessThan(mobileLobbyLayout.titleRowWidth)
-      await page.getByRole('button', { name: /^Créer un salon$/i }).click()
+      expect(mobileLobbyLayout.createButtonWidth).toBeLessThan(150)
+      expect(mobileLobbyLayout.createButtonHeight).toBeLessThanOrEqual(44)
+      expect(mobileLobbyLayout.headingHeight).toBeLessThanOrEqual(32)
+      expect(mobileLobbyLayout.emptyInvitationsHeight).toBeLessThan(120)
+      expect(mobileLobbyLayout.emptyIllustrationDisplay).toBe('none')
+      await page.getByRole('button', { name: /^Commencer un nouveau défi$/i }).click()
       const draftMobileRoomNav = page.locator('.multiplayer-mobile-room-nav')
       const draftRoomGrid = page.locator('.multiplayer-room-grid')
       const draftControls = page.locator('#multiplayer-room-controls')
@@ -449,9 +567,16 @@ test('multijoueur lobby room et arene restent utilisables', async ({ page, brows
     await page.getByRole('button', { name: /Sprint/i }).click()
     await page.getByRole('button', { name: /Addition/i }).click()
     await page.getByRole('button', { name: /butant/i }).click()
-    await page.getByRole('button', { name: /Proposer le defi/i }).click()
+    const proposeButton = page.getByRole('button', { name: /Proposer le defi/i })
+    await expect(proposeButton).toHaveClass(/launch-action-button/)
+    await proposeButton.click()
+    await expect(page.locator('.launch-action-burst')).toBeVisible()
     await expect(guest.page.getByRole('button', { name: /Accepter le defi/i })).toBeVisible()
-    await guest.page.getByRole('button', { name: /Accepter le defi/i }).click()
+    const acceptButton = guest.page.getByRole('button', { name: /Accepter le defi/i })
+    await expect(acceptButton).toHaveClass(/launch-action-button/)
+    await acceptButton.click()
+    await expect(guest.page.locator('.launch-action-burst')).toBeVisible()
+    await attachScreenshot(guest.page, testInfo, 'multiplayer-launch-animation')
 
     await expect(page.locator('.challenge-arena')).toBeVisible()
     await expect(page.getByRole('button', { name: /^Stop$/i }).first()).toBeVisible()

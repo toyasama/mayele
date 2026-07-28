@@ -1,20 +1,20 @@
+import { randomUUID } from 'node:crypto'
 import { Router } from 'express'
 import { ApiError, badRequest } from '../errors.js'
 import { getRequiredAuth } from '../middleware/auth.js'
 import { parseFriendRequestPayload, parsePlayerSearchQuery } from '../schemas/friendSchema.js'
-import { emitNotificationCreated, emitNotificationsChanged, emitSocialChanged } from '../realtime/notifications.js'
 import {
-  acceptFriendRequest,
-  cancelFriendRequest,
-  declineFriendRequest,
+  acceptFriendRequestInTransaction,
+  cancelFriendRequestInTransaction,
+  declineFriendRequestInTransaction,
   FriendServiceError,
   getFriendPublicProfile,
   getSocialOverview,
   listFriendRequests,
   listFriends,
-  removeFriend,
+  removeFriendInTransaction,
   searchPlayersByUsername,
-  sendFriendRequest,
+  sendFriendRequestInTransaction,
   type PublicPlayer,
 } from '../services/friendService.js'
 import {
@@ -24,7 +24,10 @@ import {
   friendRequestNotificationKey,
 } from '../services/notificationService.js'
 import { serializeNotification } from '../services/notificationPresenter.js'
+import { requestOutboxDispatch } from '../services/outboxDispatcher.js'
+import { enqueueOutboxEvent } from '../services/outboxService.js'
 import { getCurrentPlayer, isPlayerProfileComplete } from '../services/playerService.js'
+import { prisma } from '../lib/prisma.js'
 
 function serializePublicPlayer(player: PublicPlayer) {
   return {
@@ -131,6 +134,7 @@ export function friendRoutes() {
         player: serializePublicPlayer(profile.player),
         badges: profile.badges,
         stats: profile.stats,
+        headToHead: profile.headToHead,
       })
     } catch (error) {
       next(error instanceof FriendServiceError ? friendServiceErrorToApiError(error) : error)
@@ -157,18 +161,41 @@ export function friendRoutes() {
       const { clerkUserId } = getRequiredAuth(req)
       const player = await getCompleteCurrentPlayer(clerkUserId)
       const payload = parseFriendRequestPayload(req.body)
-      const request = await sendFriendRequest(player.id, payload.receiverPlayerId)
-      const notification = await createNotification({
-        playerId: request.player.id,
-        actorPlayerId: player.id,
-        type: 'friend_request_received',
-        title: `${player.name} vous a envoye une demande d'ami.`,
-        href: '/amis?filter=incoming',
-        dedupeKey: friendRequestNotificationKey(request.id),
+      const request = await prisma.$transaction(async (tx) => {
+        const createdRequest = await sendFriendRequestInTransaction(tx, player.id, payload.receiverPlayerId)
+        const notification = await createNotification({
+          playerId: createdRequest.player.id,
+          actorPlayerId: player.id,
+          type: 'friend_request_received',
+          title: `${player.name} vous a envoye une demande d'ami.`,
+          href: '/amis?filter=incoming',
+          dedupeKey: friendRequestNotificationKey(createdRequest.id),
+        }, tx)
+        const serializedNotification = serializeNotification(notification)
+
+        await enqueueOutboxEvent(tx, {
+          dedupeKey: `friend-request:${createdRequest.id}:social:${randomUUID()}`,
+          topic: 'social.changed',
+          aggregateType: 'friend_request',
+          aggregateId: createdRequest.id,
+          payload: { playerIds: [player.id, createdRequest.player.id], reason: 'friend_request_sent' },
+        })
+        await enqueueOutboxEvent(tx, {
+          dedupeKey: `friend-request:${createdRequest.id}:notification:${randomUUID()}`,
+          topic: 'notification.created',
+          aggregateType: 'friend_request',
+          aggregateId: createdRequest.id,
+          payload: {
+            playerId: createdRequest.player.id,
+            reason: 'notification_created',
+            notification: serializedNotification,
+          },
+        })
+
+        return createdRequest
       })
 
-      emitSocialChanged([player.id, request.player.id], 'friend_request_sent')
-      emitNotificationCreated(request.player.id, 'notification_created', serializeNotification(notification))
+      requestOutboxDispatch()
       res.status(201).json({ request: serializeFriendRequest(request) })
     } catch (error) {
       next(error instanceof FriendServiceError ? friendServiceErrorToApiError(error) : error)
@@ -179,22 +206,55 @@ export function friendRoutes() {
     try {
       const { clerkUserId } = getRequiredAuth(req)
       const player = await getCompleteCurrentPlayer(clerkUserId)
-      const friend = await acceptFriendRequest(player.id, req.params.requestId)
-      const notificationDismissed = await dismissNotificationByDedupeKey(player.id, friendRequestNotificationKey(req.params.requestId))
-      const notification = await createNotification({
-        playerId: friend.id,
-        actorPlayerId: player.id,
-        type: 'friend_request_accepted',
-        title: `${player.name} a accepte votre demande d'ami.`,
-        href: '/amis?filter=friend',
-        dedupeKey: friendAcceptedNotificationKey(req.params.requestId),
+      const friend = await prisma.$transaction(async (tx) => {
+        const acceptedFriend = await acceptFriendRequestInTransaction(tx, player.id, req.params.requestId)
+        const dismissed = await dismissNotificationByDedupeKey(
+          player.id,
+          friendRequestNotificationKey(req.params.requestId),
+          tx,
+        )
+        const notification = await createNotification({
+          playerId: acceptedFriend.id,
+          actorPlayerId: player.id,
+          type: 'friend_request_accepted',
+          title: `${player.name} a accepte votre demande d'ami.`,
+          href: '/amis?filter=friend',
+          dedupeKey: friendAcceptedNotificationKey(req.params.requestId),
+        }, tx)
+        const serializedNotification = serializeNotification(notification)
+
+        await enqueueOutboxEvent(tx, {
+          dedupeKey: `friend-request:${req.params.requestId}:accepted-social:${randomUUID()}`,
+          topic: 'social.changed',
+          aggregateType: 'friend_request',
+          aggregateId: req.params.requestId,
+          payload: { playerIds: [player.id, acceptedFriend.id], reason: 'friend_request_accepted' },
+        })
+        await enqueueOutboxEvent(tx, {
+          dedupeKey: `friend-request:${req.params.requestId}:accepted-notification:${randomUUID()}`,
+          topic: 'notification.created',
+          aggregateType: 'friend_request',
+          aggregateId: req.params.requestId,
+          payload: {
+            playerId: acceptedFriend.id,
+            reason: 'notification_created',
+            notification: serializedNotification,
+          },
+        })
+        if (dismissed) {
+          await enqueueOutboxEvent(tx, {
+            dedupeKey: `friend-request:${req.params.requestId}:dismissed-notification:${randomUUID()}`,
+            topic: 'notifications.changed',
+            aggregateType: 'friend_request',
+            aggregateId: req.params.requestId,
+            payload: { playerIds: [player.id], reason: 'notification_dismissed' },
+          })
+        }
+
+        return acceptedFriend
       })
 
-      emitSocialChanged([player.id, friend.id], 'friend_request_accepted')
-      emitNotificationCreated(friend.id, 'notification_created', serializeNotification(notification))
-      if (notificationDismissed) {
-        emitNotificationsChanged([player.id], 'notification_dismissed')
-      }
+      requestOutboxDispatch()
       res.json({ friend: serializePublicPlayer(friend) })
     } catch (error) {
       next(error instanceof FriendServiceError ? friendServiceErrorToApiError(error) : error)
@@ -205,13 +265,33 @@ export function friendRoutes() {
     try {
       const { clerkUserId } = getRequiredAuth(req)
       const player = await getCompleteCurrentPlayer(clerkUserId)
-      const declinedPlayer = await declineFriendRequest(player.id, req.params.requestId)
-      const notificationDismissed = await dismissNotificationByDedupeKey(player.id, friendRequestNotificationKey(req.params.requestId))
+      const declinedPlayer = await prisma.$transaction(async (tx) => {
+        const declined = await declineFriendRequestInTransaction(tx, player.id, req.params.requestId)
+        const dismissed = await dismissNotificationByDedupeKey(
+          player.id,
+          friendRequestNotificationKey(req.params.requestId),
+          tx,
+        )
+        await enqueueOutboxEvent(tx, {
+          dedupeKey: `friend-request:${req.params.requestId}:declined-social:${randomUUID()}`,
+          topic: 'social.changed',
+          aggregateType: 'friend_request',
+          aggregateId: req.params.requestId,
+          payload: { playerIds: [player.id, declined.id], reason: 'friend_request_declined' },
+        })
+        if (dismissed) {
+          await enqueueOutboxEvent(tx, {
+            dedupeKey: `friend-request:${req.params.requestId}:declined-notification:${randomUUID()}`,
+            topic: 'notifications.changed',
+            aggregateType: 'friend_request',
+            aggregateId: req.params.requestId,
+            payload: { playerIds: [player.id], reason: 'notification_dismissed' },
+          })
+        }
+        return declined
+      })
 
-      emitSocialChanged([player.id, declinedPlayer.id], 'friend_request_declined')
-      if (notificationDismissed) {
-        emitNotificationsChanged([player.id], 'notification_dismissed')
-      }
+      requestOutboxDispatch()
       res.json({ player: serializePublicPlayer(declinedPlayer) })
     } catch (error) {
       next(error instanceof FriendServiceError ? friendServiceErrorToApiError(error) : error)
@@ -222,13 +302,33 @@ export function friendRoutes() {
     try {
       const { clerkUserId } = getRequiredAuth(req)
       const player = await getCompleteCurrentPlayer(clerkUserId)
-      const cancelledPlayer = await cancelFriendRequest(player.id, req.params.requestId)
-      const notificationDismissed = await dismissNotificationByDedupeKey(cancelledPlayer.id, friendRequestNotificationKey(req.params.requestId))
+      const cancelledPlayer = await prisma.$transaction(async (tx) => {
+        const cancelled = await cancelFriendRequestInTransaction(tx, player.id, req.params.requestId)
+        const dismissed = await dismissNotificationByDedupeKey(
+          cancelled.id,
+          friendRequestNotificationKey(req.params.requestId),
+          tx,
+        )
+        await enqueueOutboxEvent(tx, {
+          dedupeKey: `friend-request:${req.params.requestId}:cancelled-social:${randomUUID()}`,
+          topic: 'social.changed',
+          aggregateType: 'friend_request',
+          aggregateId: req.params.requestId,
+          payload: { playerIds: [player.id, cancelled.id], reason: 'friend_request_cancelled' },
+        })
+        if (dismissed) {
+          await enqueueOutboxEvent(tx, {
+            dedupeKey: `friend-request:${req.params.requestId}:cancelled-notification:${randomUUID()}`,
+            topic: 'notifications.changed',
+            aggregateType: 'friend_request',
+            aggregateId: req.params.requestId,
+            payload: { playerIds: [cancelled.id], reason: 'notification_dismissed' },
+          })
+        }
+        return cancelled
+      })
 
-      emitSocialChanged([player.id, cancelledPlayer.id], 'friend_request_cancelled')
-      if (notificationDismissed) {
-        emitNotificationsChanged([cancelledPlayer.id], 'notification_dismissed')
-      }
+      requestOutboxDispatch()
       res.json({ player: serializePublicPlayer(cancelledPlayer) })
     } catch (error) {
       next(error instanceof FriendServiceError ? friendServiceErrorToApiError(error) : error)
@@ -240,8 +340,17 @@ export function friendRoutes() {
       const { clerkUserId } = getRequiredAuth(req)
       const player = await getCompleteCurrentPlayer(clerkUserId)
 
-      await removeFriend(player.id, req.params.friendId)
-      emitSocialChanged([player.id, req.params.friendId], 'friend_removed')
+      await prisma.$transaction(async (tx) => {
+        await removeFriendInTransaction(tx, player.id, req.params.friendId)
+        await enqueueOutboxEvent(tx, {
+          dedupeKey: `friendship:${[player.id, req.params.friendId].sort().join(':')}:removed:${randomUUID()}`,
+          topic: 'social.changed',
+          aggregateType: 'friendship',
+          aggregateId: [player.id, req.params.friendId].sort().join(':'),
+          payload: { playerIds: [player.id, req.params.friendId], reason: 'friend_removed' },
+        })
+      })
+      requestOutboxDispatch()
       res.status(204).send()
     } catch (error) {
       next(error instanceof FriendServiceError ? friendServiceErrorToApiError(error) : error)

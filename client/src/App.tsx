@@ -1,16 +1,18 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
-import { Link, Navigate, Route, Routes } from 'react-router-dom'
+import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { AppShell } from './components/layout/AppShell'
 import { ProtectedRoute } from './components/ProtectedRoute'
+import { RouteContentReady } from './components/RouteContentReady'
 import { TimeZonePrompt } from './components/TimeZonePrompt'
 import { useAuth } from './context/auth'
 import { useProfile } from './context/profile-context'
+import { NotificationCenter } from './features/notifications/NotificationCenter'
 import { usePresenceActivity } from './hooks/usePresenceActivity'
 import { useRealtimeEvents } from './hooks/useRealtimeEvents'
-import { DASHBOARD_CACHE_PREFIX, readCache, SOCIAL_CACHE_PREFIX, userCacheKey, writeCache } from './lib/appCache'
-import { api, ApiRequestError, type DashboardData, type FriendRequestData, type NotificationData, type PresenceStatus, type PublicPlayer } from './lib/api'
+import { api, ApiRequestError, type NotificationData, type PresenceStatus } from './lib/api'
 import { formatDisplayName } from './lib/profile'
+import { DEFAULT_AUTHENTICATED_ROUTE } from './lib/routes'
 import { HomePage } from './pages/HomePage'
 
 const DashboardPage = lazy(() => import('./pages/DashboardPage').then((module) => ({ default: module.DashboardPage })))
@@ -21,12 +23,6 @@ const LoginPage = lazy(() => import('./pages/LoginPage').then((module) => ({ def
 const MultiplayerGamePage = lazy(() => import('./pages/MultiplayerGamePage').then((module) => ({ default: module.MultiplayerGamePage })))
 const ProfileSettingsPage = lazy(() => import('./pages/ProfileSettingsPage').then((module) => ({ default: module.ProfileSettingsPage })))
 const RegisterPage = lazy(() => import('./pages/RegisterPage').then((module) => ({ default: module.RegisterPage })))
-
-type SocialOverview = {
-  friends: PublicPlayer[]
-  incoming: FriendRequestData[]
-  outgoing: FriendRequestData[]
-}
 
 type FloatingToast = {
   id: string
@@ -44,13 +40,6 @@ type ToastEventDetail = {
   variant?: 'error' | 'info' | 'success'
 }
 
-function formatNotificationDate(value: string) {
-  return new Intl.DateTimeFormat('fr-FR', {
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(value))
-}
-
 function reportBackgroundError(context: string, error: unknown) {
   if (error instanceof ApiRequestError && (error.status === 401 || error.code === 'profile_incomplete')) {
     return
@@ -61,18 +50,11 @@ function reportBackgroundError(context: string, error: unknown) {
   }
 }
 
-function BellIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <path d="M18 16v-5a6 6 0 0 0-12 0v5l-2 2h16l-2-2Z" />
-      <path d="M9.5 20a2.5 2.5 0 0 0 5 0" />
-    </svg>
-  )
-}
-
 function App() {
   const { user, isAuthenticated, logout, getToken } = useAuth()
   const { profile, updateProfilePresence } = useProfile()
+  const location = useLocation()
+  const [readyRouteKey, setReadyRouteKey] = useState<string | null>(null)
   const [notifications, setNotifications] = useState<NotificationData[]>([])
   const [unreadNotifications, setUnreadNotifications] = useState(0)
   const [notificationPanelOpen, setNotificationPanelOpen] = useState(false)
@@ -84,6 +66,11 @@ function App() {
   const displayUser = profile ?? user
   const displayName = formatDisplayName(displayUser)
   const presenceStatus = displayUser?.presenceStatus ?? 'offline'
+  const routeContentReady = readyRouteKey === location.key
+
+  const handleRouteContentReady = useCallback((routeKey: string) => {
+    setReadyRouteKey(routeKey)
+  }, [])
 
   const addFloatingToast = useCallback((toast: FloatingToast) => {
     setFloatingToasts((current) => {
@@ -158,8 +145,9 @@ function App() {
   }, [addFloatingToast])
 
   const realtime = useRealtimeEvents({
-    isAuthenticated: Boolean(isAuthenticated && profile?.profileComplete),
+    isAuthenticated: Boolean(isAuthenticated && profile?.profileComplete && routeContentReady),
     getToken,
+    connectionPriority: 'background',
     onPresenceChanged: (payload) => updateProfilePresence(payload.player),
     onPresenceVisibilityChanged: (payload) => setPresenceHidden(payload.hidden),
     onNotificationsChanged: (payload) => {
@@ -232,40 +220,6 @@ function App() {
     const timers = floatingToasts.map((toast) => window.setTimeout(() => dismissFloatingToast(toast.id), 6500))
     return () => timers.forEach((timer) => window.clearTimeout(timer))
   }, [dismissFloatingToast, floatingToasts])
-
-  useEffect(() => {
-    if (!isAuthenticated || !profile?.profileComplete) {
-      return
-    }
-
-    const dashboardCacheKey = userCacheKey(DASHBOARD_CACHE_PREFIX, profile.clerkUserId)
-    const socialCacheKey = userCacheKey(SOCIAL_CACHE_PREFIX, profile.clerkUserId)
-    const schedule =
-      'requestIdleCallback' in window
-        ? window.requestIdleCallback.bind(window)
-        : (callback: IdleRequestCallback) => window.setTimeout(() => callback({ didTimeout: false, timeRemaining: () => 0 }), 100)
-    const cancel =
-      'cancelIdleCallback' in window
-        ? window.cancelIdleCallback.bind(window)
-        : (handle: number) => window.clearTimeout(handle)
-    const handle = schedule(() => {
-      const path = window.location.pathname
-
-      if (path !== '/dashboard' && !readCache<DashboardData>(dashboardCacheKey)) {
-        void api.getDashboard(getToken).then((payload) => writeCache(dashboardCacheKey, payload)).catch((error) => {
-          reportBackgroundError('Prechargement du tableau de bord impossible.', error)
-        })
-      }
-
-      if (path !== '/amis' && !readCache<SocialOverview>(socialCacheKey)) {
-        void api.getSocialOverview(getToken).then((payload) => writeCache(socialCacheKey, payload)).catch((error) => {
-          reportBackgroundError('Prechargement social impossible.', error)
-        })
-      }
-    })
-
-    return () => cancel(handle)
-  }, [getToken, isAuthenticated, profile?.clerkUserId, profile?.profileComplete])
 
   function handleLogout() {
     void logout()
@@ -376,75 +330,9 @@ function App() {
     )
   }
 
-  function renderNotificationCenter() {
-    return (
-      <div className="notification-center">
-        <button
-          className="notification-bell-button"
-          type="button"
-          aria-label="Centre de notifications"
-          aria-expanded={notificationPanelOpen}
-          onClick={() => setNotificationPanelOpen((current) => !current)}
-        >
-          <BellIcon />
-          {unreadNotifications > 0 ? <span className="notification-badge">{unreadNotifications > 9 ? '9+' : unreadNotifications}</span> : null}
-        </button>
-
-        {notificationPanelOpen ? (
-          <div className="notification-panel">
-            <div className="notification-panel-heading">
-              <strong>Notifications</strong>
-              <button type="button" disabled={!unreadNotifications} onClick={() => void handleMarkAllNotificationsRead()}>
-                Tout lu
-              </button>
-            </div>
-
-            {notifications.length ? (
-              <div className="notification-list">
-                {notifications.map((notification) => {
-                  const content = (
-                    <>
-                      <span className="notification-item-title">{notification.title}</span>
-                      {notification.body ? <span className="notification-item-body">{notification.body}</span> : null}
-                      <span className="notification-item-time">{formatNotificationDate(notification.createdAt)}</span>
-                    </>
-                  )
-
-                  return (
-                    <article key={notification.id} className={`notification-item ${notification.readAt ? '' : 'unread'}`}>
-                      {notification.href ? (
-                        <Link className="notification-item-content" to={notification.href} onClick={() => void handleMarkNotificationRead(notification)}>
-                          {content}
-                        </Link>
-                      ) : (
-                        <button className="notification-item-content" type="button" onClick={() => void handleMarkNotificationRead(notification)}>
-                          {content}
-                        </button>
-                      )}
-                      <button
-                        className="notification-delete-button"
-                        type="button"
-                        aria-label="Supprimer la notification"
-                        onClick={() => void handleDeleteNotification(notification.id)}
-                      >
-                        x
-                      </button>
-                    </article>
-                  )
-                })}
-              </div>
-            ) : (
-              <div className="notification-empty">Aucune notification.</div>
-            )}
-          </div>
-        ) : null}
-      </div>
-    )
-  }
-
   const routes = (
     <Routes>
-      <Route path="/" element={isAuthenticated ? <Navigate replace to="/dashboard" /> : <HomePage />} />
+      <Route path="/" element={isAuthenticated ? <Navigate replace to={DEFAULT_AUTHENTICATED_ROUTE} /> : <HomePage />} />
       <Route path="/connexion/*" element={<LoginPage />} />
       <Route path="/inscription/*" element={<RegisterPage />} />
       <Route
@@ -506,13 +394,26 @@ function App() {
         authenticated={isAuthenticated}
         displayName={displayName}
         displayUser={displayUser}
-        notificationsSlot={isAuthenticated ? renderNotificationCenter() : null}
+        notificationsSlot={isAuthenticated ? (
+          <NotificationCenter
+            notifications={notifications}
+            unreadCount={unreadNotifications}
+            open={notificationPanelOpen}
+            onToggle={() => setNotificationPanelOpen((current) => !current)}
+            onMarkRead={(notification) => void handleMarkNotificationRead(notification)}
+            onMarkAllRead={() => void handleMarkAllNotificationsRead()}
+            onDelete={(notificationId) => void handleDeleteNotification(notificationId)}
+          />
+        ) : null}
         presenceSlot={isAuthenticated ? renderPresenceIndicator : undefined}
         onLogout={handleLogout}
       >
         {isAuthenticated ? <TimeZonePrompt /> : null}
         <ErrorBoundary>
-          <Suspense fallback={<div className="page-loading" role="status">Chargement...</div>}>{routes}</Suspense>
+          <Suspense fallback={<div className="page-loading" role="status">Chargement...</div>}>
+            {routes}
+            <RouteContentReady routeKey={location.key} onReady={handleRouteContentReady} />
+          </Suspense>
         </ErrorBoundary>
       </AppShell>
 

@@ -57,7 +57,35 @@
 }
 
 .dashboard-refresh-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
   padding: 14px 16px;
+}
+
+.dashboard-refresh-error button {
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: 7px 16px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  color: inherit;
+  background: #fff;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+@media (max-width: 620px) {
+  .dashboard-refresh-error {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .dashboard-refresh-error button {
+    width: 100%;
+  }
 }
 
 .dashboard-mobile-tabs {
@@ -345,4 +373,3 @@
 .right-align {
   text-align: right;
 }
-

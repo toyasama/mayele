@@ -150,6 +150,73 @@ export type PlayerProgress = {
   isMaxLevel: boolean
 }
 
+export type SoloRunResult = {
+  sessionId: string | null
+  message: string
+  scorePoints: number
+  xpEarned: number
+  missionXpEarned: number
+  completedMissions: Array<{ key: string; title: string; rewardXp: number }>
+  playerProgress: PlayerProgress
+  earnedAchievements: Array<{ key: string; label: string }>
+}
+
+export type SoloRunQuestion = {
+  index: number
+  prompt: string
+  operation: Exclude<AnswerResult['game'], 'mixte'>
+  skill: SkillTag
+  issuedAt: string
+  deadlineAt: string
+}
+
+export type SoloRunProgress = {
+  correctAnswers: number
+  totalQuestions: number
+  scorePoints: number
+  xp: number
+  currentStreak: number
+  bestStreak: number
+}
+
+export type SoloRunAnswer = AnswerResult & {
+  questionIndex: number
+}
+
+export type SoloRunData = {
+  id: string
+  clientRunId: string
+  status: 'active' | 'finalizing' | 'completed' | 'abandoned' | 'expired'
+  mode: ChallengeMode
+  game: AnswerResult['game']
+  level: AnswerResult['level']
+  practiceSkill: SkillTag | null
+  durationSeconds: number
+  questionCount: number
+  perQuestionTimeLimitSeconds: number | null
+  currentQuestionIndex: number
+  startedAt: string
+  endsAt: string
+  expiresAt: string
+  finishedAt: string | null
+  serverNow: string
+  question: SoloRunQuestion | null
+  progress: SoloRunProgress
+  answers: SoloRunAnswer[]
+  result: SoloRunResult | null
+}
+
+export type StartSoloRunPayload = {
+  clientRunId: string
+  mode: ChallengeMode
+  game: AnswerResult['game']
+  level: AnswerResult['level']
+  practiceSkill: SkillTag | null
+  sprintDurationSeconds: 60 | 90 | 120
+  tempoQuestionCount: number
+  tempoQuestionSeconds: number
+}
+
 export type DashboardData = {
   player: AuthUser
   summary: {
@@ -266,6 +333,7 @@ export type DashboardData = {
     averageScore: number
     averageAccuracy: number
     bestStreak: number
+    averageResponseTimeMs?: number
     lastPlayedAt: string | null
   }>
   recentSessions: Array<{
@@ -293,6 +361,18 @@ export type DashboardData = {
   }>
 }
 
+export type DailyObjective = DashboardData['missions'][number]
+
+export type OperationHistorySession = {
+  id: string
+  score: number
+  correctAnswers: number
+  totalQuestions: number
+  bestStreak: number
+  playedAt: string
+  averageResponseTimeMs: number
+}
+
 export type FriendProfileData = {
   player: PublicPlayer
   badges: Array<Pick<DashboardData['badges'][number], 'key' | 'title' | 'family' | 'familyLabel' | 'tier' | 'level'>>
@@ -300,12 +380,60 @@ export type FriendProfileData = {
     byGame: DashboardData['stats']['byGame']
     byLevel: DashboardData['stats']['byLevel']
   }
+  headToHead?: {
+    summary: { wins: number; losses: number; draws: number }
+    recent: Array<{
+      id: string
+      playedAt: string
+      challengeMode: ChallengeMode
+      game: string
+      level: string
+      myScore: number | null
+      friendScore: number | null
+      outcome: 'win' | 'loss' | 'draw'
+    }>
+  }
 }
 
 type TokenProvider = () => Promise<string | null>
 
 type RequestOptions = RequestInit & {
   getToken?: TokenProvider
+}
+
+// React pages and global providers can request the same resource during one
+// navigation. Sharing only the in-flight GET keeps the response fresh while
+// preventing duplicate network/DB work. Entries are removed as soon as the
+// request settles, so this is not a data cache.
+const inFlightGetRequests = new Map<string, Promise<unknown>>()
+const TRANSIENT_GET_RETRY_DELAYS_MS = [250, 750]
+
+function waitBeforeRetry(delayMs: number) {
+  return new Promise<void>((resolve) => window.setTimeout(resolve, delayMs))
+}
+
+function isRetryableGetError(error: unknown) {
+  if (!(error instanceof ApiRequestError)) {
+    return error instanceof Error
+  }
+
+  return error.status === 0 || error.status >= 500
+}
+
+async function executeGetWithRetry<T>(execute: () => Promise<T>) {
+  for (const delayMs of TRANSIENT_GET_RETRY_DELAYS_MS) {
+    try {
+      return await execute()
+    } catch (error) {
+      if (!isRetryableGetError(error)) {
+        throw error
+      }
+
+      await waitBeforeRetry(delayMs)
+    }
+  }
+
+  return execute()
 }
 
 function apiUnavailableMessage() {
@@ -327,29 +455,55 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     throw new ApiRequestError('Session en cours d initialisation.', 0, 'auth_pending')
   }
 
-  let response: Response
+  const execute = async () => {
+    let response: Response
+
+    try {
+      response = await fetch(`${API_BASE}${path}`, {
+        ...rest,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(headers ?? {}),
+        },
+      })
+    } catch {
+      throw new Error(apiUnavailableMessage())
+    }
+
+    const contentType = response.headers.get('content-type') ?? ''
+    const payload = contentType.includes('application/json') ? await response.json() : null
+
+    if (!response.ok) {
+      throw new ApiRequestError(payload?.message ?? 'Une erreur est survenue.', response.status, payload?.code ?? null)
+    }
+
+    return payload as T
+  }
+
+  const method = (rest.method ?? 'GET').toUpperCase()
+  if (method !== 'GET') {
+    return execute()
+  }
+
+  // Scope coalescing to the authenticated session: an in-flight response must
+  // never be shared if the user changes while a request is pending.
+  const requestKey = `${path}\u0000${token ?? 'anonymous'}`
+  const existing = inFlightGetRequests.get(requestKey) as Promise<T> | undefined
+  if (existing) {
+    return existing
+  }
+
+  const pending = executeGetWithRetry(execute)
+  inFlightGetRequests.set(requestKey, pending)
 
   try {
-    response = await fetch(`${API_BASE}${path}`, {
-      ...rest,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(headers ?? {}),
-      },
-    })
-  } catch {
-    throw new Error(apiUnavailableMessage())
+    return await pending
+  } finally {
+    if (inFlightGetRequests.get(requestKey) === pending) {
+      inFlightGetRequests.delete(requestKey)
+    }
   }
-
-  const contentType = response.headers.get('content-type') ?? ''
-  const payload = contentType.includes('application/json') ? await response.json() : null
-
-  if (!response.ok) {
-    throw new ApiRequestError(payload?.message ?? 'Une erreur est survenue.', response.status, payload?.code ?? null)
-  }
-
-  return payload as T
 }
 
 export const api = {
@@ -386,6 +540,21 @@ export const api = {
   getDashboard: (getToken: TokenProvider) =>
     request<DashboardData>('/dashboard', {
       method: 'GET',
+      getToken,
+    }),
+
+  getOperationHistory: (getToken: TokenProvider, game: string, level: string, limit = 20) => {
+    const params = new URLSearchParams({ game, level, limit: String(limit) })
+    return request<{ sessions: OperationHistorySession[] }>(`/dashboard/operation-history?${params}`, {
+      method: 'GET',
+      getToken,
+    })
+  },
+
+  getDailyObjectives: (getToken: TokenProvider) =>
+    request<{ objectives: DailyObjective[] }>('/daily-objectives', {
+      method: 'GET',
+      cache: 'no-store',
       getToken,
     }),
 
@@ -546,29 +715,41 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
-  saveSession: (
-    getToken: TokenProvider,
-    data: {
-      game: string
-      level: string
-      practiceSkill: SkillTag | null
-      totalQuestions: number
-      durationSeconds: number
-      bestStreak: number
-      answers: AnswerResult[]
-    },
-  ) =>
-    request<{
-      message: string
-      scorePoints: number
-      xpEarned: number
-      missionXpEarned: number
-      completedMissions: Array<{ key: string; title: string; rewardXp: number }>
-      playerProgress: PlayerProgress
-      earnedAchievements: Array<{ key: string; label: string }>
-    }>('/sessions', {
+  startSoloRun: (getToken: TokenProvider, data: StartSoloRunPayload) =>
+    request<{ run: SoloRunData }>('/solo-runs', {
       method: 'POST',
       getToken,
       body: JSON.stringify(data),
+    }),
+
+  getActiveSoloRun: (getToken: TokenProvider) =>
+    request<{ run: SoloRunData | null }>('/solo-runs/active', {
+      method: 'GET',
+      cache: 'no-store',
+      getToken,
+    }),
+
+  getSoloRun: (getToken: TokenProvider, runId: string) =>
+    request<{ run: SoloRunData }>(`/solo-runs/${encodeURIComponent(runId)}`, {
+      method: 'GET',
+      cache: 'no-store',
+      getToken,
+    }),
+
+  submitSoloAnswer: (
+    getToken: TokenProvider,
+    runId: string,
+    data: { questionIndex: number; userAnswer: number | null },
+  ) =>
+    request<{ run: SoloRunData; correction: AnswerResult | null }>(`/solo-runs/${encodeURIComponent(runId)}/answers`, {
+      method: 'POST',
+      getToken,
+      body: JSON.stringify(data),
+    }),
+
+  finishSoloRun: (getToken: TokenProvider, runId: string) =>
+    request<{ run: SoloRunData }>(`/solo-runs/${encodeURIComponent(runId)}/finish`, {
+      method: 'POST',
+      getToken,
     }),
 }

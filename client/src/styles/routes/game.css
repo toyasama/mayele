@@ -1,0 +1,6 @@
+/* Shared solo challenge surfaces, deferred until the game route is requested. */
+@import '../game-core.css';
+@import '../sprint-dashboard-refinements.css';
+@import '../challenge-experience.css';
+@import '../solo-results-v2.css';
+@import '../solo-mode-help.css';

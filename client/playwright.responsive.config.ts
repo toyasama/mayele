@@ -51,7 +51,7 @@ export default defineConfig({
     },
     {
       command: `npm run serve:e2e -- --port ${APP_PORT}`,
-      env: e2eClientEnvironment(API_URL),
+      env: { ...e2eClientEnvironment(API_URL), E2E_DIST_DIR: 'dist-responsive' },
       url: APP_URL,
       reuseExistingServer: false,
       timeout: 120_000,

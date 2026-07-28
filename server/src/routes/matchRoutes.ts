@@ -3,20 +3,11 @@ import { ApiError, badRequest } from '../errors.js'
 import { getRequiredAuth } from '../middleware/auth.js'
 import {
   emitMatchSnapshot,
-  emitNotificationCreated,
-  emitNotificationsChanged,
   getInFlightRealtimeMatchSnapshot,
   getPendingRealtimeHeartbeatSnapshot,
   listInFlightRealtimeMatchSnapshots,
 } from '../realtime/notifications.js'
 import { parseMatchResultPayload } from '../schemas/matchSchema.js'
-import {
-  createNotification,
-  dismissNotificationByDedupeKey,
-  matchDeclinedNotificationKey,
-  matchInviteNotificationKey,
-} from '../services/notificationService.js'
-import { serializeNotification } from '../services/notificationPresenter.js'
 import {
   completeChallengeResult,
   declineChallenge,
@@ -27,11 +18,12 @@ import {
   listMatches,
   MatchServiceError,
   transferChallengeHost,
-  type MatchView,
 } from '../services/matchService.js'
 import { listFriends } from '../services/friendService.js'
 import { serializeMatch, serializePublicPlayer, type SerializedMatch } from '../services/matchPresenter.js'
 import { getCurrentPlayer, isPlayerProfileComplete } from '../services/playerService.js'
+import { persistInvitationDeclinedEffects, persistMatchLeftEffects } from '../services/matchOutboxEffects.js'
+import { requestOutboxDispatch } from '../services/outboxDispatcher.js'
 
 async function getCompleteCurrentPlayer(clerkUserId: string) {
   const player = await getCurrentPlayer(clerkUserId)
@@ -41,10 +33,6 @@ async function getCompleteCurrentPlayer(clerkUserId: string) {
   }
 
   return player
-}
-
-function matchOpponent(match: MatchView, playerId: string) {
-  return match.participants.find((participant) => participant.player.id !== playerId)?.player ?? null
 }
 
 function mergeMatchSnapshots(persistedMatches: SerializedMatch[], inFlightMatches: SerializedMatch[]) {
@@ -163,23 +151,14 @@ export function matchRoutes() {
     try {
       const { clerkUserId } = getRequiredAuth(req)
       const player = await getCompleteCurrentPlayer(clerkUserId)
-      const match = await declineChallenge(player.id, req.params.matchId)
-      await dismissNotificationByDedupeKey(player.id, matchInviteNotificationKey(match.id))
-
-      if (match.createdBy.id !== player.id) {
-        const notification = await createNotification({
-          playerId: match.createdBy.id,
-          actorPlayerId: player.id,
-          type: 'match_invite_declined',
-          title: `${player.name} a refuse votre defi.`,
-          href: '/jeu/multijoueur',
-          dedupeKey: matchDeclinedNotificationKey(match.id),
-        })
-        emitNotificationCreated(match.createdBy.id, 'notification_created', serializeNotification(notification))
-      }
+      const match = await declineChallenge(
+        player.id,
+        req.params.matchId,
+        (tx, persistedMatch) => persistInvitationDeclinedEffects(tx, persistedMatch, player.id),
+      )
 
       emitMatchSnapshot(match, 'match_declined')
-      emitNotificationsChanged([player.id], 'notification_dismissed')
+      requestOutboxDispatch()
       res.json({ match: serializeMatch(match) })
     } catch (error) {
       next(error instanceof MatchServiceError ? matchServiceErrorToApiError(error) : error)
@@ -255,17 +234,14 @@ export function matchRoutes() {
     try {
       const { clerkUserId } = getRequiredAuth(req)
       const player = await getCompleteCurrentPlayer(clerkUserId)
-      const match = await leaveChallenge(player.id, req.params.matchId)
-      const opponent = matchOpponent(match, player.id)
-
-      await dismissNotificationByDedupeKey(player.id, matchInviteNotificationKey(match.id))
-      if (opponent) {
-        await dismissNotificationByDedupeKey(opponent.id, matchInviteNotificationKey(match.id))
-        emitNotificationsChanged([opponent.id], 'notification_dismissed')
-      }
+      const match = await leaveChallenge(
+        player.id,
+        req.params.matchId,
+        (tx, persistedMatch) => persistMatchLeftEffects(tx, persistedMatch),
+      )
 
       emitMatchSnapshot(match, 'match_left')
-      emitNotificationsChanged([player.id], 'notification_dismissed')
+      requestOutboxDispatch()
       res.json({ match: serializeMatch(match) })
     } catch (error) {
       next(error instanceof MatchServiceError ? matchServiceErrorToApiError(error) : error)

@@ -1,0 +1,537 @@
+.multiplayer-page.multiplayer-view-lobby {
+  width: min(100%, 1180px);
+}
+
+.multiplayer-view-lobby .multiplayer-lobby-grid {
+  grid-template-columns: minmax(0, 1.45fr) minmax(290px, 0.72fr);
+  gap: clamp(16px, 2.5vw, 28px);
+}
+
+.multiplayer-view-lobby .multiplayer-arena-hub,
+.multiplayer-view-lobby .multiplayer-challenge-list {
+  position: relative;
+  overflow: hidden;
+  padding: clamp(22px, 3vw, 34px);
+  border: 1px solid rgba(180, 212, 218, 0.72);
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.76);
+  box-shadow: 0 22px 54px rgba(7, 20, 38, 0.09);
+}
+
+.multiplayer-view-lobby .multiplayer-arena-hub::before {
+  content: '';
+  position: absolute;
+  top: -120px;
+  right: -100px;
+  width: 290px;
+  height: 290px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(241, 238, 75, 0.28), rgba(20, 184, 166, 0.1) 45%, transparent 70%);
+  pointer-events: none;
+  animation: multiplayerOrbFloat 8s ease-in-out infinite;
+}
+
+.multiplayer-view-lobby .multiplayer-lobby-card {
+  width: 100%;
+  gap: 20px;
+}
+
+.multiplayer-view-lobby .multiplayer-lobby-title-row {
+  position: relative;
+  z-index: 1;
+  align-items: flex-end;
+}
+
+.multiplayer-view-lobby .multiplayer-lobby-card h1 {
+  margin: 6px 0 0;
+  font-size: clamp(2.4rem, 5vw, 4.5rem);
+  line-height: 0.92;
+  letter-spacing: -0.045em;
+}
+
+.multiplayer-view-lobby .multiplayer-lobby-card .primary-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding-inline: 18px 22px;
+  background: linear-gradient(135deg, #06324f, #0aa38f 60%, #55c95f);
+  box-shadow: 0 16px 30px rgba(6, 50, 79, 0.18);
+}
+
+.multiplayer-view-lobby .multiplayer-lobby-card .primary-button > span {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.multiplayer-lobby-pulse {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.multiplayer-lobby-pulse > span {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 11px;
+  border: 1px solid rgba(180, 212, 218, 0.7);
+  border-radius: 999px;
+  background: rgba(247, 252, 252, 0.78);
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.multiplayer-lobby-pulse strong {
+  color: var(--text);
+}
+
+.presence-dot {
+  width: 8px;
+  height: 8px;
+  display: inline-block;
+  border-radius: 50%;
+  background: #94a3b8;
+  box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.13);
+}
+
+.presence-dot.online {
+  background: #22c55e;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.14);
+}
+
+.presence-dot.away {
+  background: #f4c84a;
+  box-shadow: 0 0 0 3px rgba(244, 200, 74, 0.14);
+}
+
+.multiplayer-view-lobby .multiplayer-direct-challenges {
+  width: 100%;
+  gap: 12px;
+}
+
+.multiplayer-view-lobby .multiplayer-direct-list {
+  max-height: 315px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  overflow: auto;
+  gap: 10px;
+  padding: 2px 4px 4px 2px;
+}
+
+.multiplayer-view-lobby .multiplayer-direct-list button {
+  min-height: 74px;
+  grid-template-columns: 46px minmax(0, 1fr) auto;
+  border-radius: 17px;
+  background: rgba(247, 252, 252, 0.72);
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.multiplayer-view-lobby .multiplayer-direct-list button:hover:not(:disabled) {
+  border-color: rgba(10, 159, 143, 0.42);
+  background: #ffffff;
+  box-shadow: 0 14px 26px rgba(7, 20, 38, 0.08);
+  transform: translateY(-2px);
+}
+
+.multiplayer-direct-avatar-shell {
+  position: relative;
+}
+
+.multiplayer-direct-avatar-shell .multiplayer-direct-avatar {
+  width: 46px;
+  height: 46px;
+}
+
+.multiplayer-direct-avatar-shell .presence-dot {
+  position: absolute;
+  right: 0;
+  bottom: 1px;
+  border: 2px solid #ffffff;
+  box-sizing: content-box;
+}
+
+.multiplayer-view-lobby .multiplayer-challenge-list {
+  min-height: 430px;
+  align-content: start;
+  padding-top: clamp(22px, 3vw, 34px);
+}
+
+.multiplayer-view-lobby .multiplayer-challenge-list.has-invitations {
+  border-color: rgba(10, 159, 143, 0.35);
+  background:
+    radial-gradient(circle at 90% 6%, rgba(241, 238, 75, 0.19), transparent 30%),
+    rgba(255, 255, 255, 0.82);
+}
+
+.multiplayer-invitation-stack {
+  display: grid;
+  gap: 11px;
+}
+
+.multiplayer-view-lobby .multiplayer-invitation-item {
+  grid-template-columns: 1fr;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid rgba(180, 212, 218, 0.72);
+  border-radius: 18px;
+  background: rgba(247, 252, 252, 0.72);
+}
+
+.multiplayer-view-lobby .multiplayer-invitation-open {
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.multiplayer-view-lobby .multiplayer-invitation-open:hover {
+  background: transparent;
+}
+
+.multiplayer-invitation-avatar {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--primary-dark);
+  color: #ffffff;
+  font-size: 0.78rem;
+  font-weight: 950;
+}
+
+.multiplayer-view-lobby .multiplayer-invitation-open > span:nth-child(2) {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.multiplayer-view-lobby .multiplayer-invitation-open small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.77rem;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.multiplayer-view-lobby .multiplayer-invitation-open em {
+  color: var(--primary-dark);
+  font-size: 0.78rem;
+  font-style: normal;
+  font-weight: 950;
+}
+
+.multiplayer-view-lobby .multiplayer-invitation-decline {
+  min-height: 34px;
+  padding: 5px 10px;
+  border: 0;
+  background: transparent;
+  text-align: right;
+}
+
+.multiplayer-inbox-empty {
+  min-height: 240px;
+  display: grid;
+  grid-template-columns: auto minmax(44px, 1fr) auto;
+  place-items: center;
+  gap: 10px;
+  opacity: 0.58;
+}
+
+.multiplayer-inbox-empty span {
+  width: 58px;
+  height: 58px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(180, 212, 218, 0.82);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.75);
+  color: var(--primary-dark);
+  font-size: 0.9rem;
+  font-weight: 950;
+}
+
+.multiplayer-inbox-empty i {
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, rgba(10, 159, 143, 0.2), rgba(10, 159, 143, 0.72), rgba(10, 159, 143, 0.2));
+}
+
+.multiplayer-config-stage {
+  display: grid;
+  gap: 20px;
+}
+
+.multiplayer-config-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.multiplayer-config-heading h2 {
+  margin: 5px 0 0;
+  color: var(--text);
+  font-size: clamp(1.8rem, 3.5vw, 3rem);
+  line-height: 0.98;
+}
+
+.multiplayer-config-progress {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.multiplayer-config-progress i {
+  width: 22px;
+  height: 7px;
+  border-radius: 999px;
+  background: #dcebed;
+  transition: background 180ms ease, transform 180ms ease;
+}
+
+.multiplayer-config-progress i.is-complete {
+  background: linear-gradient(90deg, var(--primary), #4ac45f);
+  transform: scaleY(1.25);
+}
+
+.multiplayer-config-progress strong {
+  min-width: 36px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-align: right;
+}
+
+.multiplayer-config-recap {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 9px;
+  border: 1px solid rgba(180, 212, 218, 0.68);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.46);
+}
+
+.multiplayer-config-recap > span {
+  min-width: 0;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 850;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.multiplayer-config-recap > span.is-selected {
+  background: rgba(10, 159, 143, 0.1);
+  color: var(--primary-dark);
+}
+
+.multiplayer-config-recap small {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(100, 116, 139, 0.12);
+  font-size: 0.68rem;
+}
+
+.multiplayer-config-recap .is-selected small {
+  background: var(--primary);
+  color: #ffffff;
+}
+
+.multiplayer-config-stage .multiplayer-config-board {
+  display: grid;
+  gap: clamp(20px, 3vw, 30px);
+}
+
+.multiplayer-config-stage .multiplayer-config-mode .segment {
+  min-height: 66px;
+  display: grid;
+  align-content: center;
+  gap: 3px;
+  border-radius: 18px;
+}
+
+.multiplayer-config-stage .multiplayer-config-mode .segment strong {
+  font-size: 0.95rem;
+}
+
+.multiplayer-config-stage .multiplayer-config-mode .segment small {
+  font-size: 0.68rem;
+  font-weight: 750;
+  opacity: 0.72;
+}
+
+.multiplayer-config-stage .challenge-choice-tile.active,
+.multiplayer-config-stage .challenge-choice-tile.active > span {
+  color: #ffffff;
+}
+
+.multiplayer-config-stage .challenge-level-tile.active .challenge-level-dots .filled {
+  background: #7ce5d7;
+}
+
+.multiplayer-config-stage .multiplayer-rule-panel {
+  min-height: 78px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  border: 1px solid rgba(180, 212, 218, 0.68);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.48);
+}
+
+.multiplayer-config-stage .multiplayer-rule-panel label {
+  flex: 1;
+  grid-template-columns: minmax(100px, auto) minmax(120px, 1fr);
+}
+
+.multiplayer-rule-placeholder {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+}
+
+.multiplayer-rule-placeholder > span {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(10, 159, 143, 0.1);
+  color: var(--primary-dark);
+  font-size: 1.2rem;
+}
+
+.multiplayer-view-room .multiplayer-control-card > .primary-room-action {
+  width: 100%;
+  justify-self: stretch;
+  min-height: 56px;
+}
+
+@keyframes multiplayerOrbFloat {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(-18px, 14px, 0) scale(1.05); }
+}
+
+.multiplayer-sync-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.multiplayer-sync-error button {
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: 7px 16px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  color: inherit;
+  background: #fff;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.multiplayer-sync-error button:hover {
+  background: rgba(255, 255, 255, 0.55);
+}
+
+@media (max-width: 900px) {
+  .multiplayer-view-lobby .multiplayer-lobby-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .multiplayer-view-lobby .multiplayer-challenge-list {
+    min-height: 260px;
+  }
+}
+
+@media (max-width: 620px) {
+  .multiplayer-sync-error {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .multiplayer-sync-error button {
+    width: 100%;
+  }
+
+  .multiplayer-view-lobby .multiplayer-arena-hub,
+  .multiplayer-view-lobby .multiplayer-challenge-list {
+    padding: 18px;
+    border-radius: 20px;
+  }
+
+  .multiplayer-view-lobby .multiplayer-lobby-title-row {
+    align-items: stretch;
+  }
+
+  .multiplayer-view-lobby .multiplayer-lobby-card .primary-button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .multiplayer-view-lobby .multiplayer-direct-list {
+    grid-template-columns: 1fr;
+  }
+
+  .multiplayer-view-lobby .multiplayer-direct-avatar-shell {
+    width: 46px;
+  }
+
+  .multiplayer-config-heading {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .multiplayer-config-recap {
+    grid-template-columns: 1fr;
+  }
+
+  .multiplayer-config-stage .multiplayer-rule-panel {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .multiplayer-config-stage .multiplayer-rule-panel label {
+    width: 100%;
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .multiplayer-view-lobby .multiplayer-arena-hub::before {
+    animation: none;
+  }
+
+  .multiplayer-view-lobby .multiplayer-direct-list button,
+  .multiplayer-config-progress i {
+    transition: none;
+  }
+}

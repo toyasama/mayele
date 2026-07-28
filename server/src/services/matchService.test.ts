@@ -120,6 +120,7 @@ const prismaMock = {
     findMany: vi.fn(),
     findFirst: vi.fn(),
     findUnique: vi.fn(),
+    findUniqueOrThrow: vi.fn(),
     update: vi.fn(),
     updateMany: vi.fn(),
     updateManyAndReturn: vi.fn(),
@@ -162,6 +163,7 @@ const {
   requestChallengeRematch,
   startChallengeProposal,
   submitTempoQuestionAnswer,
+  submitSprintQuestionAnswer,
   transferChallengeHost,
   updateChallengeConfig,
 } = await import('./matchService.js')
@@ -175,6 +177,7 @@ describe('matchService', () => {
     prismaMock.match.updateMany.mockResolvedValue({ count: 0 })
     prismaMock.match.updateManyAndReturn.mockResolvedValue([])
     prismaMock.match.findMany.mockResolvedValue([])
+    prismaMock.matchParticipant.updateMany.mockResolvedValue({ count: 1 })
     prismaMock.matchQuestionAnswer.findMany.mockResolvedValue([])
     prismaMock.matchQuestionAnswer.upsert.mockResolvedValue({})
     saveSessionMock.mockResolvedValue({
@@ -332,9 +335,9 @@ describe('matchService', () => {
 
   it('accepte une invitation pendante', async () => {
     prismaMock.match.findFirst.mockResolvedValueOnce(makeMatch())
-    prismaMock.matchParticipant.updateMany.mockResolvedValueOnce({ count: 1 })
-    prismaMock.match.update.mockResolvedValueOnce({})
-    prismaMock.match.findFirst.mockResolvedValueOnce(makeMatch({ status: 'accepted' }))
+    prismaMock.match.updateMany.mockResolvedValueOnce({ count: 1 })
+    prismaMock.matchParticipant.update.mockResolvedValueOnce({})
+    prismaMock.match.findUniqueOrThrow.mockResolvedValueOnce(makeAcceptedMatch())
 
     const match = await acceptChallenge('player_b', 'match_1')
 
@@ -347,16 +350,16 @@ describe('matchService', () => {
 
   it('refuse une invitation pendante et annule le match', async () => {
     prismaMock.match.findFirst.mockResolvedValueOnce(makeMatch())
+    prismaMock.match.updateMany.mockResolvedValueOnce({ count: 1 })
     prismaMock.matchParticipant.update.mockResolvedValueOnce({})
-    prismaMock.match.update.mockResolvedValueOnce(makeMatch({ status: 'cancelled', finishedAt: new Date('2026-07-07T10:02:00.000Z') }))
+    prismaMock.match.findUniqueOrThrow.mockResolvedValueOnce(makeMatch({ status: 'cancelled', finishedAt: new Date('2026-07-07T10:02:00.000Z') }))
 
     const match = await declineChallenge('player_b', 'match_1')
 
     expect(match.status).toBe('cancelled')
-    expect(prismaMock.match.update).toHaveBeenCalledWith({
-      where: { id: 'match_1' },
+    expect(prismaMock.match.updateMany).toHaveBeenCalledWith({
+      where: { id: 'match_1', status: 'pending', expiresAt: { gt: expect.any(Date) } },
       data: { status: 'cancelled', finishedAt: expect.any(Date) },
-      include: expect.any(Object),
     })
   })
 
@@ -368,9 +371,9 @@ describe('matchService', () => {
 
   it("accepte l'invitation meme si le heartbeat du maitre a ete ralenti", async () => {
     prismaMock.match.findFirst.mockResolvedValueOnce(makeMatch({ hostActiveAt: new Date(Date.now() - 3 * 60 * 1000) }))
+    prismaMock.match.updateMany.mockResolvedValueOnce({ count: 1 })
     prismaMock.matchParticipant.update.mockResolvedValueOnce({})
-    prismaMock.match.update.mockResolvedValueOnce({})
-    prismaMock.match.findFirst.mockResolvedValueOnce(makeMatch({ status: 'accepted' }))
+    prismaMock.match.findUniqueOrThrow.mockResolvedValueOnce(makeAcceptedMatch())
 
     const match = await acceptChallenge('player_b', 'match_1')
 
@@ -472,7 +475,7 @@ describe('matchService', () => {
 
     expect(match.status).toBe('ready')
     expect(prismaMock.match.updateMany).toHaveBeenCalledWith({
-      where: { id: 'match_1', status: 'accepted' },
+      where: { id: 'match_1', status: 'accepted', configVersion: 3 },
       data: { status: 'ready', expiresAt: expect.any(Date) },
     })
   })
@@ -486,7 +489,7 @@ describe('matchService', () => {
 
     expect(match.status).toBe('in_progress')
     expect(prismaMock.match.updateMany).toHaveBeenCalledWith({
-      where: { id: 'match_1', status: 'accepted' },
+      where: { id: 'match_1', status: 'accepted', configVersion: 3 },
       data: { status: 'ready', expiresAt: expect.any(Date) },
     })
   })
@@ -504,10 +507,7 @@ describe('matchService', () => {
       configVersion: 8,
     }
     prismaMock.match.findFirst.mockResolvedValueOnce(makeAcceptedMatch())
-    prismaMock.match.updateMany
-      .mockResolvedValueOnce({ count: 0 })
-      .mockResolvedValueOnce({ count: 0 })
-      .mockResolvedValueOnce({ count: 1 })
+    prismaMock.match.updateMany.mockResolvedValueOnce({ count: 1 })
     prismaMock.match.findFirst.mockResolvedValueOnce(makeAcceptedMatch({
       status: 'ready',
       ...realtimeConfig,
@@ -518,7 +518,7 @@ describe('matchService', () => {
     expect(match.status).toBe('ready')
     expect(match.questionSeed).toBe('seed_realtime')
     expect(prismaMock.match.updateMany).toHaveBeenCalledWith({
-      where: { id: 'match_1', status: 'accepted' },
+      where: { id: 'match_1', status: 'accepted', configVersion: 3 },
       data: {
         ...realtimeConfig,
         status: 'ready',
@@ -626,10 +626,7 @@ describe('matchService', () => {
     vi.useFakeTimers()
     vi.setSystemTime(now)
     prismaMock.match.findFirst.mockResolvedValueOnce(makeAcceptedMatch({ status: 'ready' }))
-    prismaMock.match.updateMany
-      .mockResolvedValueOnce({ count: 0 })
-      .mockResolvedValueOnce({ count: 0 })
-      .mockResolvedValueOnce({ count: 1 })
+    prismaMock.match.updateMany.mockResolvedValueOnce({ count: 1 })
     prismaMock.matchParticipant.updateMany.mockResolvedValueOnce({})
     prismaMock.match.findUnique.mockResolvedValueOnce(makeAcceptedMatch({
       status: 'in_progress',
@@ -698,7 +695,10 @@ describe('matchService', () => {
           some: { playerId: 'player_a' },
         },
         OR: [
-          { status: { in: ['pending', 'accepted', 'ready', 'in_progress'] } },
+          {
+            status: { in: ['pending', 'accepted', 'ready', 'in_progress'] },
+            expiresAt: { gt: expect.any(Date) },
+          },
           {
             status: 'completed',
             expiresAt: { gt: expect.any(Date) },
@@ -711,7 +711,36 @@ describe('matchService', () => {
       take: 30,
     })
     expect(prismaMock.match.update).not.toHaveBeenCalled()
+    expect(prismaMock.match.updateMany).not.toHaveBeenCalled()
     expect(prismaMock.$transaction).not.toHaveBeenCalled()
+  })
+
+  it("enrichit plusieurs salons avec une seule requête d'historique", async () => {
+    const firstMatch = makeMatch()
+    const secondMatch = makeMatch({ id: 'match_2', roomId: 'room_2' })
+    prismaMock.match.findMany
+      .mockResolvedValueOnce([firstMatch, secondMatch])
+      .mockResolvedValueOnce([
+        {
+          roomId: 'room_1',
+          winnerPlayerId: 'player_a',
+          participants: [{ playerId: 'player_a' }, { playerId: 'player_b' }],
+        },
+      ])
+
+    const matches = await listMatches('player_a')
+
+    expect(prismaMock.match.findMany).toHaveBeenCalledTimes(2)
+    expect(matches[0].participants.find((participant) => participant.player.id === 'player_a')?.challengeStats.room).toEqual({
+      wins: 1,
+      losses: 0,
+      draws: 0,
+    })
+    expect(matches[1].participants.find((participant) => participant.player.id === 'player_a')?.challengeStats.friendship).toEqual({
+      wins: 1,
+      losses: 0,
+      draws: 0,
+    })
   })
 
   it('retourne une erreur metier si le salon disparait pendant le heartbeat', async () => {
@@ -773,6 +802,7 @@ describe('matchService', () => {
         bestStreak: 1,
       }),
       'Europe/Paris',
+      { submissionKey: 'match:match_1:participant:participant_a' },
     )
     expect(prismaMock.matchParticipant.update).toHaveBeenCalledWith({
       where: { id: 'participant_a' },
@@ -1349,7 +1379,7 @@ describe('matchService', () => {
     prismaMock.match.findFirst.mockResolvedValueOnce(completed)
     prismaMock.matchParticipant.updateMany.mockResolvedValueOnce({ count: 2 })
     prismaMock.match.update.mockResolvedValueOnce({ ...completed, expiresAt: new Date() })
-    prismaMock.match.findUnique.mockResolvedValueOnce(dismissed)
+    prismaMock.match.findUniqueOrThrow.mockResolvedValueOnce(dismissed)
 
     const match = await leaveChallenge('player_a', 'match_1')
 
@@ -1375,7 +1405,10 @@ describe('matchService', () => {
           some: { playerId: 'player_a' },
         },
         OR: [
-          { status: { in: ['pending', 'accepted', 'ready', 'in_progress'] } },
+          {
+            status: { in: ['pending', 'accepted', 'ready', 'in_progress'] },
+            expiresAt: { gt: expect.any(Date) },
+          },
           {
             status: 'completed',
             expiresAt: { gt: expect.any(Date) },
@@ -1463,6 +1496,58 @@ describe('matchService', () => {
         questionIndex: 0,
         responseTimeMs: 800,
       }),
+    })
+  })
+
+  it('valide et persiste chaque reponse sprint avant de mettre a jour la progression canonique', async () => {
+    const startedAt = new Date(Date.now() - 1000)
+    const inProgressMatch = makeMatch({
+      status: 'in_progress',
+      challengeMode: 'sprint',
+      startedAt,
+      questionSeed: 'seed_1',
+      participants: makeAcceptedMatch().participants.map((participant) => ({ ...participant, status: 'playing' })),
+    })
+    const updatedMatch = {
+      ...inProgressMatch,
+      participants: inProgressMatch.participants.map((participant) => participant.playerId === 'player_a'
+        ? { ...participant, score: 100, scorePoints: 8, correctAnswers: 1, totalQuestions: 1, totalResponseTimeMs: 800, bestStreak: 1 }
+        : participant),
+    }
+    const question = generateMatchQuestion('seed_1', 0, 'addition', 'debutant')
+
+    prismaMock.match.findFirst.mockResolvedValueOnce(inProgressMatch).mockResolvedValueOnce(updatedMatch)
+    prismaMock.matchQuestionAnswer.findMany.mockResolvedValueOnce([{
+      questionIndex: 0,
+      correctAnswer: question.answer,
+      userAnswer: question.answer,
+      responseTimeMs: 800,
+    }])
+
+    const result = await submitSprintQuestionAnswer('player_a', 'match_1', {
+      questionIndex: 0,
+      prompt: question.prompt,
+      correctAnswer: question.answer,
+      userAnswer: question.answer,
+      responseTimeMs: 800,
+      skill: question.skill,
+      source: 'manual',
+    })
+
+    expect(result.participants.find((participant) => participant.playerId === 'player_a')).toMatchObject({
+      score: 100,
+      scorePoints: 8,
+      correctAnswers: 1,
+      totalQuestions: 1,
+      bestStreak: 1,
+    })
+    expect(prismaMock.matchQuestionAnswer.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { matchId_playerId_questionIndex: { matchId: 'match_1', playerId: 'player_a', questionIndex: 0 } },
+      update: {},
+    }))
+    expect(prismaMock.matchParticipant.update).toHaveBeenCalledWith({
+      where: { id: 'participant_a' },
+      data: expect.objectContaining({ correctAnswers: 1, totalQuestions: 1, bestStreak: 1 }),
     })
   })
 })

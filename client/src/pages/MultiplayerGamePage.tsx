@@ -1,9 +1,13 @@
 ﻿import { type FormEvent, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { ChallengeArenaScreen, DifficultyChoiceGrid, OperationChoiceGrid, type ChallengeMetric } from '../components/ChallengeExperience'
+import { ChallengeArenaScreen, type ChallengeMetric } from '../components/ChallengeExperience'
+import { LaunchActionButton } from '../components/LaunchActionButton'
 import { PlayModeNavigationDialog } from '../components/PlayModeNavigationDialog'
 import { PlayModeTabs, type PlayModePath } from '../components/PlayModeTabs'
 import { useAuth } from '../context/auth'
+import { MatchResultStage } from '../features/multiplayer/MatchResultStage'
+import { MultiplayerLobby } from '../features/multiplayer/MultiplayerLobby'
+import { MultiplayerRoomConfigurator } from '../features/multiplayer/MultiplayerRoomConfigurator'
 import { useProfile } from '../context/profile-context'
 import {
   useRealtimeEvents,
@@ -12,24 +16,24 @@ import {
   type MatchRealtimePayload,
   type RealtimeConfigPayload,
   type RealtimeTempoAnswerPayload,
+  type RealtimeSprintAnswerPayload,
   type MatchTempoAnswerRecordedPayload,
+  type PresenceRealtimePayload,
   type RoomRealtimeEvent,
   type RoomSnapshotPayload,
 } from '../hooks/useRealtimeEvents'
 import { api, ApiRequestError, type ChallengeMode, type MatchData, type PublicPlayer } from '../lib/api'
 import { clearCachePrefix, DASHBOARD_CACHE_PREFIX } from '../lib/appCache'
 import { parseAnswerInput } from '../lib/answerInput'
-import { LEVEL_RUN_LABELS } from '../lib/challengeLabels'
 import { criticalRemainingSeconds } from '../lib/challengeTiming'
-import { calculateElapsedSessionSeconds, calculateRemainingSessionSeconds, type AnswerResult, type GameLevel } from '../lib/game'
+import { LEVEL_LABELS, calculateElapsedSessionSeconds, calculateRemainingSessionSeconds, type AnswerResult } from '../lib/game'
 import { generateMatchQuestion } from '../lib/matchQuestions'
+import '../styles/routes/multiplayer.css'
 import {
   completeConfigPayload,
   DEFAULT_ROOM_CONFIG,
   isCompleteConfig,
-  MAX_TEMPO_QUESTION_SECONDS,
   matchToConfig,
-  MIN_TEMPO_QUESTION_SECONDS,
   normalizeRoomConfig,
   roomConfigPayload,
   type RoomConfig,
@@ -55,12 +59,9 @@ import {
   isStaleRoomError,
   isTransientAuthError,
   isVisibleRoomParticipant,
-  matchSetupSummary,
   mergeMonotonicMatchFields,
-  participantProgressFromAnswers,
   participantStatusLabel,
   playerCard,
-  playerInitials,
   roomStatusLabel,
   type ConfigDraft,
   type PendingTempoAnswer,
@@ -86,6 +87,8 @@ export function MultiplayerGamePage() {
   const [orderedRoomState, dispatchOrderedRoomState] = useReducer(multiplayerRoomReducer, initialMultiplayerRoomState)
   const orderedRoomStateRef = useRef(orderedRoomState)
   const joinedRealtimeRoomRef = useRef<string | null>(null)
+  const roomOverviewRequestRef = useRef<Promise<{ friends: PublicPlayer[]; matches: MatchData[] }> | null>(null)
+  const realtimeRefreshTimerRef = useRef<number | null>(null)
   const [config, setConfig] = useState<RoomConfig>(DEFAULT_ROOM_CONFIG)
   const [roomDraftOpen, setRoomDraftOpen] = useState(Boolean(selectedMatchId))
   const [selectedOpponent, setSelectedOpponent] = useState<PublicPlayer | null>(null)
@@ -93,6 +96,7 @@ export function MultiplayerGamePage() {
   const [mobileRoomView, setMobileRoomView] = useState<MobileRoomView>('primary')
   const [action, setAction] = useState('')
   const [error, setError] = useState('')
+  const [roomSyncError, setRoomSyncError] = useState('')
   const [pendingModePath, setPendingModePath] = useState<PlayModePath | null>(null)
   const [answer, setAnswer] = useState('')
   const [localScore, setLocalScore] = useState({ correct: 0, total: 0 })
@@ -119,6 +123,7 @@ export function MultiplayerGamePage() {
   const heartbeatInFlightMatchIdRef = useRef<string | null>(null)
   const configFlushTokenRef = useRef(0)
   const configSyncInFlightRef = useRef(false)
+  const configSyncPromiseRef = useRef<Promise<void> | null>(null)
   const flushConfigSyncRef = useRef<() => void>(() => {})
   const createMatchInvitationRealtimeRef = useRef<((payload: {
     opponentPlayerId: string
@@ -149,8 +154,9 @@ export function MultiplayerGamePage() {
       nextQuestionIndex: number
     }
   }>) | null>(null)
+  const submitSprintAnswerRealtimeRef = useRef<((matchId: string, answer: RealtimeSprintAnswerPayload) => Promise<{ match: MatchData }>) | null>(null)
+  const sprintAnswerSyncPromisesRef = useRef(new Set<Promise<unknown>>())
   const submitMatchResultRealtimeRef = useRef<((matchId: string, result: RealtimeMatchResultPayload) => Promise<{ match: MatchData }>) | null>(null)
-  const updateMatchProgressRealtimeRef = useRef<((matchId: string, progress: RealtimeMatchProgressPayload) => Promise<{ match: MatchData }>) | null>(null)
   const completeTempoQuestionRef = useRef<(questionIndex: number, nextQuestionStartedAtMs?: number) => void>(() => {})
   const activeMatchRef = useRef<MatchData | null>(null)
   const leavingCompletedMatchRef = useRef<string | null>(null)
@@ -230,7 +236,12 @@ export function MultiplayerGamePage() {
   const proposalPending = displayedMatch?.status === 'ready'
   const editableConfig = config
   const authoritativeConfig = config
-  const controlsDisabled = Boolean(!isRoomMaster || proposalPending || displayedMatch?.status === 'in_progress')
+  const controlsDisabled = Boolean(
+    !isRoomMaster
+    || proposalPending
+    || displayedMatch?.status === 'in_progress'
+    || (displayedMatch && action === `propose:${displayedMatch.id}`),
+  )
   const leaveRoomLabel = displayedMatch
     ? isRoomMaster
       ? displayedMatch.status === 'pending'
@@ -347,10 +358,6 @@ export function MultiplayerGamePage() {
     : selectedOpponent
       ? 'send'
       : 'invite'
-
-  function segmentClass(authoritative = false, extra = '') {
-    return ['segment', authoritative ? 'active' : '', extra].filter(Boolean).join(' ')
-  }
 
   const showToast = useCallback((title: string) => {
     window.dispatchEvent(new CustomEvent('mayele:toast', { detail: { title, variant: 'success' } }))
@@ -503,6 +510,7 @@ export function MultiplayerGamePage() {
     setFriendPickerOpen(false)
     setSearchParams({})
     setError('')
+    setRoomSyncError('')
     setAction('')
     setAnswer('')
     setLocalScore({ correct: 0, total: 0 })
@@ -535,11 +543,31 @@ export function MultiplayerGamePage() {
       return
     }
 
-    setError(errorMessage(caughtError, fallback))
+    const message = caughtError instanceof ApiRequestError && caughtError.code === 'internal_error'
+      ? fallback
+      : errorMessage(caughtError, fallback)
+    setRoomSyncError(message)
   }, [resetToMultiplayerHome])
 
+  const loadRoomOverview = useCallback(() => {
+    if (roomOverviewRequestRef.current) {
+      return roomOverviewRequestRef.current
+    }
+
+    const request = api.getMatchRoomOverview(getToken)
+    roomOverviewRequestRef.current = request
+    const clearRequest = () => {
+      if (roomOverviewRequestRef.current === request) {
+        roomOverviewRequestRef.current = null
+      }
+    }
+    void request.then(clearRequest, clearRequest)
+
+    return request
+  }, [getToken])
+
   const refreshMatchSnapshot = useCallback(async (matchId: string, syncConfig: boolean) => {
-    const overview = await api.getMatchRoomOverview(getToken)
+    const overview = await loadRoomOverview()
     const refreshedMatch = overview.matches.find((item) => item.id === matchId) ?? null
 
     if (!refreshedMatch) {
@@ -555,7 +583,7 @@ export function MultiplayerGamePage() {
     }
 
     return appliedMatch
-  }, [applyConfig, applyMatchSnapshot, getToken, localPendingConfig, resetToMultiplayerHome])
+  }, [applyConfig, applyMatchSnapshot, loadRoomOverview, localPendingConfig, resetToMultiplayerHome])
 
   const flushConfigSync = useCallback(() => {
     cancelQueuedConfigFlush()
@@ -574,7 +602,10 @@ export function MultiplayerGamePage() {
     configDraftRef.current = null
     submittedConfigRef.current = draft
     configSyncInFlightRef.current = true
-    const configPayload = roomConfigPayload(draft.config)
+    const configPayload = {
+      ...roomConfigPayload(draft.config),
+      expectedConfigVersion: match.configVersion,
+    }
     const updateMatchConfig = updateMatchConfigRealtimeRef.current
 
     if (!updateMatchConfig) {
@@ -584,7 +615,7 @@ export function MultiplayerGamePage() {
       return
     }
 
-    void updateMatchConfig(match.id, configPayload)
+    const syncPromise = updateMatchConfig(match.id, configPayload)
       .then((payload) => {
         if (submittedConfigRef.current?.matchId === payload.match.id) {
           submittedConfigRef.current = null
@@ -602,10 +633,11 @@ export function MultiplayerGamePage() {
         if (caughtError instanceof ApiRequestError && caughtError.code === 'match_version_conflict') {
           configDraftRef.current ??= draft
           submittedConfigRef.current = null
-          void refreshMatchSnapshot(match.id, false).catch((refreshError) => {
-            reportBackgroundRoomError(refreshError, CONFIG_SYNC_ERROR)
-          })
-          return
+          return refreshMatchSnapshot(match.id, false)
+            .then(() => undefined)
+            .catch((refreshError) => {
+              reportBackgroundRoomError(refreshError, CONFIG_SYNC_ERROR)
+            })
         }
 
         if (isTransientAuthError(caughtError)) {
@@ -622,11 +654,15 @@ export function MultiplayerGamePage() {
         })
       })
       .finally(() => {
+        if (configSyncPromiseRef.current === syncPromise) {
+          configSyncPromiseRef.current = null
+        }
         configSyncInFlightRef.current = false
         if (configDraftRef.current) {
           queueConfigFlush()
         }
       })
+    configSyncPromiseRef.current = syncPromise
   }, [applyMatchSnapshot, cancelQueuedConfigFlush, refreshMatchSnapshot, reportBackgroundRoomError, resetToMultiplayerHome, queueConfigFlush])
 
   useEffect(() => {
@@ -751,7 +787,8 @@ export function MultiplayerGamePage() {
       return
     }
 
-    const overview = await api.getMatchRoomOverview(getToken)
+    const overview = await loadRoomOverview()
+    setRoomSyncError('')
     const nextDisplayed = applyRoomOverview(overview)
 
     if (!nextDisplayed && (activeMatchRef.current || selectedMatchIdRef.current || preferredMatchIdRef.current)) {
@@ -769,7 +806,7 @@ export function MultiplayerGamePage() {
 
       resetToMultiplayerHome()
     }
-  }, [applyRoomOverview, getToken, hydrateSelectedMatch, roomRealtimeAuthenticated, resetToMultiplayerHome])
+  }, [applyRoomOverview, hydrateSelectedMatch, loadRoomOverview, roomRealtimeAuthenticated, resetToMultiplayerHome])
 
   const applyRealtimeMatchSnapshot = useCallback((match: MatchData, options: { recordLegacyEvent?: boolean } = {}) => {
     const currentMatch = activeMatchRef.current
@@ -904,10 +941,68 @@ export function MultiplayerGamePage() {
   }, [applyRealtimeMatchSnapshot])
 
   const refreshRoomDataFromRealtime = useCallback(() => {
-    void refreshRoomData().catch((caughtError) => {
-      reportBackgroundRoomError(caughtError, 'Impossible de synchroniser le salon multijoueur.')
-    })
+    if (realtimeRefreshTimerRef.current !== null) {
+      window.clearTimeout(realtimeRefreshTimerRef.current)
+    }
+
+    realtimeRefreshTimerRef.current = window.setTimeout(() => {
+      realtimeRefreshTimerRef.current = null
+      void refreshRoomData().catch((caughtError) => {
+        reportBackgroundRoomError(caughtError, 'Impossible de synchroniser le salon multijoueur.')
+      })
+    }, 180)
   }, [refreshRoomData, reportBackgroundRoomError])
+
+  const applyPresenceFromRealtime = useCallback((payload: PresenceRealtimePayload) => {
+    const updatePlayer = (player: PublicPlayer) => {
+      if (player.id !== payload.player.id) return player
+      if (Date.parse(player.presenceUpdatedAt) > Date.parse(payload.player.presenceUpdatedAt)) return player
+      return { ...player, ...payload.player }
+    }
+    const updateMatch = (match: MatchData) => {
+      let changed = false
+      const createdBy = updatePlayer(match.createdBy)
+      if (createdBy !== match.createdBy) changed = true
+      const participants = match.participants.map((participant) => {
+        const player = updatePlayer(participant.player)
+        if (player !== participant.player) changed = true
+        return player === participant.player ? participant : { ...participant, player }
+      })
+      return changed ? { ...match, createdBy, participants } : match
+    }
+
+    setFriends((current) => {
+      let changed = false
+      const next = current.map((friend) => {
+        const updated = updatePlayer(friend)
+        if (updated !== friend) changed = true
+        return updated
+      })
+      return changed ? next : current
+    })
+    setSelectedOpponent((current) => current ? updatePlayer(current) : current)
+    setMatches((current) => {
+      let changed = false
+      const next = current.map((match) => {
+        const updated = updateMatch(match)
+        if (updated !== match) changed = true
+        return updated
+      })
+      return changed ? next : current
+    })
+    setActiveMatch((current) => {
+      if (!current) return current
+      const updated = updateMatch(current)
+      if (updated !== current) activeMatchRef.current = updated
+      return updated
+    })
+  }, [])
+
+  useEffect(() => () => {
+    if (realtimeRefreshTimerRef.current !== null) {
+      window.clearTimeout(realtimeRefreshTimerRef.current)
+    }
+  }, [])
 
   const refreshMatchFromRealtime = useCallback((payload: MatchRealtimePayload) => {
     if (payload.roomEvent) {
@@ -943,13 +1038,14 @@ export function MultiplayerGamePage() {
   const realtimeCommands = useRealtimeEvents({
     isAuthenticated: roomRealtimeAuthenticated,
     getToken,
+    connectionPriority: 'critical',
     onMatchChanged: refreshMatchFromRealtime,
     onRoomEvent: applyRoomRuntimeEvent,
     onRoomSnapshot: applyRoomRuntimeSnapshot,
     onMatchTempoAnswerRecorded: applyTempoAnswerRecorded,
     onMatchTempoProgress: advanceTempoFromRealtime,
     onSocialChanged: refreshRoomDataFromRealtime,
-    onPresenceChanged: refreshRoomDataFromRealtime,
+    onPresenceChanged: applyPresenceFromRealtime,
     onNotificationsChanged: refreshRoomDataFromRealtime,
     onConnectionError: (caughtError) => {
       reportBackgroundRoomError(caughtError, 'Connexion temps reel du salon impossible.')
@@ -994,7 +1090,7 @@ export function MultiplayerGamePage() {
     requestMatchRematchRealtimeRef.current = realtimeCommands.requestMatchRematch
     submitMatchResultRealtimeRef.current = realtimeCommands.submitMatchResult
     submitTempoAnswerRealtimeRef.current = realtimeCommands.submitTempoAnswer
-    updateMatchProgressRealtimeRef.current = realtimeCommands.updateMatchProgress
+    submitSprintAnswerRealtimeRef.current = realtimeCommands.submitSprintAnswer
   }, [
     realtimeCommands.acceptMatchInvitation,
     realtimeCommands.acceptMatchProposal,
@@ -1007,7 +1103,7 @@ export function MultiplayerGamePage() {
     realtimeCommands.requestMatchRematch,
     realtimeCommands.submitMatchResult,
     realtimeCommands.submitTempoAnswer,
-    realtimeCommands.updateMatchProgress,
+    realtimeCommands.submitSprintAnswer,
     realtimeCommands.updateMatchConfig,
   ])
 
@@ -1346,16 +1442,14 @@ export function MultiplayerGamePage() {
     }
 
     try {
+      await Promise.allSettled(Array.from(sprintAnswerSyncPromisesRef.current))
       const forfeitMatch = forfeitMatchRealtimeRef.current
 
       if (!forfeitMatch) {
         throw new ApiRequestError('Connexion temps reel du salon indisponible.', 0, 'realtime_unavailable')
       }
 
-      const payload = await forfeitMatch(
-        match.id,
-        participantProgressFromAnswers(configRef.current.level, matchAnswersRef.current),
-      )
+      const payload = await forfeitMatch(match.id)
       const nextMatch = applyMatchSnapshot(payload.match)
       preferredMatchIdRef.current = nextMatch.id
       selectedMatchIdRef.current = nextMatch.id
@@ -1452,6 +1546,18 @@ export function MultiplayerGamePage() {
 
       cancelQueuedConfigFlush()
       configDraftRef.current = null
+      const pendingConfigSync = configSyncPromiseRef.current
+
+      if (pendingConfigSync) {
+        await pendingConfigSync
+      }
+
+      const currentMatch = activeMatchRef.current
+
+      if (!currentMatch || currentMatch.id !== displayedMatch.id) {
+        throw new ApiRequestError('Salon indisponible.', 409, 'match_not_found')
+      }
+
       submittedConfigRef.current = { matchId: displayedMatch.id, config: currentConfig }
 
       const proposeMatch = proposeMatchRealtimeRef.current
@@ -1460,7 +1566,10 @@ export function MultiplayerGamePage() {
         throw new ApiRequestError('Connexion temps reel du salon indisponible.', 0, 'realtime_unavailable')
       }
 
-      const payload = await proposeMatch(displayedMatch.id, proposalConfig)
+      const payload = await proposeMatch(displayedMatch.id, {
+        ...proposalConfig,
+        expectedConfigVersion: currentMatch.configVersion,
+      })
       submittedConfigRef.current = null
       applyMatchSnapshot(payload.match)
       showToast('Configuration proposee.')
@@ -1608,26 +1717,6 @@ export function MultiplayerGamePage() {
     }
   }, [applyMatchSnapshot, displayedMatch, profile?.id, refreshRoomData, serverNowMs, showToast])
 
-  const publishMatchProgress = useCallback((matchId: string, level: GameLevel | null, answers: AnswerResult[]) => {
-    const updateMatchProgress = updateMatchProgressRealtimeRef.current
-
-    if (!updateMatchProgress) {
-      return
-    }
-
-    void updateMatchProgress(matchId, participantProgressFromAnswers(level, answers))
-      .then((payload) => {
-        applyMatchSnapshot(payload.match)
-      })
-      .catch((caughtError) => {
-        if (isTransientAuthError(caughtError) || isStaleRoomError(caughtError)) {
-          return
-        }
-
-        setError(caughtError instanceof Error ? caughtError.message : 'Progression du defi impossible.')
-      })
-  }, [applyMatchSnapshot])
-
   const appendMatchAnswer = useCallback((userAnswer: number | null, responseTimeMs: number, forcedQuestionIndex?: number) => {
     const currentMatch = activeMatchRef.current
     const currentConfig = configRef.current
@@ -1671,11 +1760,36 @@ export function MultiplayerGamePage() {
     setAnswer('')
 
     if (currentConfig.challengeMode !== 'tempo') {
-      publishMatchProgress(currentMatch.id, currentConfig.level, nextAnswers)
+      const submitSprintAnswerRealtime = submitSprintAnswerRealtimeRef.current
+
+      if (!submitSprintAnswerRealtime) {
+        setError('Temps reel indisponible.')
+        return nextAnswers
+      }
+
+      const submission = submitSprintAnswerRealtime(currentMatch.id, {
+        questionIndex,
+        prompt: currentQuestion.prompt,
+        correctAnswer: currentQuestion.answer,
+        userAnswer,
+        responseTimeMs,
+        skill: currentQuestion.skill,
+        source: 'manual',
+      }).then((payload) => {
+        applyMatchSnapshot(payload.match)
+      }).catch((caughtError) => {
+        if (!isTransientAuthError(caughtError) && !isStaleRoomError(caughtError)) {
+          setError(caughtError instanceof Error ? caughtError.message : 'Reponse sprint impossible.')
+        }
+      }).finally(() => {
+        sprintAnswerSyncPromisesRef.current.delete(submission)
+      })
+
+      sprintAnswerSyncPromisesRef.current.add(submission)
     }
 
     return nextAnswers
-  }, [publishMatchProgress])
+  }, [applyMatchSnapshot])
 
   const removeTempoAnswer = useCallback((questionIndex: number) => {
     const nextAnswers = matchAnswersRef.current.filter((item) => item.questionIndex !== questionIndex)
@@ -1918,7 +2032,7 @@ export function MultiplayerGamePage() {
     : authoritativeConfig.challengeMode === 'sprint'
       ? 'Sprint'
       : 'Mode a choisir'
-  const mobileLevelLabel = authoritativeConfig.level ? LEVEL_RUN_LABELS[authoritativeConfig.level] : 'Niveau a choisir'
+  const mobileLevelLabel = authoritativeConfig.level ? LEVEL_LABELS[authoritativeConfig.level] : 'Niveau à choisir'
   const mobileOpponentLabel = opponent?.name ?? selectedOpponent?.name ?? ''
   const mobileRoomStatusLabel = displayedMatch?.status === 'completed'
     ? roomStatusText
@@ -1958,6 +2072,22 @@ export function MultiplayerGamePage() {
       ) : null}
 
       {error ? <div className="form-error">{error}</div> : null}
+      {roomSyncError ? (
+        <div className="form-error multiplayer-sync-error" role="alert">
+          <span>{roomSyncError}</span>
+          <button
+            type="button"
+            onClick={() => {
+              setRoomSyncError('')
+              void refreshRoomData().catch((caughtError) => {
+                reportBackgroundRoomError(caughtError, 'Impossible de charger le salon multijoueur.')
+              })
+            }}
+          >
+            Réessayer
+          </button>
+        </div>
+      ) : null}
 
       {displayedMatch || roomDraftOpen ? (
         <div className="multiplayer-mobile-room-nav" aria-label="Navigation du salon">
@@ -1996,65 +2126,15 @@ export function MultiplayerGamePage() {
       ) : null}
 
       {!displayedMatch && !roomDraftOpen ? (
-        <div className="multiplayer-lobby-grid">
-          <article className="card multiplayer-lobby-card">
-            <div className="multiplayer-lobby-title-row">
-            <h2>Créer un salon</h2>
-            <button className="primary-button full-width" type="button" onClick={() => openDraft()}>
-              Créer un salon
-            </button>
-            </div>
-            <div className="multiplayer-direct-challenges" aria-label="Defier un ami">
-              <div className="multiplayer-direct-heading">
-                <strong>Defier un ami</strong>
-                <span>{friends.length}</span>
-              </div>
-              {friends.length ? (
-                <div className="multiplayer-direct-list">
-                  {friends.map((friend) => (
-                    <button key={friend.id} type="button" disabled={action === `invite:${friend.id}`} onClick={() => void handleInvite(friend)}>
-                      {friend.avatarUrl ? <img className="multiplayer-direct-avatar" src={friend.avatarUrl} alt="" /> : <span className="multiplayer-direct-avatar initials">{playerInitials(friend)}</span>}
-                      <span>
-                        <strong>{friend.name}</strong>
-                        <em>{friend.username ? `@${friend.username}` : 'Ami Mayele'}</em>
-                      </span>
-                      <small>Défier</small>
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <p className="muted">Ajoutez des amis pour lancer un defi direct.</p>
-              )}
-            </div>
-          </article>
-
-          <article className="card multiplayer-challenge-list">
-            <div className="multiplayer-room-state">
-              <span className="eyebrow">Défis reçus</span>
-              <strong>{incomingInvitations.length}</strong>
-            </div>
-            {incomingInvitations.length ? (
-              incomingInvitations.map((match) => (
-                <div key={match.id} className="multiplayer-invitation-item">
-                  <button className="multiplayer-invitation-open" type="button" onClick={() => openInvitation(match)}>
-                    <strong>{match.createdBy.name}</strong>
-                    <span>{matchSetupSummary(match)}</span>
-                  </button>
-                  <button
-                    className="multiplayer-invitation-decline"
-                    type="button"
-                    disabled={action === `decline:${match.id}`}
-                    onClick={() => void handleDecline(match)}
-                  >
-                    Refuser
-                  </button>
-                </div>
-              ))
-            ) : (
-              <p className="muted">Aucun défi à accepter.</p>
-            )}
-          </article>
-        </div>
+        <MultiplayerLobby
+          action={action}
+          friends={friends}
+          invitations={incomingInvitations}
+          onDeclineInvitation={(match) => void handleDecline(match)}
+          onInvite={(friend) => void handleInvite(friend)}
+          onNewChallenge={openDraft}
+          onOpenInvitation={openInvitation}
+        />
       ) : (
       <div className="multiplayer-room-grid" id="multiplayer-room-content" data-mobile-room-view={mobileRoomView}>
         {playerCard(currentPlayer, isRoomMaster ? 'Maitre du salon' : 'Vous', isRoomMaster, myProfileStatus, myParticipant, { id: 'multiplayer-room-players' })}
@@ -2100,65 +2180,21 @@ export function MultiplayerGamePage() {
           </div>
 
           {displayedMatch?.status === 'completed' ? (
-            <div className="multiplayer-result-panel">
-              <div className="multiplayer-result-grid">
-                <div
-                  className={`multiplayer-result-player is-${myResultOutcome}`}
-                  data-forfeited={myForfeited ? 'true' : 'false'}
-                  data-result-outcome={myResultOutcome}
-                  data-result-player="self"
-                >
-                  <div className="multiplayer-result-player-line">
-                    <span>Vous</span>
-                    <small>+{myResult?.xp ?? 0} XP</small>
-                  </div>
-                  {myForfeited ? <span className="multiplayer-result-forfeit-badge">Abandon</span> : null}
-                  <div className="multiplayer-result-stats">
-                    <strong>{myResult?.scorePoints ?? 0}<small>pts</small></strong>
-                    <strong>{myResult ? `${myResult.correctAnswers}/${myResult.totalQuestions}` : '-' }<small>bonnes</small></strong>
-                    <strong>{myResult?.bestStreak ?? 0}<small>serie</small></strong>
-                  </div>
-                </div>
-                <div
-                  className={`multiplayer-result-player is-${opponentResultOutcome}`}
-                  data-forfeited={opponentForfeited ? 'true' : 'false'}
-                  data-result-outcome={opponentResultOutcome}
-                  data-result-player="opponent"
-                >
-                  <div className="multiplayer-result-player-line">
-                    <span>{opponentResult?.player.name ?? opponent?.name ?? 'Adversaire'}</span>
-                    <small>+{opponentResult?.xp ?? 0} XP</small>
-                  </div>
-                  {opponentForfeited ? <span className="multiplayer-result-forfeit-badge">Abandon</span> : null}
-                  <div className="multiplayer-result-stats">
-                    <strong>{opponentResult?.scorePoints ?? 0}<small>pts</small></strong>
-                    <strong>{opponentResult ? `${opponentResult.correctAnswers}/${opponentResult.totalQuestions}` : '-' }<small>bonnes</small></strong>
-                    <strong>{opponentResult?.bestStreak ?? 0}<small>serie</small></strong>
-                  </div>
-                </div>
-              </div>
-              <div className="multiplayer-result-actions">
-                {opponentDismissedResult ? (
-                  <button className="secondary-button full-width" type="button" disabled>
-                    Relance indisponible
-                  </button>
-                ) : (
-                  <button
-                    className="primary-button full-width"
-                    type="button"
-                    disabled={myRematchRequested || action === `rematch:${displayedMatch.id}`}
-                    onClick={() => void handleRematch(displayedMatch)}
-                  >
-                    {myRematchRequested ? "Relance demandee" : 'Relancer'}
-                  </button>
-                )}
-                <button className="secondary-button full-width" type="button" onClick={() => void handleLeave(displayedMatch)}>
-                  Quitter
-                </button>
-              </div>
-              {opponentDismissedResult ? <p className="muted">L'adversaire a quitte les resultats. Quittez pour ouvrir un nouveau salon.</p> : null}
-              {myRematchRequested && !opponentRematchRequested && !opponentDismissedResult ? <p className="muted">En attente de la réponse adverse.</p> : null}
-            </div>
+            <MatchResultStage
+              self={myResult}
+              opponent={opponentResult}
+              opponentName={opponent?.name ?? 'Adversaire'}
+              selfOutcome={myResultOutcome}
+              opponentOutcome={opponentResultOutcome}
+              selfForfeited={myForfeited}
+              opponentForfeited={opponentForfeited}
+              opponentDismissed={opponentDismissedResult}
+              rematchRequested={myRematchRequested}
+              opponentRematchRequested={opponentRematchRequested}
+              rematchPending={action === `rematch:${displayedMatch.id}`}
+              onRematch={() => void handleRematch(displayedMatch)}
+              onLeave={() => void handleLeave(displayedMatch)}
+            />
           ) : displayedMatch?.status === 'in_progress' && myActiveMatchFinished ? (
             <div className="multiplayer-waiting-panel" data-testid="multiplayer-waiting-for-opponent">
               <strong>{myParticipant?.status === 'submitting' ? 'Validation du resultat' : 'Resultat envoye'}</strong>
@@ -2185,7 +2221,7 @@ export function MultiplayerGamePage() {
               answerDisabled={Boolean(tempoPendingAnswer)}
               answerInputRef={answerInputRef}
               answerPulse={multiplayerLastAnswer ? (multiplayerLastAnswer.isCorrect ? 'correct' : 'wrong') : ''}
-              contextLabel={`${config.challengeMode === 'tempo' ? 'Tempo' : 'Sprint'} - ${config.level ? LEVEL_RUN_LABELS[config.level] : 'Room'}`}
+              contextLabel={`${config.challengeMode === 'tempo' ? 'Tempo' : 'Sprint'} - ${config.level ? LEVEL_LABELS[config.level] : 'Salon'}`}
               elapsedLabel={`${activeTimerElapsedSeconds}/${activeTimerTotalSeconds}`}
               exitDisabled={action === `stop:${displayedMatch.id}`}
               exitLabel="Stop"
@@ -2203,104 +2239,12 @@ export function MultiplayerGamePage() {
             </>
           ) : (
             <>
-              <div className="multiplayer-config-board" aria-label="Configuration du defi">
-                <div className="control-group multiplayer-config-row multiplayer-config-mode">
-                  <span className="panel-label">Mode</span>
-                  <div className="segmented-grid">
-                    {(['sprint', 'tempo'] as ChallengeMode[]).map((mode) => (
-                      <button
-                        key={mode}
-                        type="button"
-                        className={segmentClass(authoritativeConfig.challengeMode === mode)}
-                        disabled={controlsDisabled}
-                        onClick={() => updateConfig((current) => ({ ...current, challengeMode: current.challengeMode === mode ? null : mode }))}
-                      >
-                        {mode === 'sprint' ? 'Sprint' : 'Tempo'}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="control-group multiplayer-config-row multiplayer-config-operation">
-                  <span className="panel-label">Operation</span>
-                  <OperationChoiceGrid
-                    value={authoritativeConfig.game}
-                    disabled={controlsDisabled}
-                    onSelect={(nextGame) => updateConfig((current) => ({ ...current, game: current.game === nextGame ? null : nextGame }))}
-                  />
-                </div>
-
-                <div className="control-group multiplayer-config-row multiplayer-config-level">
-                  <span className="panel-label">Niveau</span>
-                  <DifficultyChoiceGrid
-                    value={authoritativeConfig.level}
-                    disabled={controlsDisabled}
-                    onSelect={(nextLevel) => updateConfig((current) => ({ ...current, level: current.level === nextLevel ? null : nextLevel }))}
-                  />
-                </div>
-
-                <div className="multiplayer-rule-panel multiplayer-config-rules">
-                  {editableConfig.challengeMode === 'tempo' ? (
-                    <>
-                      <label>
-                        Questions
-                        <input
-                          type="number"
-                          min={10}
-                          max={50}
-                          value={editableConfig.questionCount}
-                          disabled={controlsDisabled}
-                          onChange={(event) => {
-                            const nextValue = event.currentTarget.valueAsNumber
-                            updateConfig((current) => ({
-                              ...current,
-                              questionCount: Number.isFinite(nextValue) ? nextValue : current.questionCount,
-                            }))
-                          }}
-                        />
-                      </label>
-                      <label>
-                        Temps par question
-                        <input
-                          type="number"
-                          min={MIN_TEMPO_QUESTION_SECONDS}
-                          max={MAX_TEMPO_QUESTION_SECONDS}
-                          value={editableConfig.perQuestionTimeLimitSeconds}
-                          disabled={controlsDisabled}
-                          onChange={(event) => {
-                            const nextValue = event.currentTarget.valueAsNumber
-                            updateConfig((current) => ({
-                              ...current,
-                              perQuestionTimeLimitSeconds: Number.isFinite(nextValue) ? nextValue : current.perQuestionTimeLimitSeconds,
-                            }))
-                          }}
-                        />
-                      </label>
-                    </>
-                  ) : editableConfig.challengeMode === 'sprint' ? (
-                    <label>
-                      Duree
-                      <select
-                        value={editableConfig.durationSeconds}
-                        disabled={controlsDisabled}
-                        onChange={(event) => {
-                          const nextValue = Number(event.currentTarget.value)
-                          updateConfig((current) => ({
-                            ...current,
-                            durationSeconds: Number.isFinite(nextValue) ? nextValue : current.durationSeconds,
-                          }))
-                        }}
-                      >
-                        <option value={60}>60 secondes</option>
-                        <option value={90}>90 secondes</option>
-                        <option value={120}>120 secondes</option>
-                      </select>
-                    </label>
-                  ) : (
-                    <span className="muted">Choisissez un mode pour afficher ses options.</span>
-                  )}
-                </div>
-              </div>
+              <MultiplayerRoomConfigurator
+                authoritativeConfig={authoritativeConfig}
+                controlsDisabled={controlsDisabled}
+                editableConfig={editableConfig}
+                onChange={updateConfig}
+              />
 
               {displayedMatch && !isRoomMaster && displayedMatch.status === 'pending' ? (
                 <div className="multiplayer-invite-actions">
@@ -2313,23 +2257,36 @@ export function MultiplayerGamePage() {
                 </div>
               ) : displayedMatch && !isRoomMaster && displayedMatch.status === 'ready' ? (
                 <div className="multiplayer-invite-actions">
-                  <button className="primary-button" type="button" disabled={action === `accept-proposal:${displayedMatch.id}`} onClick={() => void handleAcceptProposal(displayedMatch)}>
-                    Accepter le defi
-                  </button>
+                  <LaunchActionButton
+                    className="primary-button multiplayer-launch-action"
+                    disabled={action === `accept-proposal:${displayedMatch.id}`}
+                    label="Accepter le defi"
+                    onLaunch={() => handleAcceptProposal(displayedMatch)}
+                  />
                   <button className="secondary-button" type="button" disabled={action === `decline-proposal:${displayedMatch.id}`} onClick={() => void handleDeclineProposal(displayedMatch)}>
                     Refuser
                   </button>
                 </div>
               ) : (
-                <button
-                  className="primary-button full-width primary-room-action"
-                  data-room-action={primaryRoomActionIntent}
-                  type="button"
-                  disabled={primaryRoomActionDisabled}
-                  onClick={handlePrimaryRoomAction}
-                >
-                  {primaryRoomActionLabel}
-                </button>
+                primaryRoomActionIntent === 'propose' ? (
+                  <LaunchActionButton
+                    className="primary-button full-width primary-room-action"
+                    data-room-action={primaryRoomActionIntent}
+                    disabled={primaryRoomActionDisabled}
+                    label={primaryRoomActionLabel}
+                    onLaunch={handleStart}
+                  />
+                ) : (
+                  <button
+                    className="primary-button full-width primary-room-action"
+                    data-room-action={primaryRoomActionIntent}
+                    type="button"
+                    disabled={primaryRoomActionDisabled}
+                    onClick={handlePrimaryRoomAction}
+                  >
+                    {primaryRoomActionLabel}
+                  </button>
+                )
               )}
             </>
           )}

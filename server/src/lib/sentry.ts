@@ -23,3 +23,11 @@ export function captureException(error: unknown, context?: Record<string, unknow
 
   Sentry.captureException(error, { extra: context })
 }
+
+export async function closeSentry(timeoutMs = 2_000) {
+  if (!initialized) {
+    return true
+  }
+
+  return Sentry.close(timeoutMs)
+}

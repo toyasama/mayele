@@ -6,6 +6,7 @@ import { api } from '../lib/api'
 import { clerkErrorMessage } from '../lib/clerkErrors'
 import { dateInputLimit, isValidBirthDate, USERNAME_PATTERN } from '../lib/profile'
 import { DEFAULT_TIME_ZONE, detectBrowserTimeZone, isValidTimeZone } from '../lib/timeZone'
+import '../styles/routes/auth.css'
 
 type RegisterStep = 'details' | 'verify'
 
@@ -53,7 +54,7 @@ function detectedSignupTimeZone() {
 export function RegisterPage() {
   const { isAuthenticated, loading, getToken } = useAuth()
   const clerk = useClerk()
-  const signUp = clerk.client.signUp
+  const signUp = clerk.client?.signUp
   const setActive = clerk.setActive
   const navigate = useNavigate()
   const [form, setForm] = useState(initialForm)
@@ -192,6 +193,10 @@ export function RegisterPage() {
     <section className="page auth-page">
       <div className="auth-single-column">
         <div className="card form-card auth-card">
+          <div className="auth-step-progress" aria-label="Étapes de l'inscription">
+            <span className={step === 'details' ? 'active' : 'complete'}><strong>1</strong> Vos informations</span>
+            <span className={step === 'verify' ? 'active' : ''}><strong>2</strong> Vérification</span>
+          </div>
           {step === 'verify' ? (
             <>
               <span className="eyebrow">Validation</span>
@@ -226,6 +231,7 @@ export function RegisterPage() {
           ) : (
             <>
               <span className="eyebrow">Inscription</span>
+              <h1>Créer votre compte</h1>
               <form className="stacked-form" onSubmit={handleRegister}>
                 <div className="form-grid two-fields">
                   <label>

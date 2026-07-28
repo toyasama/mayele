@@ -245,7 +245,7 @@ body,
     text-align: left;
   }
 
-  .challenge-run-meta strong {
+  .challenge-run-mode {
     justify-self: end;
   }
 
@@ -1473,8 +1473,8 @@ body,
     font-size: 0.76rem;
   }
 
-  .profile-card-scroller,
-  .search-card-scroller {
+  .friends-page .profile-card-scroller,
+  .friends-page .search-card-scroller {
     display: grid;
     grid-template-columns: 1fr;
     gap: 10px;
@@ -1483,7 +1483,7 @@ body,
     scroll-snap-type: none;
   }
 
-  .profile-card {
+  .friends-page .profile-card {
     position: relative;
     width: 100%;
     min-width: 0;
@@ -1502,7 +1502,7 @@ body,
     scroll-snap-align: none;
   }
 
-  .profile-card-avatar {
+  .friends-page .profile-card-avatar {
     grid-area: avatar;
     width: 54px;
     height: 54px;
@@ -1510,7 +1510,7 @@ body,
     border-width: 2px;
   }
 
-  .profile-card-copy {
+  .friends-page .profile-card-copy {
     grid-area: copy;
     justify-items: start;
     gap: 3px;
@@ -1518,17 +1518,17 @@ body,
     text-align: left;
   }
 
-  .profile-card-copy strong {
+  .friends-page .profile-card-copy strong {
     font-size: 0.98rem;
     line-height: 1.1;
   }
 
-  .profile-card-copy span {
+  .friends-page .profile-card-copy span {
     font-size: 0.82rem;
     line-height: 1.1;
   }
 
-  .profile-presence {
+  .friends-page .profile-presence {
     grid-area: presence;
     justify-self: end;
     min-height: 24px;
@@ -1539,12 +1539,12 @@ body,
     white-space: nowrap;
   }
 
-  .profile-presence span {
+  .friends-page .profile-presence span {
     width: 7px;
     height: 7px;
   }
 
-  .profile-status-pill {
+  .friends-page .profile-status-pill {
     grid-area: status;
     justify-self: end;
     min-height: 24px;
@@ -1554,37 +1554,37 @@ body,
     white-space: nowrap;
   }
 
-  .profile-card-stats {
+  .friends-page .profile-card-stats {
     grid-area: stats;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 7px;
   }
 
-  .profile-card-stats div {
+  .friends-page .profile-card-stats div {
     min-height: 48px;
     align-content: center;
     gap: 2px;
     padding: 7px 8px;
   }
 
-  .profile-card-stats span {
+  .friends-page .profile-card-stats span {
     font-size: 0.66rem;
   }
 
-  .profile-card-stats strong {
+  .friends-page .profile-card-stats strong {
     font-size: 1rem;
     line-height: 1;
   }
 
-  .profile-card-actions {
+  .friends-page .profile-card-actions {
     grid-area: actions;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 7px;
   }
 
-  .profile-card-actions .primary-button,
-  .profile-card-actions .secondary-button,
-  .profile-card-actions .ghost-button {
+  .friends-page .profile-card-actions .primary-button,
+  .friends-page .profile-card-actions .secondary-button,
+  .friends-page .profile-card-actions .ghost-button {
     min-height: 38px;
     padding-inline: 9px;
     border-radius: 999px;
@@ -1592,15 +1592,15 @@ body,
     line-height: 1;
   }
 
-  .profile-card-actions .danger-button {
+  .friends-page .profile-card-actions .danger-button {
     grid-column: 1 / -1;
   }
 
-  .profile-card-actions > button:only-child {
+  .friends-page .profile-card-actions > button:only-child {
     grid-column: 1 / -1;
   }
 
-  .search-prompt-card {
+  .friends-page .search-prompt-card {
     grid-template-columns: 46px minmax(0, 1fr);
     grid-template-areas:
       "icon copy"
@@ -1608,35 +1608,35 @@ body,
     align-items: center;
   }
 
-  .search-prompt-card .search-prompt-icon {
+  .friends-page .search-prompt-card .search-prompt-icon {
     grid-area: icon;
   }
 
-  .search-prompt-card .profile-card-copy {
+  .friends-page .search-prompt-card .profile-card-copy {
     grid-area: copy;
   }
 
-  .search-prompt-icon {
+  .friends-page .search-prompt-icon {
     width: 46px;
     height: 46px;
     font-size: 1.5rem;
   }
 
-  .card-search-form {
+  .friends-page .card-search-form {
     grid-area: form;
     grid-template-columns: 1fr;
     gap: 8px;
   }
 
-  .card-search-form input {
+  .friends-page .card-search-form input {
     min-height: 44px;
   }
 
-  .card-search-form .primary-button {
+  .friends-page .card-search-form .primary-button {
     min-height: 44px;
   }
 
-  .search-empty-card {
+  .friends-page .search-empty-card {
     min-height: 104px;
     align-content: center;
   }

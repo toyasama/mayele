@@ -33,7 +33,7 @@ export function calculateAccuracy(correctAnswers: number, totalQuestions: number
   return totalQuestions > 0 ? Math.round((correctAnswers / totalQuestions) * 100) : 0
 }
 
-function recomputeBestStreak(items: Array<{ isCorrect: boolean }>) {
+export function recomputeBestStreak(items: Array<{ isCorrect: boolean }>) {
   let current = 0
   let best = 0
 
@@ -152,6 +152,35 @@ export function expectedTempoQuestion(
     payload.responseTimeMs > responseLimitMs
   ) {
     throw new MatchServiceError('match_tempo_answer_invalid')
+  }
+
+  return expected
+}
+
+export function expectedSprintQuestion(
+  match: {
+    game: string | null
+    level: string | null
+    challengeMode: string | null
+    questionSeed: string | null
+    startedAt: Date | null
+  },
+  payload: TempoAnswerPayload,
+) {
+  assertCompleteConfig(match)
+
+  if (match.challengeMode !== 'sprint' || !match.questionSeed || !match.startedAt) {
+    throw new MatchServiceError('match_config_incomplete')
+  }
+
+  const expected = generateMatchQuestion(match.questionSeed, payload.questionIndex, match.game as GameType, match.level as GameLevel)
+
+  if (
+    payload.prompt !== expected.prompt ||
+    payload.correctAnswer !== expected.answer ||
+    payload.skill !== expected.skill
+  ) {
+    throw new MatchServiceError('match_result_invalid')
   }
 
   return expected

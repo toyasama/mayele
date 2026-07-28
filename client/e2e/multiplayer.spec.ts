@@ -214,8 +214,8 @@ async function createCompletedRoom(browser: Browser, request: APIRequestContext)
 
   await host.page.goto(matchUrl)
   await guest.page.goto(matchUrl)
-  await expect(host.page.getByRole('button', { name: /^Relancer$/i })).toBeVisible()
-  await expect(guest.page.getByRole('button', { name: /^Relancer$/i })).toBeVisible()
+  await expect(host.page.getByRole('button', { name: /^Rejouer ce duel$/i })).toBeVisible()
+  await expect(guest.page.getByRole('button', { name: /^Rejouer ce duel$/i })).toBeVisible()
 
   return { host, guest }
 }
@@ -225,7 +225,7 @@ async function startTempoMatch(host: Page, guest: Page, perQuestionSeconds = 10)
   await host.getByRole('button', { name: /Addition/i }).click()
   await host.getByRole('button', { name: /butant/i }).click()
   await host.getByLabel(/Questions/i).fill('10')
-  await host.getByLabel(/Temps par question/i).fill(String(perQuestionSeconds))
+  await host.getByLabel(/Secondes par question|Temps par question/i).fill(String(perQuestionSeconds))
   await proposeChallenge(host)
   await guest.getByRole('button', { name: /Accepter le defi/i }).click()
   await expect(host.locator('.question-line')).toBeVisible()
@@ -251,7 +251,7 @@ function roomStopButton(page: Page) {
 async function expectClosedRoomLobby(page: Page) {
   await expect(multiplayerLobby(page)).toBeVisible()
   await expect(page.locator('.multiplayer-room-grid')).toHaveCount(0)
-  await expect(page.getByRole('button', { name: /^Relancer$/i })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /^Rejouer ce duel$/i })).toHaveCount(0)
 }
 
 async function expectForfeitResult(
@@ -264,7 +264,7 @@ async function expectForfeitResult(
     await expect(page.locator('.multiplayer-result-panel')).toBeVisible()
     await expect(multiplayerLobby(page)).toHaveCount(0)
     await expect(page.locator('.question-line')).toHaveCount(0)
-    await expect(page.getByRole('button', { name: /^Relancer$/i })).toBeVisible()
+    await expect(page.getByRole('button', { name: /^Rejouer ce duel$/i })).toBeVisible()
   }
 
   await expect(forfeitingPage.locator('[data-result-player="self"]')).toHaveAttribute('data-result-outcome', 'loser')
@@ -280,22 +280,33 @@ async function expectForfeitResult(
   await expect(winningPage.locator('[data-result-player="opponent"] .multiplayer-result-forfeit-badge')).toHaveText(/Abandon/i)
 
   if (options.expectAnsweredStats) {
-    await expect(forfeitingPage.locator('[data-result-player="self"] .multiplayer-result-stats strong').nth(1)).toContainText('1/1')
-    await expect(forfeitingPage.locator('[data-result-player="opponent"] .multiplayer-result-stats strong').nth(1)).toContainText('1/1')
-    await expect(winningPage.locator('[data-result-player="self"] .multiplayer-result-stats strong').nth(1)).toContainText('1/1')
-    await expect(winningPage.locator('[data-result-player="opponent"] .multiplayer-result-stats strong').nth(1)).toContainText('1/1')
+    await expect(forfeitingPage.locator('[data-result-player="self"] .multiplayer-result-stats strong').first()).toContainText('1/1')
+    await expect(forfeitingPage.locator('[data-result-player="opponent"] .multiplayer-result-stats strong').first()).toContainText('1/1')
+    await expect(winningPage.locator('[data-result-player="self"] .multiplayer-result-stats strong').first()).toContainText('1/1')
+    await expect(winningPage.locator('[data-result-player="opponent"] .multiplayer-result-stats strong').first()).toContainText('1/1')
   }
 
   await forfeitingPage.screenshot({ path: `test-results/${options.screenshotName}-forfeiter.png`, fullPage: true })
   await winningPage.screenshot({ path: `test-results/${options.screenshotName}-winner.png`, fullPage: true })
 
-  await forfeitingPage.getByRole('button', { name: /^Relancer$/i }).click()
+  await forfeitingPage.getByRole('button', { name: /^Rejouer ce duel$/i }).click()
   await expect(forfeitingPage.getByRole('button', { name: /Relance demand/i })).toBeVisible()
   await expect(winningPage.getByText(/Relance demand/i).first()).toBeVisible()
 }
 
 async function expectActiveOperation(page: Page, operationName: RegExp) {
   await expect(page.getByRole('button', { name: operationName })).toHaveClass(/active/)
+}
+
+async function expectLaunchIdleAnimation(page: Page, label: string) {
+  const button = page.locator('button').filter({ hasText: label }).first()
+  await expect(button).toBeVisible()
+  const animationNames = await button.evaluate((element) => (
+    element.getAnimations({ subtree: true }).map((animation) => (
+      animation instanceof CSSAnimation ? animation.animationName : ''
+    ))
+  ))
+  expect(animationNames).toContain('launch-action-breathe')
 }
 
 async function clickButtonInPageAndReturnEpochMs(page: Page, label: string) {
@@ -442,6 +453,38 @@ async function observeActiveButton(page: Page, names: string[], durationMs = 100
   )
 }
 
+test("recupere automatiquement l'arene apres une erreur serveur transitoire", async ({ browser, request }) => {
+  const reset = await request.post(`${API_URL}/api/e2e/reset-multiplayer`)
+  expect(reset.ok()).toBeTruthy()
+
+  const host = await e2ePage(browser, 'host')
+  let overviewAttempts = 0
+
+  try {
+    await host.page.route('**/api/matches/room-overview', async (route) => {
+      overviewAttempts += 1
+
+      if (overviewAttempts === 1) {
+        await route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({ message: 'Erreur serveur.', code: 'internal_error' }),
+        })
+        return
+      }
+
+      await route.continue()
+    })
+
+    await host.page.goto(`${APP_URL}/jeu/multijoueur`)
+    await expect(multiplayerLobby(host.page)).toBeVisible()
+    await expect.poll(() => overviewAttempts).toBeGreaterThanOrEqual(2)
+    await expect(host.page.getByText('Erreur serveur.')).toHaveCount(0)
+  } finally {
+    await host.context.close()
+  }
+})
+
 test('latence invitation et notification dans le budget realtime CI', async ({ browser, request }, testInfo) => {
   test.setTimeout(45_000)
 
@@ -574,7 +617,7 @@ test("refuser une invitation depuis la liste des defis recus ferme l'attente san
 
     await expectClosedRoomLobby(host.page)
     await expectClosedRoomLobby(guest.page)
-    await expect(guest.page.locator('.multiplayer-challenge-list')).toContainText(/Aucun defi|Aucun d.*fi/i)
+    await expect(guest.page.locator('.multiplayer-challenge-list')).toContainText(/Aucun defi|Aucun d.*fi|Rien en attente/i)
     await guest.page.waitForTimeout(200)
     expect(declineRestRequests).toBe(0)
 
@@ -613,12 +656,16 @@ test('latence proposition et acceptation defi dans le budget realtime CI', async
 
     const guestProposalSeenAtPromise = observeTextEpochMs(guest.page, 'Accepter le defi')
     await expect(proposeChallengeButton(host.page)).toBeEnabled()
+    await expectLaunchIdleAnimation(host.page, 'Proposer le defi')
     const hostProposalStartedAt = await clickButtonInPageAndReturnEpochMs(host.page, 'Proposer le defi')
     const guestProposalSeenAt = await guestProposalSeenAtPromise
     const proposalLatencyMs = guestProposalSeenAt - hostProposalStartedAt
 
     const hostStartedSeenAtPromise = observeSelectorEpochMs(host.page, '.question-line')
+    await expectLaunchIdleAnimation(guest.page, 'Accepter le defi')
     const guestAcceptStartedAt = await clickButtonInPageAndReturnEpochMs(guest.page, 'Accepter le defi')
+    await expect(guest.page.locator('.launch-action-burst')).toBeVisible()
+    await guest.page.screenshot({ path: 'test-results/multiplayer-launch-animation.png', fullPage: true })
     const hostStartedSeenAt = await hostStartedSeenAtPromise
     const startLatencyMs = hostStartedSeenAt - guestAcceptStartedAt
 
@@ -654,23 +701,38 @@ for (const sprintDuration of [60, 90, 120] as const) {
     const { host, guest } = await createAcceptedRoom(browser, request)
 
     try {
-      await host.page.getByRole('button', { name: /Tempo/i }).click()
-      await host.page.getByRole('button', { name: /Addition/i }).click()
-      await host.page.getByRole('button', { name: /butant/i }).click()
-      await host.page.getByLabel(/Questions/i).fill('10')
-      await host.page.getByLabel(/Temps par question/i).fill('10')
-      await expect(guest.page.getByRole('button', { name: /Tempo/i })).toHaveClass(/active/)
+      await test.step('configurer puis synchroniser Tempo', async () => {
+        const tempoButton = host.page.locator('.multiplayer-config-mode').getByRole('button', { name: /Tempo/i })
+        await expect(tempoButton).toBeVisible()
+        await expect(tempoButton).toBeEnabled()
+        await tempoButton.click({ timeout: 5_000 })
+        await host.page.getByRole('button', { name: /Addition/i }).click({ timeout: 5_000 })
+        await host.page.getByRole('button', { name: /butant/i }).click({ timeout: 5_000 })
+        await host.page.getByLabel(/Questions/i).fill('10', { timeout: 5_000 })
+        await host.page.getByLabel(/Secondes par question|Temps par question/i).fill('10', { timeout: 5_000 })
+        await test.step('l hote conserve Tempo', async () => {
+          await expect(host.page.getByRole('button', { name: /Tempo/i })).toHaveClass(/active/, { timeout: 5_000 })
+        })
+        await test.step('l invite recoit Tempo', async () => {
+          await expect(guest.page.getByRole('button', { name: /Tempo/i })).toHaveClass(/active/, { timeout: 5_000 })
+        })
+      })
 
-      await host.page.getByRole('button', { name: /Sprint/i }).click()
-      await expect(guest.page.getByRole('button', { name: /Sprint/i })).toHaveClass(/active/)
-      await host.page.getByLabel(/Duree|Dur.*e/i).selectOption(String(sprintDuration))
-      await expect(host.page.getByLabel(/Duree|Dur.*e/i)).toHaveValue(String(sprintDuration))
+      await test.step('basculer puis synchroniser Sprint', async () => {
+        await host.page.getByRole('button', { name: /Sprint/i }).click()
+        await expect(host.page.getByRole('button', { name: /Sprint/i })).toHaveClass(/active/)
+        await expect(guest.page.getByRole('button', { name: /Sprint/i })).toHaveClass(/active/)
+        await host.page.getByLabel(/Duree|Dur.*e/i).selectOption(String(sprintDuration))
+        await expect(host.page.getByLabel(/Duree|Dur.*e/i)).toHaveValue(String(sprintDuration))
+      })
 
-      await proposeChallenge(host.page)
-      await expect(guest.page.getByRole('button', { name: /Accepter le defi/i })).toBeVisible()
-      await guest.page.getByRole('button', { name: /Accepter le defi/i }).click()
-      await expect(host.page.locator('.question-line')).toBeVisible()
-      await expect(guest.page.locator('.question-line')).toBeVisible()
+      await test.step('proposer et demarrer le Sprint', async () => {
+        await proposeChallenge(host.page)
+        await expect(guest.page.getByRole('button', { name: /Accepter le defi/i })).toBeVisible()
+        await guest.page.getByRole('button', { name: /Accepter le defi/i }).click()
+        await expect(host.page.locator('.question-line')).toBeVisible()
+        await expect(guest.page.locator('.question-line')).toBeVisible()
+      })
 
       await expect.poll(() => readSprintTimer(host.page)).toBeLessThanOrEqual(sprintDuration)
       await expect.poll(() => readSprintTimer(guest.page)).toBeLessThanOrEqual(sprintDuration)
@@ -697,8 +759,8 @@ for (const tempoSeconds of [5, 30] as const) {
       await host.page.getByRole('button', { name: /Addition/i }).click()
       await host.page.getByRole('button', { name: /butant/i }).click()
       await host.page.getByLabel(/Questions/i).fill('10')
-      await host.page.getByLabel(/Temps par question/i).fill(String(tempoSeconds))
-      await expect(host.page.getByLabel(/Temps par question/i)).toHaveValue(String(tempoSeconds))
+      await host.page.getByLabel(/Secondes par question|Temps par question/i).fill(String(tempoSeconds))
+      await expect(host.page.getByLabel(/Secondes par question|Temps par question/i)).toHaveValue(String(tempoSeconds))
       await expect(guest.page.getByRole('button', { name: /Tempo/i })).toHaveClass(/active/)
 
       await proposeChallenge(host.page)
@@ -851,11 +913,11 @@ test('latence realtime relance dans le budget CI avec preuve visuelle', async ({
   const { host, guest } = await createCompletedRoom(browser, request)
 
   try {
-    await expect(host.page.getByRole('button', { name: /^Relancer$/i })).toBeVisible()
-    await expect(guest.page.getByRole('button', { name: /^Relancer$/i })).toBeVisible()
+    await expect(host.page.getByRole('button', { name: /^Rejouer ce duel$/i })).toBeVisible()
+    await expect(guest.page.getByRole('button', { name: /^Rejouer ce duel$/i })).toBeVisible()
 
     const hostSeenAtPromise = observeTextEpochMs(host.page, 'Relance demand')
-    const guestStartedAt = await clickButtonInPageAndReturnEpochMs(guest.page, 'Relancer')
+    const guestStartedAt = await clickButtonInPageAndReturnEpochMs(guest.page, 'Rejouer ce duel')
     const hostSeenAt = await hostSeenAtPromise
     const latencyMs = hostSeenAt - guestStartedAt
 
@@ -979,10 +1041,10 @@ test('ne produit pas de commande invalide ni double transition sur clics rapides
     await host.page.getByLabel(/Questions/i).fill('')
     await host.page.getByLabel(/Questions/i).fill('1')
     await expect(host.page.getByLabel(/Questions/i)).toHaveValue('10')
-    await host.page.getByLabel(/Temps par question/i).fill('1')
-    await expect(host.page.getByLabel(/Temps par question/i)).toHaveValue('5')
-    await host.page.getByLabel(/Temps par question/i).fill('31')
-    await expect(host.page.getByLabel(/Temps par question/i)).toHaveValue('30')
+    await host.page.getByLabel(/Secondes par question|Temps par question/i).fill('1')
+    await expect(host.page.getByLabel(/Secondes par question|Temps par question/i)).toHaveValue('5')
+    await host.page.getByLabel(/Secondes par question|Temps par question/i).fill('31')
+    await expect(host.page.getByLabel(/Secondes par question|Temps par question/i)).toHaveValue('30')
 
     await host.page.evaluate(() => {
       const labels = ['Sprint', 'Tempo', 'Division', 'Mixte', 'Addition', 'butant']
@@ -1192,7 +1254,7 @@ test("tempo finalise les deux joueurs sur resultats quand la derniere reponse in
       await expect(page.locator('.multiplayer-result-panel')).toBeVisible({ timeout: 15_000 })
       await expect(multiplayerLobby(page)).toHaveCount(0)
       await expect(page.locator('.question-line')).toHaveCount(0)
-      await expect(page.getByRole('button', { name: /^Relancer$/i })).toBeVisible()
+      await expect(page.getByRole('button', { name: /^Rejouer ce duel$/i })).toBeVisible()
     }
 
     await host.page.screenshot({ path: 'test-results/tempo-final-expired-answer-host-results.png', fullPage: true })
@@ -1241,7 +1303,7 @@ test("tempo garde l'invite dans le salon quand il termine avant l'hote", async (
     for (const page of [host.page, guest.page]) {
       await expect(page.locator('.multiplayer-result-panel')).toBeVisible({ timeout: 15_000 })
       await expect(multiplayerLobby(page)).toHaveCount(0)
-      await expect(page.getByRole('button', { name: /^Relancer$/i })).toBeVisible()
+      await expect(page.getByRole('button', { name: /^Rejouer ce duel$/i })).toBeVisible()
     }
   } finally {
     await host.context.close()
@@ -1255,10 +1317,10 @@ test('quitter les resultats ferme le salon pour les deux joueurs', async ({ brow
   const { host, guest } = await createCompletedRoom(browser, request)
 
   try {
-    await guest.page.getByRole('button', { name: /^Relancer$/i }).click()
+    await guest.page.getByRole('button', { name: /^Rejouer ce duel$/i }).click()
     await expect(guest.page.getByRole('button', { name: /Relance demandee|Relance demandée/i })).toBeVisible()
 
-    await host.page.getByRole('button', { name: /^Quitter$/i }).click()
+    await host.page.getByRole('button', { name: /^Quitter le r.sultat$/i }).click()
     await expectClosedRoomLobby(host.page)
     await expectClosedRoomLobby(guest.page)
 

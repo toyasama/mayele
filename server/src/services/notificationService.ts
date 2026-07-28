@@ -1,4 +1,7 @@
+import type { Prisma } from '../generated/prisma/client.js'
 import { prisma } from '../lib/prisma.js'
+
+type NotificationDatabase = Pick<Prisma.TransactionClient, 'notification'>
 
 const NOTIFICATION_INCLUDE = {
   actorPlayer: {
@@ -27,8 +30,8 @@ type CreateNotificationInput = {
   dedupeKey: string
 }
 
-export async function createNotification(input: CreateNotificationInput) {
-  return prisma.notification.upsert({
+export async function createNotification(input: CreateNotificationInput, database: NotificationDatabase = prisma) {
+  return database.notification.upsert({
     where: {
       playerId_dedupeKey: {
         playerId: input.playerId,
@@ -59,8 +62,12 @@ export async function createNotification(input: CreateNotificationInput) {
   })
 }
 
-export async function dismissNotificationByDedupeKey(playerId: string, dedupeKey: string) {
-  const result = await prisma.notification.updateMany({
+export async function dismissNotificationByDedupeKey(
+  playerId: string,
+  dedupeKey: string,
+  database: NotificationDatabase = prisma,
+) {
+  const result = await database.notification.updateMany({
     where: {
       playerId,
       dedupeKey,
@@ -100,8 +107,12 @@ export async function listNotifications(playerId: string) {
   return { notifications, unreadCount }
 }
 
-export async function dismissNotification(playerId: string, notificationId: string) {
-  return prisma.notification.updateMany({
+export async function dismissNotification(
+  playerId: string,
+  notificationId: string,
+  database: NotificationDatabase = prisma,
+) {
+  return database.notification.updateMany({
     where: {
       id: notificationId,
       playerId,
@@ -114,8 +125,12 @@ export async function dismissNotification(playerId: string, notificationId: stri
   })
 }
 
-export async function markNotificationRead(playerId: string, notificationId: string) {
-  return prisma.notification.updateMany({
+export async function markNotificationRead(
+  playerId: string,
+  notificationId: string,
+  database: NotificationDatabase = prisma,
+) {
+  return database.notification.updateMany({
     where: {
       id: notificationId,
       playerId,
@@ -128,8 +143,8 @@ export async function markNotificationRead(playerId: string, notificationId: str
   })
 }
 
-export async function markAllNotificationsRead(playerId: string) {
-  return prisma.notification.updateMany({
+export async function markAllNotificationsRead(playerId: string, database: NotificationDatabase = prisma) {
+  return database.notification.updateMany({
     where: {
       playerId,
       status: 'active',

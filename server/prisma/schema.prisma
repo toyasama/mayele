@@ -35,6 +35,8 @@ model Player {
   createdMatches Match[] @relation("CreatedMatches")
   matchParticipants MatchParticipant[]
   matchQuestionAnswers MatchQuestionAnswer[]
+  soloRuns    SoloRun[]
+  xpLedgerEntries XpLedgerEntry[]
   notifications Notification[] @relation("PlayerNotifications")
   triggeredNotifications Notification[] @relation("ActorNotifications")
 
@@ -119,6 +121,7 @@ model Match {
   @@index([roomId, createdAt(sort: Desc)])
   @@index([createdById, createdAt(sort: Desc)])
   @@index([status, createdAt(sort: Desc)])
+  @@index([status, expiresAt])
   @@map("matches")
 }
 
@@ -174,6 +177,9 @@ model MatchQuestionAnswer {
 model GameSession {
   id              String   @id @default(cuid())
   playerId        String   @map("player_id")
+  submissionKey   String?  @map("submission_key")
+  submissionPayloadHash String? @map("submission_payload_hash")
+  submissionResult Json?   @map("submission_result")
   game            String
   level           String
   practiceSkill   String?  @map("practice_skill")
@@ -188,10 +194,69 @@ model GameSession {
   player          Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
   answers         Answer[]
   matchParticipant MatchParticipant?
+  soloRun           SoloRun?
 
   @@index([playerId, playedAt(sort: Desc)])
   @@index([playerId, game, level])
+  @@unique([playerId, submissionKey])
   @@map("game_sessions")
+}
+
+model SoloRun {
+  id                         String   @id @default(cuid())
+  playerId                   String   @map("player_id")
+  clientRunId                String   @map("client_run_id")
+  status                     String   @default("active")
+  mode                       String
+  game                       String
+  level                      String
+  practiceSkill              String?  @map("practice_skill")
+  durationSeconds            Int      @map("duration_seconds")
+  questionCount              Int      @map("question_count")
+  perQuestionTimeLimitSeconds Int?    @map("per_question_time_limit_seconds")
+  questionSeed               String   @map("question_seed")
+  currentQuestionIndex       Int      @default(0) @map("current_question_index")
+  questionStartedAt          DateTime @map("question_started_at")
+  correctAnswers             Int      @default(0) @map("correct_answers")
+  totalQuestions             Int      @default(0) @map("total_questions")
+  scorePoints                Int      @default(0) @map("score_points")
+  currentStreak              Int      @default(0) @map("current_streak")
+  bestStreak                 Int      @default(0) @map("best_streak")
+  totalResponseTimeMs        Int      @default(0) @map("total_response_time_ms")
+  startedAt                  DateTime @default(now()) @map("started_at")
+  endsAt                     DateTime @map("ends_at")
+  expiresAt                  DateTime @map("expires_at")
+  finishedAt                 DateTime? @map("finished_at")
+  sessionId                  String?  @unique @map("session_id")
+  result                     Json?
+  player                     Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  session                    GameSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  answers                    SoloRunAnswer[]
+
+  @@unique([playerId, clientRunId])
+  @@index([playerId, status, startedAt(sort: Desc)])
+  @@index([status, expiresAt])
+  @@map("solo_runs")
+}
+
+model SoloRunAnswer {
+  id             String   @id @default(cuid())
+  runId          String   @map("run_id")
+  questionIndex  Int      @map("question_index")
+  prompt         String
+  correctAnswer  Int      @map("correct_answer")
+  userAnswer     Int?     @map("user_answer")
+  responseTimeMs Int      @map("response_time_ms")
+  isCorrect      Boolean  @map("is_correct")
+  game           String
+  level          String
+  skill          String
+  answeredAt     DateTime @default(now()) @map("answered_at")
+  run            SoloRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, questionIndex])
+  @@index([runId, answeredAt])
+  @@map("solo_run_answers")
 }
 
 model Answer {
@@ -255,4 +320,49 @@ model MissionCompletion {
   @@unique([playerId, missionKey, scopeKey])
   @@index([playerId, completedAt(sort: Desc)])
   @@map("mission_completions")
+}
+
+model XpLedgerEntry {
+  id         String   @id @default(cuid())
+  playerId   String   @map("player_id")
+  sourceType String   @map("source_type")
+  sourceId   String   @map("source_id")
+  amount     Int
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+  player     Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([playerId, sourceType, sourceId])
+  @@index([playerId, createdAt(sort: Desc)])
+  @@map("xp_ledger_entries")
+}
+
+model OutboxEvent {
+  id            String    @id @default(cuid())
+  dedupeKey     String    @unique @map("dedupe_key")
+  topic         String
+  aggregateType String    @map("aggregate_type")
+  aggregateId   String    @map("aggregate_id")
+  payload       Json
+  status        String    @default("pending")
+  attempts      Int       @default(0)
+  availableAt   DateTime  @default(now()) @map("available_at")
+  lockedAt      DateTime? @map("locked_at")
+  publishedAt   DateTime? @map("published_at")
+  lastError     String?   @map("last_error")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  @@index([status, availableAt, createdAt])
+  @@index([aggregateType, aggregateId, createdAt])
+  @@map("outbox_events")
+}
+
+model JobLease {
+  key         String   @id @map("job_key")
+  ownerId     String   @map("owner_id")
+  lockedUntil DateTime @map("locked_until")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([lockedUntil])
+  @@map("job_leases")
 }

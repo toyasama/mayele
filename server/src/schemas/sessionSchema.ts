@@ -14,6 +14,9 @@ const answerSchema = z.object({
 })
 
 const sessionSchema = z.object({
+  // Optional for compatibility with V1 clients. New clients generate one UUID
+  // per run and reuse it for every retry of that same submission.
+  submissionId: z.uuid().optional(),
   game: z.enum(VALID_GAMES),
   level: z.enum(VALID_LEVELS),
   practiceSkill: z.enum(VALID_SKILLS).nullable(),

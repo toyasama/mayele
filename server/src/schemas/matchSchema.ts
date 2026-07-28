@@ -121,6 +121,11 @@ const realtimeTempoAnswerCommandSchema = z.object({
   answer: tempoAnswerPayloadSchema,
 })
 
+const realtimeSprintAnswerCommandSchema = z.object({
+  matchId: z.string().trim().min(1).max(128),
+  answer: tempoAnswerPayloadSchema,
+})
+
 const matchResultPayloadSchema = z.object({
   durationSeconds: z.number().int().min(1).max(3600),
   bestStreak: z.number().int().min(0).max(120),
@@ -141,6 +146,7 @@ export type RealtimeMatchProgressCommandPayload = z.infer<typeof realtimeMatchPr
 export type RealtimeForfeitCommandPayload = z.infer<typeof realtimeForfeitCommandSchema>
 export type RealtimeMatchProposeCommandPayload = z.infer<typeof realtimeMatchProposeCommandSchema>
 export type RealtimeTempoAnswerCommandPayload = z.infer<typeof realtimeTempoAnswerCommandSchema>
+export type RealtimeSprintAnswerCommandPayload = z.infer<typeof realtimeSprintAnswerCommandSchema>
 export type RealtimeMatchResultCommandPayload = z.infer<typeof realtimeMatchResultCommandSchema>
 export type TempoAnswerPayload = z.infer<typeof tempoAnswerPayloadSchema>
 export type MatchResultPayload = z.infer<typeof matchResultPayloadSchema>
@@ -216,6 +222,16 @@ export function parseRealtimeTempoAnswerCommand(value: unknown): RealtimeTempoAn
 
   if (!parsed.success) {
     throw badRequest('Commande de reponse tempo invalide.')
+  }
+
+  return parsed.data
+}
+
+export function parseRealtimeSprintAnswerCommand(value: unknown): RealtimeSprintAnswerCommandPayload {
+  const parsed = realtimeSprintAnswerCommandSchema.safeParse(value)
+
+  if (!parsed.success) {
+    throw badRequest('Commande de reponse sprint invalide.')
   }
 
   return parsed.data

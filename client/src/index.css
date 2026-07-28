@@ -1,17 +1,8 @@
 @import './styles/base.css';
 @import './styles/home-auth-profile.css';
-@import './styles/dashboard-core.css';
-@import './styles/game-core.css';
 @import './styles/responsive-layout.css';
 @import './styles/visual-refresh.css';
 @import './styles/app-shell.css';
 @import './styles/layout-primitives.css';
-@import './styles/sprint-dashboard-refinements.css';
-@import './styles/dashboard-information.css';
-@import './styles/dashboard-stats.css';
-@import './styles/social.css';
-@import './styles/multiplayer.css';
 @import './styles/notifications.css';
-@import './styles/challenge-experience.css';
 @import './styles/responsive-mobile.css';
-@import './styles/multiplayer-mobile.css';

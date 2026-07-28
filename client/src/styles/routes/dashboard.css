@@ -1,0 +1,8 @@
+/* Loaded only with the lazy dashboard route. Keep imports in cascade order. */
+@import '../dashboard-core.css';
+@import '../sprint-dashboard-refinements.css';
+@import '../dashboard-information.css';
+@import '../dashboard-stats.css';
+@import '../experience-architecture.css';
+@import '../dashboard-header-v2.css';
+@import '../dashboard-mobile-navigation.css';

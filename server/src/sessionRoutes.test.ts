@@ -3,97 +3,107 @@ import request from 'supertest'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mockAuth } from './middleware/auth.js'
 
-const saveSessionResult = {
-  message: 'Session enregistrée.',
-  scorePoints: 42,
-  xpEarned: 120,
-  missionXpEarned: 0,
-  completedMissions: [],
-  playerProgress: {
-    level: 2,
-    maxLevel: 100,
-    totalXp: 120,
-    currentLevelXp: 120,
-    nextLevel: 3,
-    nextLevelXp: 432,
-    xpIntoLevel: 0,
-    xpForNextLevel: 312,
-    xpRemaining: 312,
-    progress: 0,
-    isMaxLevel: false,
-  },
-  earnedAchievements: [],
+const run = {
+  id: 'run-1',
+  clientRunId: '6269d73b-0235-4d35-b3e3-887f80407c5d',
+  status: 'active',
+  question: { index: 0, prompt: '1 + 2', operation: 'addition', skill: 'addition' },
+  progress: { correctAnswers: 0, totalQuestions: 0, scorePoints: 0, xp: 0, currentStreak: 0, bestStreak: 0 },
+  answers: [],
+  result: null,
 }
 
+const soloRunMocks = vi.hoisted(() => ({
+  startSoloRun: vi.fn(async () => run),
+  getActiveSoloRun: vi.fn(async () => run),
+  getSoloRun: vi.fn(async () => run),
+  submitSoloAnswer: vi.fn(async () => ({ run, correction: null })),
+  finishSoloRun: vi.fn(async () => ({ ...run, status: 'completed' })),
+}))
+
 vi.mock('./services/playerService.js', () => ({
-  getOrCreatePlayer: vi.fn(async () => ({ id: 'player-1', timeZone: 'America/New_York' })),
+  getOrCreatePlayer: vi.fn(async () => ({
+    id: 'player-1',
+    firstName: 'Ada',
+    lastName: 'Lovelace',
+    birthDate: new Date('2000-01-01'),
+    username: 'ada',
+  })),
   isPlayerProfileComplete: vi.fn(() => true),
 }))
 
-vi.mock('./services/sessionService.js', () => ({
-  saveSession: vi.fn(async () => saveSessionResult),
-}))
+vi.mock('./services/soloRunService.js', () => soloRunMocks)
 
 const { createApp } = await import('./app.js')
-const { saveSession } = await import('./services/sessionService.js')
 
 const noopClerk: RequestHandler = (_req, _res, next) => next()
 
-function buildValidSessionPayload(count = 30) {
-  const answer = {
-    prompt: '12 + 8',
-    correctAnswer: 20,
-    userAnswer: 20,
-    responseTimeMs: 500,
+function testApp() {
+  return createApp({ clerkMiddlewareOverride: noopClerk, authMiddlewareOverride: mockAuth('user-1') })
+}
+
+function validStartPayload() {
+  return {
+    clientRunId: '6269d73b-0235-4d35-b3e3-887f80407c5d',
+    mode: 'tempo',
     game: 'addition',
     level: 'debutant',
-    skill: 'addition',
-  }
-
-  return {
-    game: 'mixte',
-    level: 'debutant',
     practiceSkill: null,
-    totalQuestions: count,
-    durationSeconds: 60,
-    bestStreak: count,
-    answers: Array.from({ length: count }, () => answer),
+    sprintDurationSeconds: 60,
+    tempoQuestionCount: 10,
+    tempoQuestionSeconds: 5,
   }
 }
 
-describe('session routes', () => {
+describe('authoritative solo run routes', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  it('accepte un payload valide de 30 réponses', async () => {
-    const app = createApp({ clerkMiddlewareOverride: noopClerk, authMiddlewareOverride: mockAuth('user-1') })
-
-    await request(app).post('/api/sessions').send(buildValidSessionPayload(30)).expect(201, saveSessionResult)
-
-    expect(saveSession).toHaveBeenCalledOnce()
-    expect(saveSession).toHaveBeenCalledWith('player-1', expect.any(Object), 'America/New_York')
+  it('désactive la soumission legacy qui faisait confiance aux réponses du client', async () => {
+    await request(testApp())
+      .post('/api/sessions')
+      .send({ answers: [{ correctAnswer: 999 }] })
+      .expect(410, {
+        message: 'Cette version de sauvegarde Solo n’est plus acceptée. Démarrez une nouvelle partie.',
+        code: 'legacy_session_submission_disabled',
+      })
   })
 
-  it('rejette un payload dépassant la limite de 120 réponses', async () => {
-    const app = createApp({ clerkMiddlewareOverride: noopClerk, authMiddlewareOverride: mockAuth('user-1') })
+  it('démarre un run avec une configuration validée', async () => {
+    await request(testApp()).post('/api/solo-runs').send(validStartPayload()).expect(201, { run })
 
-    await request(app)
-      .post('/api/sessions')
-      .send(buildValidSessionPayload(121))
+    expect(soloRunMocks.startSoloRun).toHaveBeenCalledWith('player-1', validStartPayload())
+  })
+
+  it('rejette une durée Sprint choisie hors contrat', async () => {
+    await request(testApp())
+      .post('/api/solo-runs')
+      .send({ ...validStartPayload(), mode: 'sprint', sprintDurationSeconds: 15 })
       .expect(400)
 
-    expect(saveSession).not.toHaveBeenCalled()
+    expect(soloRunMocks.startSoloRun).not.toHaveBeenCalled()
   })
 
-  it('returns 413 for payloads beyond the configured API limit', async () => {
-    const app = createApp({ clerkMiddlewareOverride: noopClerk, authMiddlewareOverride: mockAuth('user-1') })
+  it('ne transmet au service que l’index et la réponse utilisateur', async () => {
+    await request(testApp())
+      .post('/api/solo-runs/run-1/answers')
+      .send({ questionIndex: 0, userAnswer: 3, correctAnswer: 3, bestStreak: 99, responseTimeMs: 1 })
+      .expect(200, { run, correction: null })
 
-    await request(app)
-      .post('/api/sessions')
-      .send({ oversized: 'x'.repeat(600 * 1024) })
-      .expect(413, { message: 'Payload trop volumineux.', code: 'payload_too_large' })
+    expect(soloRunMocks.submitSoloAnswer).toHaveBeenCalledWith('player-1', 'run-1', {
+      questionIndex: 0,
+      userAnswer: 3,
+    })
+  })
 
-    expect(saveSession).not.toHaveBeenCalled()
+  it('reprend le run actif et permet sa finalisation', async () => {
+    await request(testApp()).get('/api/solo-runs/active').expect(200, { run })
+    await request(testApp()).post('/api/solo-runs/run-1/finish').expect(200, {
+      run: { ...run, status: 'completed' },
+    })
+
+    expect(soloRunMocks.getActiveSoloRun).toHaveBeenCalledWith('player-1')
+    expect(soloRunMocks.finishSoloRun).toHaveBeenCalledWith('player-1', 'run-1')
   })
 })

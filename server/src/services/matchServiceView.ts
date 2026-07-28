@@ -215,3 +215,74 @@ export function toMatchView(match: {
 export async function enrichMatchView(match: Parameters<typeof toMatchView>[0]) {
   return toMatchView(match, await buildChallengeStatsForMatch(match))
 }
+
+/**
+ * Enrich a list with one history query instead of two history queries per
+ * match. The room overview is polled frequently, so the previous N+1 shape
+ * multiplied database work as the number of visible challenges grew.
+ */
+export async function enrichMatchViews(matches: Array<Parameters<typeof toMatchView>[0]>) {
+  if (!matches.length) {
+    return []
+  }
+
+  const roomIds = [...new Set(matches.map((match) => match.roomId ?? match.id))]
+  const pairs = new Map<string, [string, string]>()
+
+  for (const match of matches) {
+    const playerIds = match.participants.map((participant) => participant.player.id)
+    const firstPlayerId = playerIds[0]
+    const secondPlayerId = playerIds[1]
+
+    if (!firstPlayerId || !secondPlayerId) {
+      continue
+    }
+
+    const pair = [firstPlayerId, secondPlayerId].sort() as [string, string]
+    pairs.set(pair.join(':'), pair)
+  }
+
+  const completedMatches = await prisma.match.findMany({
+    where: {
+      type: 'challenge',
+      status: 'completed',
+      OR: [
+        { roomId: { in: roomIds } },
+        ...Array.from(pairs.values()).map(([firstPlayerId, secondPlayerId]) => ({
+          participants: { some: { playerId: firstPlayerId } },
+          AND: [{ participants: { some: { playerId: secondPlayerId } } }],
+        })),
+      ],
+    },
+    select: {
+      roomId: true,
+      winnerPlayerId: true,
+      participants: { select: { playerId: true } },
+    },
+  })
+
+  return matches.map((match) => {
+    const playerIds = match.participants.map((participant) => participant.player.id)
+    const [firstPlayerId, secondPlayerId] = playerIds
+    const statsByPlayerId = new Map(playerIds.map((playerId) => [playerId, emptyParticipantChallengeStats()]))
+
+    if (!firstPlayerId || !secondPlayerId) {
+      return toMatchView(match, statsByPlayerId)
+    }
+
+    const roomId = match.roomId ?? match.id
+    for (const completedMatch of completedMatches) {
+      const completedPlayerIds = new Set(completedMatch.participants.map((participant) => participant.playerId))
+
+      if (completedMatch.roomId === roomId) {
+        applyChallengeOutcome(statsByPlayerId, 'room', completedMatch)
+      }
+
+      if (completedPlayerIds.has(firstPlayerId) && completedPlayerIds.has(secondPlayerId)) {
+        applyChallengeOutcome(statsByPlayerId, 'friendship', completedMatch)
+      }
+    }
+
+    return toMatchView(match, statsByPlayerId)
+  })
+}

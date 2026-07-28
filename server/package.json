@@ -12,6 +12,7 @@
     "test": "npm run prisma:generate && vitest run",
     "prisma:generate": "prisma generate",
     "db:check-domain": "node scripts/check-domain-constraints.mjs",
+    "db:verify-ledger": "tsx scripts/verify-xp-ledger.ts",
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio"
   },
