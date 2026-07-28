@@ -30,13 +30,16 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => window.localStorage.setItem('mayele.e2e.user', 'host'))
 })
 
-test('affiche le jeu solo avant de charger le transport temps reel global', async ({ page }) => {
+test('affiche le jeu solo avant de charger le transport temps reel global', async ({ page }, testInfo) => {
   await page.goto('/jeu/solo', { waitUntil: 'domcontentloaded' })
   await expect(page.locator('.challenge-config-board')).toBeVisible()
   await waitForRealtimeReady(page, 8_000)
 
   const metrics = await readBootstrapMetrics(page)
-  console.log(`REALTIME_BOOTSTRAP solo ${JSON.stringify(metrics)}`)
+  await testInfo.attach('realtime-bootstrap-solo', {
+    body: JSON.stringify(metrics, null, 2),
+    contentType: 'application/json',
+  })
   expect(metrics.routeContentReadyAt).not.toBeNull()
   expect(metrics.realtimeImportStartedAt).not.toBeNull()
   expect(metrics.realtimeModuleLoadedAt).not.toBeNull()
@@ -44,13 +47,16 @@ test('affiche le jeu solo avant de charger le transport temps reel global', asyn
   expect(metrics.realtimeImportStartedAt!).toBeLessThanOrEqual(metrics.realtimeModuleLoadedAt!)
 })
 
-test('une route multijoueur prioritaire connecte sans attendre le bootstrap global', async ({ page }) => {
+test('une route multijoueur prioritaire connecte sans attendre le bootstrap global', async ({ page }, testInfo) => {
   await page.goto('/jeu/multijoueur', { waitUntil: 'domcontentloaded' })
   await expect(page.locator('.multiplayer-lobby-grid')).toBeVisible()
   await waitForRealtimeReady(page, 8_000)
 
   const metrics = await readBootstrapMetrics(page)
-  console.log(`REALTIME_BOOTSTRAP multiplayer ${JSON.stringify(metrics)}`)
+  await testInfo.attach('realtime-bootstrap-multiplayer', {
+    body: JSON.stringify(metrics, null, 2),
+    contentType: 'application/json',
+  })
   expect(metrics.routeContentReadyAt).not.toBeNull()
   expect(metrics.realtimeImportStartedAt).not.toBeNull()
   expect(metrics.realtimeConnectStartedAt).not.toBeNull()

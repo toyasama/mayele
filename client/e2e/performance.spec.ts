@@ -49,7 +49,7 @@ function countApi(result: Awaited<ReturnType<typeof measureRoute>>, path: string
   return result.api.filter((request) => request.path === path).length
 }
 
-test('mesure les routes authentifiées et interdit les préchargements hors contexte', async ({ browser, request }) => {
+test('mesure les routes authentifiées et interdit les préchargements hors contexte', async ({ browser, request }, testInfo) => {
   const reset = await request.post(`${API_URL}/api/e2e/reset-multiplayer`)
   expect(reset.ok()).toBe(true)
   const players = (await reset.json()) as { players: { guest: { id: string } } }
@@ -60,7 +60,10 @@ test('mesure les routes authentifiées et interdit les préchargements hors cont
   const friend = await measureRoute(browser, `/amis/${players.players.guest.id}`, '.friend-versus-stage')
   const results = { solo, dashboard, multiplayer, friend }
 
-  console.log(`PERF_RESULT ${JSON.stringify(results)}`)
+  await testInfo.attach('route-performance-results', {
+    body: JSON.stringify(results, null, 2),
+    contentType: 'application/json',
+  })
 
   expect(countApi(solo, '/api/dashboard')).toBe(0)
   expect(countApi(solo, '/api/friends/overview')).toBe(0)
