@@ -359,7 +359,27 @@ jobs:
 
       - name: Deploy API to Railway
         shell: bash
-        run: npx --yes @railway/cli@5.26.1 up --ci --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_ENVIRONMENT" --service "$RAILWAY_SERVICE"
+        run: |
+          set -uo pipefail
+
+          for attempt in 1 2 3; do
+            output_file="$(mktemp)"
+            trap 'rm -f "$output_file"' EXIT
+
+            if npx --yes @railway/cli@5.26.1 up --ci --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_ENVIRONMENT" --service "$RAILWAY_SERVICE" 2>&1 | tee "$output_file"; then
+              exit 0
+            fi
+
+            if ! grep -qi 'service unavailable' "$output_file" || [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+
+            delay_seconds=$((attempt * 30))
+            echo "Railway temporairement indisponible ; nouvelle tentative dans ${delay_seconds} secondes (${attempt}/3)."
+            rm -f "$output_file"
+            trap - EXIT
+            sleep "$delay_seconds"
+          done
 
       - name: Wait for API readiness
         shell: bash
