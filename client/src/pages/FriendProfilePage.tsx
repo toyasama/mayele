@@ -186,33 +186,34 @@ export function FriendProfilePage() {
 
       <FriendPerformanceSummary stats={profile.stats} />
 
-      {profile.badges.length ? (
-        <section className="friend-profile-section">
-          <FriendSectionHeader eyebrow="Badges" title="Badges débloqués" meta={`${profile.badges.length} obtenus`} />
-          <div className="friend-badge-grid">
-            {profile.badges.map((badge) => (
+      <section className="friend-profile-section">
+        <FriendSectionHeader
+          eyebrow="Badges"
+          title="Badges débloqués"
+          meta={profile.badges.length ? `${profile.badges.length} obtenus` : undefined}
+        />
+        <div className="friend-badge-grid">
+          {profile.badges.length ? (
+            profile.badges.map((badge) => (
               <FriendBadgeCard badge={badge} key={badge.key} />
-            ))}
-          </div>
-        </section>
-      ) : (
-        <section className="friend-profile-section">
-          <FriendSectionHeader eyebrow="Badges" title="Badges débloqués" />
-          <article className="card friend-badge-card friend-badge-placeholder">
-            <span className="badge-art locked rank-one" aria-hidden="true">
-              <span className="badge-core">
-                <span className="badge-family-icon">?</span>
+            ))
+          ) : (
+            <article className="card friend-badge-card friend-badge-placeholder">
+              <span className="badge-art locked rank-one" aria-hidden="true">
+                <span className="badge-core">
+                  <span className="badge-family-icon">?</span>
+                </span>
+                <span className="badge-tier-flourish" />
+                <span className="badge-lock-icon" aria-hidden="true" />
               </span>
-              <span className="badge-tier-flourish" />
-              <span className="badge-lock-icon" aria-hidden="true" />
-            </span>
-            <div>
-              <strong>Pas de badge</strong>
-              <em>Profil en progression</em>
-            </div>
-          </article>
-        </section>
-      )}
+              <div>
+                <strong>Pas de badge</strong>
+                <em>Profil en progression</em>
+              </div>
+            </article>
+          )}
+        </div>
+      </section>
 
     </section>
   )

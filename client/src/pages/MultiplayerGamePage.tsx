@@ -398,7 +398,7 @@ export function MultiplayerGamePage() {
       return
     }
 
-    const participant = profile
+    const participant = profile?.id
       ? match.participants.find((item) => item.player.id === profile.id)
       : null
     const superseded =
@@ -414,7 +414,7 @@ export function MultiplayerGamePage() {
 
     roomActionInFlightRef.current = null
     setAction('')
-  }, [profile])
+  }, [profile?.id])
 
   const applyConfig = useCallback((nextConfig: RoomConfig) => {
     const normalizedConfig = normalizeRoomConfig(nextConfig)

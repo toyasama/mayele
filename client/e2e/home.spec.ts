@@ -1,7 +1,8 @@
 import { expect, test } from '@playwright/test'
 
-test('affiche la page d accueil publique', async ({ page }) => {
+test('redirige l utilisateur E2E authentifie vers le jeu solo', async ({ page }) => {
   await page.goto('/')
 
-  await expect(page.getByRole('heading', { name: /Calculez vite|Alice Host/i })).toBeVisible()
+  await expect(page).toHaveURL(/\/jeu\/solo$/)
+  await expect(page.locator('.game-page')).toBeVisible()
 })
