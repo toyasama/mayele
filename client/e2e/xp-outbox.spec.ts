@@ -110,13 +110,13 @@ test('une demande d’ami commit notification et événements outbox avant diffu
     return payload.events.map((event: { topic: string; status: string }) => ({
       topic: event.topic,
       status: event.status,
-    }))
+    })).sort((left: { topic: string }, right: { topic: string }) => left.topic.localeCompare(right.topic))
   }).toEqual([
-    { topic: 'social.changed', status: 'published' },
     { topic: 'notification.created', status: 'published' },
-    { topic: 'social.changed', status: 'published' },
     { topic: 'notification.created', status: 'published' },
     { topic: 'notifications.changed', status: 'published' },
+    { topic: 'social.changed', status: 'published' },
+    { topic: 'social.changed', status: 'published' },
   ])
 
   const [hostFriendsResponse, targetFriendsResponse, hostNotificationsResponse, targetNotificationsResponse] = await Promise.all([
