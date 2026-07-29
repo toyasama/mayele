@@ -13,6 +13,16 @@ function parseOrigins(value: string | undefined) {
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean)
+    .map((origin) => {
+      try {
+        const url = new URL(origin)
+        return url.protocol === 'https:' && url.pathname === '/' && !url.search && !url.hash
+          ? url.origin
+          : origin
+      } catch {
+        return origin
+      }
+    })
 }
 
 const nodeEnv = process.env.NODE_ENV ?? 'development'
@@ -74,7 +84,6 @@ export function productionEnvProblems(candidate: ProductionEnv) {
     ['CLERK_SECRET_KEY', candidate.clerkSecretKey],
     ['CLERK_PUBLISHABLE_KEY', candidate.clerkPublishableKey],
     ['CORS_ORIGINS', candidate.corsOrigins.length ? 'set' : ''],
-    ['SENTRY_DSN', candidate.sentryDsn],
   ] as const
 
   for (const [key, value] of required) {

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { productionEnvProblems } from './env.js'
 
 function validProductionEnv() {
@@ -21,6 +21,18 @@ describe('productionEnvProblems', () => {
     expect(productionEnvProblems(validProductionEnv())).toEqual([])
   })
 
+  it('normalise une origine HTTPS avec un slash final', async () => {
+    vi.resetModules()
+    vi.stubEnv('CORS_ORIGINS', 'https://mayele-learning.com/')
+
+    const { env } = await import('./env.js')
+
+    expect(env.corsOrigins).toEqual(['https://mayele-learning.com'])
+
+    vi.unstubAllEnvs()
+    vi.resetModules()
+  })
+
   it('bloque les identifiants de test, les origines locales et le bypass E2E', () => {
     expect(productionEnvProblems({
       ...validProductionEnv(),
@@ -36,10 +48,9 @@ describe('productionEnvProblems', () => {
     ]))
   })
 
-  it('exige les connexions de migration et la supervision des erreurs', () => {
+  it('exige la connexion de migration, mais laisse Sentry optionnel', () => {
     expect(productionEnvProblems({ ...validProductionEnv(), directUrl: '', sentryDsn: '' })).toEqual([
       'DIRECT_URL manquante',
-      'SENTRY_DSN manquante',
     ])
   })
 
