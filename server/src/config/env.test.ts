@@ -33,6 +33,19 @@ describe('productionEnvProblems', () => {
     vi.resetModules()
   })
 
+  it('ecarte les origines non sures et utilise le domaine de production connu', async () => {
+    vi.resetModules()
+    vi.stubEnv('NODE_ENV', 'production')
+    vi.stubEnv('CORS_ORIGINS', 'http://localhost:5173,not-a-url')
+
+    const { env } = await import('./env.js')
+
+    expect(env.corsOrigins).toEqual(['https://mayele-learning.com'])
+
+    vi.unstubAllEnvs()
+    vi.resetModules()
+  })
+
   it('bloque les identifiants de test, les origines locales et le bypass E2E', () => {
     expect(productionEnvProblems({
       ...validProductionEnv(),

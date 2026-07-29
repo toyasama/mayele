@@ -13,19 +13,25 @@ function parseOrigins(value: string | undefined) {
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean)
-    .map((origin) => {
+    .flatMap((origin) => {
       try {
         const url = new URL(origin)
-        return url.protocol === 'https:' && url.pathname === '/' && !url.search && !url.hash
-          ? url.origin
-          : origin
+        return url.protocol === 'https:' && !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
+          ? [url.origin]
+          : []
       } catch {
-        return origin
+        return []
       }
     })
 }
 
 const nodeEnv = process.env.NODE_ENV ?? 'development'
+const parsedCorsOrigins = parseOrigins(process.env.CORS_ORIGINS)
+const corsOrigins = parsedCorsOrigins.length
+  ? parsedCorsOrigins
+  : nodeEnv === 'production'
+    ? ['https://mayele-learning.com']
+    : []
 
 export const env = {
   nodeEnv,
@@ -35,7 +41,7 @@ export const env = {
   directUrl: process.env.DIRECT_URL ?? '',
   clerkSecretKey: process.env.CLERK_SECRET_KEY ?? '',
   clerkPublishableKey: process.env.CLERK_PUBLISHABLE_KEY ?? '',
-  corsOrigins: parseOrigins(process.env.CORS_ORIGINS),
+  corsOrigins,
   e2eAuthBypass: process.env.E2E_AUTH_BYPASS === 'true',
   sentryDsn: process.env.SENTRY_DSN ?? '',
 }
