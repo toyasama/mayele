@@ -384,7 +384,9 @@ jobs:
 
       - name: Install server verification tools
         working-directory: server
-        run: npm ci
+        run: |
+          npm ci
+          npm run prisma:generate
 
       - name: Verify production database after migration
         working-directory: server
