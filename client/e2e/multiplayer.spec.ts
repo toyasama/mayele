@@ -1090,6 +1090,11 @@ test('applique un changement de configuration via snapshot realtime sans refresh
   const { host, guest } = await createAcceptedRoom(browser, request)
 
   try {
+    // Room creation finishes asynchronously after the acceptance UI becomes
+    // visible. Let that one-off bootstrap settle before measuring the config
+    // snapshot, which must not itself trigger a REST refresh.
+    await guest.page.waitForTimeout(500)
+
     let overviewRequests = 0
     guest.page.on('request', (pageRequest) => {
       if (pageRequest.url().includes('/api/matches/room-overview')) {
