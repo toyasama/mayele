@@ -85,15 +85,12 @@ function requireClerkPublishableKey(value) {
   return clerkKey
 }
 
-function requireSentryDsn(value) {
-  return requireHttpsUrl(value, 'VITE_SENTRY_DSN')
-}
-
 const env = loadViteProductionEnv()
 const apiUrl = requireHttpsUrl(env.VITE_API_URL, 'VITE_API_URL')
 const clerkPublishableKey = requireClerkPublishableKey(env.VITE_CLERK_PUBLISHABLE_KEY)
 const releaseCheck = process.argv.includes('--release')
 const apiPathname = apiUrl.pathname.replace(/\/+$/, '')
+const sentryDsn = env.VITE_SENTRY_DSN?.trim()
 
 if (apiPathname !== '/api') {
   fail('VITE_API_URL doit cibler la racine /api du backend.')
@@ -115,7 +112,9 @@ if (releaseCheck) {
   if (clerkEnvironment !== 'live') {
     fail('VITE_CLERK_PUBLISHABLE_KEY doit etre une cle live pour une release.')
   }
-  requireSentryDsn(env.VITE_SENTRY_DSN)
+  if (sentryDsn) {
+    requireHttpsUrl(sentryDsn, 'VITE_SENTRY_DSN')
+  }
 }
 
-console.log(`Config frontend production OK: API=${apiUrl.origin}${apiUrl.pathname}, realtime=${realtimeOrigin}, Clerk=${clerkEnvironment}`)
+console.log(`Config frontend production OK: API=${apiUrl.origin}${apiUrl.pathname}, realtime=${realtimeOrigin}, Clerk=${clerkEnvironment}, Sentry=${sentryDsn ? 'active' : 'desactive'}`)
