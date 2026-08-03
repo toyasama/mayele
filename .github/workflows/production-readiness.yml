@@ -361,13 +361,69 @@ jobs:
       - name: Deploy API to Railway
         shell: bash
         run: |
-          if npx --yes @railway/cli@5.26.1 up --ci --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_ENVIRONMENT" --service "$RAILWAY_SERVICE"; then
-            exit 0
+          set -euo pipefail
+
+          railway=(npx --yes @railway/cli@5.26.1)
+          railway_context=(--project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_ENVIRONMENT" --service "$RAILWAY_SERVICE")
+
+          deploy_json="$("${railway[@]}" up --detach --json --yes "${railway_context[@]}")"
+          echo "$deploy_json"
+
+          if ! deployment_id="$({
+            printf '%s' "$deploy_json" | node -e '
+              const fs = require("node:fs")
+              const result = JSON.parse(fs.readFileSync(0, "utf8"))
+              if (typeof result.deploymentId !== "string" || result.deploymentId.length === 0) process.exit(1)
+              process.stdout.write(result.deploymentId)
+            '
+          })"; then
+            echo "Railway n'a pas retourné d'identifiant de déploiement exploitable." >&2
+            exit 1
           fi
 
-          echo 'Le deploiement Railway a echoue ; logs de diagnostic :'
-          npx --yes @railway/cli@5.26.1 logs --latest --deployment --lines 200 --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_ENVIRONMENT" --service "$RAILWAY_SERVICE" || true
-          npx --yes @railway/cli@5.26.1 logs --latest --build --lines 200 --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_ENVIRONMENT" --service "$RAILWAY_SERVICE" || true
+          print_railway_logs() {
+            echo "Logs Railway pour le déploiement ${deployment_id} :"
+            "${railway[@]}" logs "$deployment_id" --deployment --lines 200 "${railway_context[@]}" || true
+            "${railway[@]}" logs "$deployment_id" --build --lines 200 "${railway_context[@]}" || true
+          }
+
+          for attempt in {1..72}; do
+            if deployments_json="$("${railway[@]}" deployment list --limit 20 --json "${railway_context[@]}")"; then
+              status="$({
+                printf '%s' "$deployments_json" | DEPLOYMENT_ID="$deployment_id" node -e '
+                  const fs = require("node:fs")
+                  const deployments = JSON.parse(fs.readFileSync(0, "utf8"))
+                  const deployment = deployments.find((item) => item.id === process.env.DEPLOYMENT_ID)
+                  if (typeof deployment?.status === "string") process.stdout.write(deployment.status)
+                '
+              })"
+
+              case "$status" in
+                SUCCESS)
+                  echo "Déploiement Railway ${deployment_id} réussi."
+                  exit 0
+                  ;;
+                FAILED|CRASHED|REMOVED)
+                  echo "Déploiement Railway ${deployment_id} terminé avec l’état ${status}." >&2
+                  print_railway_logs
+                  exit 1
+                  ;;
+                "")
+                  echo "Déploiement Railway ${deployment_id} pas encore visible (${attempt}/72)."
+                  ;;
+                *)
+                  echo "Déploiement Railway ${deployment_id} en cours : ${status} (${attempt}/72)."
+                  ;;
+              esac
+            else
+              echo "Statut Railway temporairement indisponible (${attempt}/72)."
+            fi
+
+            sleep 5
+          done
+
+          echo "Le déploiement Railway ${deployment_id} n’a pas atteint un état final à temps." >&2
+          print_railway_logs
           exit 1
 
       - name: Wait for API readiness
