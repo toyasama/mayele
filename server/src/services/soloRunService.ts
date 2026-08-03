@@ -341,7 +341,21 @@ export async function submitSoloAnswer(playerId: string, runId: string, input: S
     if (existingAnswer.userAnswer !== input.userAnswer) {
       throw conflict('Cette question a déjà reçu une autre réponse.', 'solo_answer_conflict')
     }
-    return { run: buildRunView(run), correction: buildRunView(run).answers[input.questionIndex] }
+
+    // Prisma may load the parent run and its answers with separate queries. During a
+    // concurrent retry, that can briefly combine the pre-update run counters with the
+    // newly committed answer. Re-read after observing the answer so every successful
+    // idempotent acknowledgement returns one canonical post-commit snapshot.
+    const replay = await findRun(playerId, runId)
+    const replayAnswer = replay.answers.find((answer) => answer.questionIndex === input.questionIndex)
+    if (!replayAnswer || replayAnswer.userAnswer !== input.userAnswer) {
+      throw conflict('Cette question a déjà reçu une autre réponse.', 'solo_answer_conflict')
+    }
+    const view = buildRunView(replay)
+    return {
+      run: view,
+      correction: view.answers.find((answer) => answer.questionIndex === input.questionIndex) ?? null,
+    }
   }
 
   if (run.status === 'completed') {
