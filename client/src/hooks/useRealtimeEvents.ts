@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import type { Socket } from 'socket.io-client'
-import { ApiRequestError, type ChallengeMode, type MatchData, type NotificationData, type PresenceStatus, type TempoProgressData } from '../lib/api'
+import { ApiRequestError, type ChallengeMode, type MatchData, type NotificationData, type PresenceStatus, type SoloRunAnswer, type SoloRunData, type TempoProgressData } from '../lib/api'
 import { waitForAuthToken } from '../lib/authToken'
 import { createClientCommandId } from '../lib/clientCommandId'
 import type { SkillTag } from '../lib/game'
@@ -129,6 +129,7 @@ export function realtimeCommandTimeoutMs(eventName: string) {
     case 'match:update-progress':
     case 'match:submit-tempo-answer':
     case 'match:submit-sprint-answer':
+    case 'solo:submit-answer':
       return REALTIME_FAST_COMMAND_TIMEOUT_MS
     case 'match:submit-result':
       return REALTIME_LONG_COMMAND_TIMEOUT_MS
@@ -647,6 +648,10 @@ export function useRealtimeEvents({
     return emitRealtimeCommand<{ match: MatchData }>('match:submit-sprint-answer', { matchId, answer })
   }, [emitRealtimeCommand])
 
+  const submitSoloAnswer = useCallback((runId: string, answer: { questionIndex: number; userAnswer: number | null }) => {
+    return emitRealtimeCommand<{ run: SoloRunData; correction: SoloRunAnswer | null }>('solo:submit-answer', { runId, answer })
+  }, [emitRealtimeCommand])
+
   const submitMatchResult = useCallback((matchId: string, result: RealtimeMatchResultPayload) => {
     return emitRealtimeCommand<{ match: MatchData }>('match:submit-result', { matchId, result })
   }, [emitRealtimeCommand])
@@ -672,6 +677,7 @@ export function useRealtimeEvents({
     proposeMatch,
     requestMatchRematch,
     submitMatchResult,
+    submitSoloAnswer,
     submitSprintAnswer,
     submitTempoAnswer,
     setPresenceActivity,

@@ -101,13 +101,7 @@ test('valide visuellement les nouvelles architectures hors landing page', async 
     await expect(question).toBeVisible()
     const prompt = await question.innerText()
     await page.getByRole('textbox', { name: /Votre reponse/i }).fill(String(solvePrompt(prompt)))
-    const answerAcknowledged = page.waitForResponse((response) => (
-      response.request().method() === 'POST'
-      && response.url().includes('/api/solo-runs/')
-      && response.url().endsWith('/answers')
-    ))
     await page.getByRole('button', { name: /Valider/i }).click()
-    expect((await answerAcknowledged).ok()).toBe(true)
 
     if (questionIndex < 9) {
       await expect(question).not.toHaveText(prompt)

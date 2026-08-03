@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main]
+    branches: [main, develop]
   workflow_dispatch:
 
 permissions:
@@ -128,6 +128,7 @@ jobs:
     env:
       DATABASE_URL: postgresql://mayele:mayele@127.0.0.1:5432/mayele_e2e
       DIRECT_URL: postgresql://mayele:mayele@127.0.0.1:5432/mayele_e2e
+      E2E_ANSWER_UI_BUDGET_MS: "50"
       E2E_REALTIME_UI_BUDGET_MS: "175"
 
     steps:

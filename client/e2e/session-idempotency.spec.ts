@@ -130,19 +130,29 @@ test('le run Solo est corrigé et finalisé par le serveur sans double récompen
 
   const secondQuestion = afterWrong.run.question
   if (!secondQuestion) throw new Error('Deuxième question absente.')
-  const correctResponse = await request.post(`${API_URL}/api/solo-runs/${started.run.id}/answers`, {
-    headers,
-    data: {
-      questionIndex: secondQuestion.index,
-      userAnswer: solve(secondQuestion.prompt),
-      isCorrect: false,
-      responseTimeMs: 1,
-    },
-  })
+  const secondAnswerPayload = {
+    questionIndex: secondQuestion.index,
+    userAnswer: solve(secondQuestion.prompt),
+    isCorrect: false,
+    responseTimeMs: 1,
+  }
+  const [correctResponse, concurrentRetry] = await Promise.all([
+    request.post(`${API_URL}/api/solo-runs/${started.run.id}/answers`, {
+      headers,
+      data: secondAnswerPayload,
+    }),
+    request.post(`${API_URL}/api/solo-runs/${started.run.id}/answers`, {
+      headers,
+      data: secondAnswerPayload,
+    }),
+  ])
   expect(correctResponse.ok()).toBe(true)
+  expect(concurrentRetry.ok()).toBe(true)
   const afterCorrect = await correctResponse.json() as SoloRunResponse
+  const afterConcurrentRetry = await concurrentRetry.json() as SoloRunResponse
   expect(afterCorrect.correction?.isCorrect).toBe(true)
   expect(afterCorrect.run.progress).toMatchObject({ correctAnswers: 1, totalQuestions: 2 })
+  expect(afterConcurrentRetry.run.progress).toMatchObject({ correctAnswers: 1, totalQuestions: 2 })
 
   const finishResponse = await request.post(`${API_URL}/api/solo-runs/${started.run.id}/finish`, { headers })
   expect(finishResponse.ok()).toBe(true)

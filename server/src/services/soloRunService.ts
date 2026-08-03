@@ -376,43 +376,66 @@ export async function submitSoloAnswer(playerId: string, runId: string, input: S
   const currentStreak = isCorrect ? run.currentStreak + 1 : 0
   const scorePoints = calculateAnswerScorePoints(run.level as GameLevel, responseTimeMs, isCorrect)
 
-  try {
-    await prisma.$transaction(async (tx) => {
-      await tx.soloRunAnswer.create({
-        data: {
-          runId: run.id,
-          questionIndex: input.questionIndex,
-          prompt: question.prompt,
-          correctAnswer: question.answer,
-          userAnswer: acceptedUserAnswer,
-          responseTimeMs,
-          isCorrect,
-          game: run.game,
-          level: run.level,
-          skill: question.skill,
-          answeredAt: now,
-        },
-      })
-      const updated = await tx.soloRun.updateMany({
-        where: { id: run.id, playerId, status: 'active', currentQuestionIndex: input.questionIndex },
-        data: {
-          currentQuestionIndex: { increment: 1 },
-          questionStartedAt: now,
-          correctAnswers: { increment: isCorrect ? 1 : 0 },
-          totalQuestions: { increment: 1 },
-          scorePoints: { increment: scorePoints },
-          currentStreak,
-          bestStreak: Math.max(run.bestStreak, currentStreak),
-          totalResponseTimeMs: { increment: responseTimeMs },
-        },
-      })
+  const answerId = randomUUID()
+  const updatedCount = await prisma.$executeRaw`
+    WITH eligible_run AS MATERIALIZED (
+      SELECT id
+      FROM solo_runs
+      WHERE id = ${run.id}
+        AND player_id = ${playerId}
+        AND status = 'active'
+        AND current_question_index = ${input.questionIndex}
+      FOR UPDATE
+    ),
+    inserted_answer AS (
+      INSERT INTO solo_run_answers (
+        id,
+        run_id,
+        question_index,
+        prompt,
+        correct_answer,
+        user_answer,
+        response_time_ms,
+        is_correct,
+        game,
+        level,
+        skill,
+        answered_at
+      )
+      SELECT
+        ${answerId},
+        ${run.id},
+        ${input.questionIndex},
+        ${question.prompt},
+        ${question.answer},
+        ${acceptedUserAnswer},
+        ${responseTimeMs},
+        ${isCorrect},
+        ${run.game},
+        ${run.level},
+        ${question.skill},
+        ${now}
+      FROM eligible_run
+      ON CONFLICT (run_id, question_index) DO NOTHING
+      RETURNING run_id
+    )
+    UPDATE solo_runs
+    SET
+      current_question_index = current_question_index + 1,
+      question_started_at = ${now},
+      correct_answers = correct_answers + ${isCorrect ? 1 : 0},
+      total_questions = total_questions + 1,
+      score_points = score_points + ${scorePoints},
+      current_streak = ${currentStreak},
+      best_streak = GREATEST(best_streak, ${currentStreak}),
+      total_response_time_ms = total_response_time_ms + ${responseTimeMs}
+    WHERE id IN (SELECT run_id FROM inserted_answer)
+      AND player_id = ${playerId}
+      AND status = 'active'
+      AND current_question_index = ${input.questionIndex}
+  `
 
-      if (updated.count !== 1) {
-        throw conflict('Cette question n’est plus active.', 'solo_answer_out_of_sequence')
-      }
-    })
-  } catch (error) {
-    if (!prismaConflictTargets(error, ['questionIndex', 'question_index'])) throw error
+  if (updatedCount !== 1) {
     const replay = await findRun(playerId, runId)
     const answer = replay.answers.find((item) => item.questionIndex === input.questionIndex)
     if (!answer || answer.userAnswer !== input.userAnswer) {
@@ -421,7 +444,33 @@ export async function submitSoloAnswer(playerId: string, runId: string, input: S
     return { run: buildRunView(replay), correction: buildRunView(replay).answers[input.questionIndex] }
   }
 
-  const updated = await findRun(playerId, runId)
+  const persistedAnswer: SoloRunWithAnswers['answers'][number] = {
+    id: answerId,
+    runId: run.id,
+    questionIndex: input.questionIndex,
+    prompt: question.prompt,
+    correctAnswer: question.answer,
+    userAnswer: acceptedUserAnswer,
+    responseTimeMs,
+    isCorrect,
+    game: run.game,
+    level: run.level,
+    skill: question.skill,
+    answeredAt: now,
+  }
+  const updated: SoloRunWithAnswers = {
+    ...run,
+    currentQuestionIndex: run.currentQuestionIndex + 1,
+    questionStartedAt: now,
+    correctAnswers: run.correctAnswers + (isCorrect ? 1 : 0),
+    totalQuestions: run.totalQuestions + 1,
+    scorePoints: run.scorePoints + scorePoints,
+    currentStreak,
+    bestStreak: Math.max(run.bestStreak, currentStreak),
+    totalResponseTimeMs: run.totalResponseTimeMs + responseTimeMs,
+    answers: [...run.answers, persistedAnswer],
+  }
+
   if (updated.currentQuestionIndex >= updated.questionCount || Date.now() >= updated.endsAt.getTime()) {
     const completed = await finishSoloRun(playerId, runId)
     return { run: completed, correction: completed.answers[input.questionIndex] ?? null }

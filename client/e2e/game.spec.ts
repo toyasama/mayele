@@ -2,6 +2,11 @@
 
 const APP_URL = process.env.E2E_APP_URL ?? 'http://127.0.0.1:5173'
 const API_URL = process.env.E2E_API_URL ?? 'http://127.0.0.1:4000'
+const ANSWER_UI_CI_BUDGET_MS = Number(process.env.E2E_ANSWER_UI_BUDGET_MS ?? 50)
+
+if (!Number.isFinite(ANSWER_UI_CI_BUDGET_MS) || ANSWER_UI_CI_BUDGET_MS <= 0) {
+  throw new Error('E2E_ANSWER_UI_BUDGET_MS doit etre un nombre strictement positif.')
+}
 
 async function resetMultiplayerFixture(request: APIRequestContext) {
   const reset = await request.post(`${API_URL}/api/e2e/reset-multiplayer`)
@@ -55,6 +60,33 @@ async function readChallengeProgressLabel(page: Page) {
   return page.locator('.challenge-progress strong').innerText()
 }
 
+async function submitAndObserveAnswerCountLatencyMs(page: Page) {
+  return page.evaluate(() => new Promise<number>((resolve, reject) => {
+    const answerCount = () => document.querySelector('.challenge-run-answer-summary b')?.textContent?.trim() ?? ''
+    const button = Array.from(document.querySelectorAll('button')).find((item) => /Valider/i.test(item.textContent ?? '') && !item.disabled)
+
+    if (!button) {
+      reject(new Error('Enabled submit button not found'))
+      return
+    }
+
+    const startedAt = performance.now()
+    const observer = new MutationObserver(() => {
+      if (answerCount() !== '1') return
+      window.clearTimeout(timeoutId)
+      observer.disconnect()
+      resolve(performance.now() - startedAt)
+    })
+    const timeoutId = window.setTimeout(() => {
+      observer.disconnect()
+      reject(new Error('Optimistic answer count was not rendered'))
+    }, 1_000)
+
+    observer.observe(document.body, { characterData: true, childList: true, subtree: true })
+    button.click()
+  }))
+}
+
 async function selectSoloMode(page: Page, mode: 'Sprint' | 'Tempo') {
   await page.getByRole('button', { name: new RegExp(`^${mode}$`, 'i') }).click()
 }
@@ -96,14 +128,21 @@ test('capture le mode solo lance avec la mise en page epuree', async ({ browser 
   }
 })
 
-test('solo sprint valide une reponse via le bouton commun et conserve le focus', async ({ browser }) => {
+test('solo sprint valide une reponse en quelques millisecondes et conserve le focus', async ({ browser }, testInfo) => {
   const { context, page } = await e2ePage(browser)
 
   try {
     await startSoloSprint(page)
     const prompt = await page.locator('.question-line').innerText()
     await page.getByRole('textbox', { name: /Votre reponse/i }).fill(String(solvePrompt(prompt)))
-    await page.getByRole('button', { name: /Valider/i }).click()
+    const latencyMs = await submitAndObserveAnswerCountLatencyMs(page)
+
+    console.info(`[performance] solo-answer-ui=${latencyMs.toFixed(2)}ms`)
+    await testInfo.attach('solo-answer-ui.json', {
+      body: JSON.stringify({ latencyMs, thresholdMs: ANSWER_UI_CI_BUDGET_MS }, null, 2),
+      contentType: 'application/json',
+    })
+    expect(latencyMs).toBeLessThan(ANSWER_UI_CI_BUDGET_MS)
 
     await expect(page.locator('.challenge-metrics > div').nth(0).locator('strong')).not.toHaveText('0')
     await expect(page.locator('.challenge-metrics > div').nth(1).locator('strong')).toHaveText('1')

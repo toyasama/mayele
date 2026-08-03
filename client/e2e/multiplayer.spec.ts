@@ -4,6 +4,11 @@ import { waitForRealtimeReady } from './realtime'
 const APP_URL = process.env.E2E_APP_URL ?? 'http://127.0.0.1:5173'
 const API_URL = process.env.E2E_API_URL ?? 'http://127.0.0.1:4000'
 const REALTIME_UI_CI_BUDGET_MS = readRealtimeUiBudgetMs()
+const ANSWER_UI_CI_BUDGET_MS = Number(process.env.E2E_ANSWER_UI_BUDGET_MS ?? 50)
+
+if (!Number.isFinite(ANSWER_UI_CI_BUDGET_MS) || ANSWER_UI_CI_BUDGET_MS <= 0) {
+  throw new Error('E2E_ANSWER_UI_BUDGET_MS doit etre un nombre strictement positif.')
+}
 
 function readRealtimeUiBudgetMs() {
   const value = Number(process.env.E2E_REALTIME_UI_BUDGET_MS ?? 150)
@@ -748,6 +753,31 @@ for (const sprintDuration of [60, 90, 120] as const) {
   })
 }
 
+test('Sprint multijoueur valide localement une reponse en quelques millisecondes', async ({ browser, request }, testInfo) => {
+  test.setTimeout(45_000)
+
+  const { host, guest } = await createAcceptedRoom(browser, request)
+
+  try {
+    await host.page.getByRole('button', { name: /Sprint/i }).click()
+    await host.page.getByRole('button', { name: /Addition/i }).click()
+    await host.page.getByRole('button', { name: /butant/i }).click()
+    await proposeChallenge(host.page)
+    await guest.page.getByRole('button', { name: /Accepter le defi/i }).click()
+    await expect(host.page.locator('.question-line')).toBeVisible()
+
+    const latencyMs = await answerOneQuestionAndObserveMetricLatencyMs(host.page, 'Score', '^[1-9][0-9]*$')
+
+    console.info(`[performance] multiplayer-sprint-answer-ui=${latencyMs.toFixed(2)}ms`)
+    await attachLatencyMetric(testInfo, 'realtime-sprint-answer-ui', latencyMs, ANSWER_UI_CI_BUDGET_MS)
+    expect(latencyMs).toBeLessThan(ANSWER_UI_CI_BUDGET_MS)
+    await expect(host.page.getByRole('textbox', { name: /Votre reponse|Votre r.*ponse/i })).toBeFocused()
+  } finally {
+    await host.context.close()
+    await guest.context.close()
+  }
+})
+
 for (const tempoSeconds of [5, 30] as const) {
   test(`Tempo demarre avec ${tempoSeconds} secondes par question`, async ({ browser, request }) => {
     test.setTimeout(45_000)
@@ -1203,9 +1233,10 @@ test('tempo avance des que les deux joueurs ont repondu a la meme question', asy
 
     const hostScoreLatencyMs = await answerOneQuestionAndObserveMetricLatencyMs(host.page, 'Score', '^[1-9][0-9]*$')
 
+    console.info(`[performance] multiplayer-tempo-answer-ui=${hostScoreLatencyMs.toFixed(2)}ms`)
     await attachRealtimeMetric(testInfo, 'realtime-tempo-first-answer-summary', { hostScoreLatencyMs })
-    await attachLatencyMetric(testInfo, 'realtime-tempo-host-score-immediate', hostScoreLatencyMs)
-    expect(hostScoreLatencyMs).toBeLessThan(REALTIME_UI_CI_BUDGET_MS)
+    await attachLatencyMetric(testInfo, 'realtime-tempo-host-score-immediate', hostScoreLatencyMs, ANSWER_UI_CI_BUDGET_MS)
+    expect(hostScoreLatencyMs).toBeLessThan(ANSWER_UI_CI_BUDGET_MS)
     await expect(host.page.getByRole('button', { name: /En attente/i })).toBeDisabled()
     await host.page.waitForTimeout(1000)
     await expect(host.page.locator('.question-line')).toHaveText(firstPrompt)

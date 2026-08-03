@@ -309,6 +309,7 @@ describe('useRealtimeEvents', () => {
   it('garde un timeout court pour les commandes purement runtime', () => {
     expect(realtimeCommandTimeoutMs('room:join')).toBe(4_000)
     expect(realtimeCommandTimeoutMs('match:update-progress')).toBe(4_000)
+    expect(realtimeCommandTimeoutMs('solo:submit-answer')).toBe(4_000)
   })
 
   it('fan-outs a notification burst while dropping handlers from an unmounted page', async () => {

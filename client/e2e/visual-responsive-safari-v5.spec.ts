@@ -240,13 +240,7 @@ test('le parcours solo authoritative résiste au rechargement et affiche le rés
     await expect(question).toBeVisible()
     const prompt = await question.innerText()
     await page.getByRole('textbox', { name: /Votre reponse/i }).fill(String(solvePrompt(prompt)))
-    const answerAcknowledged = page.waitForResponse((response) => (
-      response.request().method() === 'POST'
-      && response.url().includes('/api/solo-runs/')
-      && response.url().endsWith('/answers')
-    ))
     await page.getByRole('button', { name: /Valider/i }).click()
-    expect((await answerAcknowledged).ok()).toBe(true)
 
     if (questionIndex === 0) {
       await expect(page.locator('.challenge-run-context small')).toHaveText('Question 2/10')

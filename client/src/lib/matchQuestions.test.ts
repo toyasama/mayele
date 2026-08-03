@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { generateMatchQuestion, matchQuestionIdentity } from './matchQuestions'
+import { generateMatchQuestion, matchQuestionIdentity, solveDisplayedQuestion } from './matchQuestions'
 import type { GameLevel, GameType } from './game'
 
 function expectUniqueCanonicalQuestions(seed: string, count: number, game: GameType, level: GameLevel) {
@@ -15,6 +15,15 @@ function expectUniqueCanonicalQuestions(seed: string, count: number, game: GameT
 }
 
 describe('generateMatchQuestion', () => {
+  it.each([
+    ['addition', '12 + 7', 19],
+    ['soustraction', '20 - 8', 12],
+    ['multiplication', '6 x 7', 42],
+    ['division', '36 / 6', 6],
+  ] as const)('resout localement la question %s affichee sans exposer les suivantes', (operation, prompt, answer) => {
+    expect(solveDisplayedQuestion({ operation, prompt })).toBe(answer)
+  })
+
   it('genere une question stable pour une seed et un index donnes', () => {
     expect(generateMatchQuestion('seed_1', 0, 'addition', 'debutant')).toEqual({
       prompt: '17 + 12',

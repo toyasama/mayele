@@ -67,6 +67,7 @@ const matchEffectMocks = vi.hoisted(() => ({
   persistMatchLeftEffects: vi.fn(),
 }))
 const outboxDispatcherMocks = vi.hoisted(() => ({ requestOutboxDispatch: vi.fn() }))
+const soloRunServiceMocks = vi.hoisted(() => ({ submitSoloAnswer: vi.fn() }))
 
 vi.mock('../services/matchService.js', () => matchServiceMocks)
 vi.mock('../services/notificationService.js', () => notificationServiceMocks)
@@ -74,6 +75,7 @@ vi.mock('../services/friendService.js', () => ({ listFriends: presenceServiceMoc
 vi.mock('../services/playerService.js', () => ({ updatePlayerPresenceById: presenceServiceMocks.updatePlayerPresenceById }))
 vi.mock('../services/matchOutboxEffects.js', () => matchEffectMocks)
 vi.mock('../services/outboxDispatcher.js', () => outboxDispatcherMocks)
+vi.mock('../services/soloRunService.js', () => soloRunServiceMocks)
 
 let httpServer: HttpServer | null = null
 const sockets: ClientSocket[] = []
@@ -1471,6 +1473,35 @@ describe('realtime notifications', () => {
       questionIndex: 0,
       userAnswer: question.answer,
     }))
+  })
+
+  it('valide une reponse solo par la socket authentifiee', async () => {
+    httpServer = createServer()
+    initRealtime(httpServer, {
+      authenticateToken: async (token) => token === 'token_a'
+        ? { clerkUserId: 'clerk_a', playerId: 'player_a' }
+        : null,
+    })
+    soloRunServiceMocks.submitSoloAnswer.mockResolvedValueOnce({
+      run: { id: 'run_1', currentQuestionIndex: 1 },
+      correction: { questionIndex: 0, isCorrect: true },
+    })
+    const port = await listen(httpServer)
+    const clientA = await connectClient(port, 'token_a')
+
+    const ack = await new Promise<{ ok: boolean; data?: { run: { currentQuestionIndex: number } } }>((resolve) => {
+      clientA.emit('solo:submit-answer', {
+        runId: 'run_1',
+        answer: { questionIndex: 0, userAnswer: 7 },
+        clientCommandId: '6cf369ad-4aa0-4c7f-bf67-1154fda9c50f',
+      }, resolve)
+    })
+
+    expect(ack).toMatchObject({ ok: true, data: { run: { currentQuestionIndex: 1 } } })
+    expect(soloRunServiceMocks.submitSoloAnswer).toHaveBeenCalledWith('player_a', 'run_1', {
+      questionIndex: 0,
+      userAnswer: 7,
+    })
   })
 
   it('soumet un resultat par commande Socket.IO avec ACK et evenement de salon', async () => {

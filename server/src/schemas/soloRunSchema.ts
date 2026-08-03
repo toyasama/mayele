@@ -17,5 +17,11 @@ export const submitSoloAnswerSchema = z.object({
   userAnswer: z.number().int().nullable(),
 })
 
+export const submitSoloAnswerCommandSchema = z.object({
+  clientCommandId: z.uuid().optional(),
+  runId: z.string().trim().min(1).max(128),
+  answer: submitSoloAnswerSchema,
+})
+
 export type StartSoloRunInput = z.infer<typeof startSoloRunSchema>
 export type SubmitSoloAnswerInput = z.infer<typeof submitSoloAnswerSchema>

@@ -14,6 +14,7 @@ import {
   type TempoAnswerPayload,
 } from '../schemas/matchSchema.js'
 import { parsePresenceVisibilityCommand } from '../schemas/presenceSchema.js'
+import { submitSoloAnswerCommandSchema } from '../schemas/soloRunSchema.js'
 import type { SerializedNotification } from '../services/notificationPresenter.js'
 import {
   broadcastRoomEvent,
@@ -34,6 +35,7 @@ import {
 } from '../services/matchService.js'
 import { serializeMatch, type SerializedMatch } from '../services/matchPresenter.js'
 import { updatePlayerPresenceById } from '../services/playerService.js'
+import { submitSoloAnswer } from '../services/soloRunService.js'
 import {
   applyTempoAnswerProgressDraft,
   applyTempoFinalDraft,
@@ -135,6 +137,7 @@ type MatchTempoAnswerCommandAck = RealtimeCommandAck<{
 type MatchSprintAnswerCommandAck = RealtimeCommandAck<{
   match: SerializedMatch
 }>
+type SoloAnswerCommandAck = RealtimeCommandAck<Awaited<ReturnType<typeof submitSoloAnswer>>>
 type RealtimeCommandErrorPayload = Extract<RealtimeCommandAck<unknown>, { ok: false }>['error']
 
 type InitRealtimeOptions = {
@@ -180,6 +183,7 @@ const REALTIME_COMMAND_EVENTS = new Set([
   'match:submit-result',
   'match:submit-tempo-answer',
   'match:submit-sprint-answer',
+  'solo:submit-answer',
 ])
 const REALTIME_COMMAND_LIMITS: Record<string, number> = {
   'presence:activity': 240,
@@ -199,6 +203,7 @@ const REALTIME_COMMAND_LIMITS: Record<string, number> = {
   'match:submit-result': 60,
   'match:submit-tempo-answer': 240,
   'match:submit-sprint-answer': 240,
+  'solo:submit-answer': 240,
 }
 const realtimeRateBuckets = new Map<string, { startedAtMs: number; count: number }>()
 
@@ -1214,6 +1219,16 @@ export function initRealtime(httpServer: HttpServer, options: InitRealtimeOption
         await assertMatchRoomMembership(playerId, roomId)
         joinSocketToRoom(socket, roomId, typeof lastSeenEventId === 'string' ? lastSeenEventId : null)
         ack?.({ ok: true, data: { joined: true } })
+      } catch (error) {
+        ackError(ack, error)
+      }
+    })
+
+    socket.on('solo:submit-answer', async (value: unknown, ack?: (response: SoloAnswerCommandAck) => void) => {
+      try {
+        const command = submitSoloAnswerCommandSchema.parse(value)
+        const response = await submitSoloAnswer(playerId, command.runId, command.answer)
+        ack?.({ ok: true, data: response })
       } catch (error) {
         ackError(ack, error)
       }

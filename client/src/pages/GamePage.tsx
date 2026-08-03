@@ -6,8 +6,9 @@ import { PlayModeNavigationDialog } from '../components/PlayModeNavigationDialog
 import { PlayModeTabs, type PlayModePath } from '../components/PlayModeTabs'
 import { useAuth } from '../context/auth'
 import { SoloResultStage } from '../features/solo/SoloResultStage'
+import { useRealtimeEvents } from '../hooks/useRealtimeEvents'
 import { clearCachePrefix, DASHBOARD_CACHE_PREFIX } from '../lib/appCache'
-import { api, type DailyObjective, type SoloRunData, type SoloRunQuestion } from '../lib/api'
+import { ApiRequestError, api, type DailyObjective, type SoloRunData, type SoloRunQuestion } from '../lib/api'
 import '../styles/routes/game.css'
 import { parseAnswerInput } from '../lib/answerInput'
 import { LEVEL_RUN_LABELS } from '../lib/challengeLabels'
@@ -30,11 +31,13 @@ import {
   type GameType,
   type SkillTag,
 } from '../lib/game'
+import { solveDisplayedQuestion } from '../lib/matchQuestions'
 import {
   DEFAULT_SOLO_CHALLENGE_CONFIG,
   activeTimerSecondsForSoloConfig,
   createSoloSessionState,
   normalizeSoloChallengeConfig,
+  recordSoloAnswer,
   type SoloChallengeConfig,
   type SoloSessionState,
 } from '../lib/soloChallenge'
@@ -109,8 +112,20 @@ function stateFromRun(run: SoloRunData): SoloSessionState {
   }
 }
 
+function canFallbackToSoloAnswerHttp(error: unknown) {
+  return error instanceof ApiRequestError && (
+    error.code === 'realtime_unavailable'
+    || error.code === 'realtime_timeout'
+    || error.code === 'realtime_invalid_response'
+  )
+}
+
 export function GamePage() {
   const { getToken, isAuthenticated, user } = useAuth()
+  const { isRealtimeReady, submitSoloAnswer: submitSoloAnswerRealtime } = useRealtimeEvents({
+    isAuthenticated,
+    getToken,
+  })
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const initialFocusSkill = parseFocusSkill(searchParams.get('focus'))
@@ -127,6 +142,7 @@ export function GamePage() {
   const [feedback, setFeedback] = useState(initialFocusSkill ? `Session ciblee sur ${SKILL_LABELS[initialFocusSkill]}.` : '')
   const [feedbackTone, setFeedbackTone] = useState<FeedbackTone>('info')
   const [answerFeedback, setAnswerFeedback] = useState<AnswerFeedback | null>(null)
+  const [answerPending, setAnswerPending] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
   const [pendingModePath, setPendingModePath] = useState<PlayModePath | null>(null)
@@ -325,10 +341,10 @@ export function GamePage() {
   useEffect(() => clearTimers, [clearTimers])
 
   useEffect(() => {
-    if (status === 'running') {
+    if (status === 'running' && !answerPending) {
       inputRef.current?.focus()
     }
-  }, [question, status])
+  }, [answerPending, question, status])
 
   useEffect(() => {
     if (status !== 'running') {
@@ -366,6 +382,7 @@ export function GamePage() {
     clearTimers()
     finishedRef.current = true
     answerSubmittingRef.current = false
+    setAnswerPending(false)
     runRef.current = null
     startCommandIdRef.current = null
     configRef.current = nextConfig
@@ -461,7 +478,8 @@ export function GamePage() {
     const currentQuestion = run?.question
     if (statusRef.current !== 'running' || !run || !currentQuestion || answerSubmittingRef.current) return
 
-    const numericAnswer = source === 'timeout' ? null : parseAnswerInput(answerRef.current)
+    const submittedAnswer = answerRef.current
+    const numericAnswer = source === 'timeout' ? null : parseAnswerInput(submittedAnswer)
 
     if (source === 'manual' && numericAnswer === null) {
       setFeedback('Entre un nombre valide.')
@@ -470,15 +488,68 @@ export function GamePage() {
       return
     }
 
+    let expectedAnswer: number
+    try {
+      expectedAnswer = solveDisplayedQuestion(currentQuestion)
+    } catch {
+      setFeedbackTone('error')
+      setAnswerFeedback(null)
+      setSaveError('Question invalide. Recharge la partie pour la resynchroniser.')
+      return
+    }
+
     answerSubmittingRef.current = true
+    setAnswerPending(true)
     setFeedback(source === 'timeout' ? 'Temps écoulé.' : '')
     setSaveError('')
 
+    const optimisticState = recordSoloAnswer(stateFromRun(run), {
+      question: {
+        prompt: currentQuestion.prompt,
+        answer: expectedAnswer,
+        operation: currentQuestion.operation,
+        skill: currentQuestion.skill,
+      },
+      userAnswer: numericAnswer,
+      responseTimeMs: Math.max(0, Date.now() - Date.parse(currentQuestion.issuedAt)),
+    })
+    const optimisticCorrection = optimisticState.answers.at(-1)
+
+    sessionStateRef.current = optimisticState
+    setSessionState(optimisticState)
+    answerRef.current = ''
+    setAnswer('')
+
+    if (optimisticCorrection) {
+      setFeedbackTone(optimisticCorrection.isCorrect ? 'success' : 'error')
+      setAnswerFeedback({
+        prompt: optimisticCorrection.prompt,
+        userAnswer: optimisticCorrection.userAnswer,
+        correctAnswer: optimisticCorrection.correctAnswer,
+        isCorrect: optimisticCorrection.isCorrect,
+        streak: optimisticState.stats.currentStreak,
+        source,
+      })
+    }
+
     try {
-      const response = await api.submitSoloAnswer(getToken, run.id, {
+      const payload = {
         questionIndex: currentQuestion.index,
         userAnswer: numericAnswer,
-      })
+      }
+      let response: Awaited<ReturnType<typeof api.submitSoloAnswer>>
+
+      if (isRealtimeReady) {
+        try {
+          response = await submitSoloAnswerRealtime(run.id, payload)
+        } catch (error) {
+          if (!canFallbackToSoloAnswerHttp(error)) throw error
+          response = await api.submitSoloAnswer(getToken, run.id, payload)
+        }
+      } else {
+        response = await api.submitSoloAnswer(getToken, run.id, payload)
+      }
+
       applyServerRun(response.run)
       if (response.run.status === 'completed') void refreshDailyObjectives()
 
@@ -521,10 +592,15 @@ export function GamePage() {
         // Le message initial est plus utile si la lecture de réconciliation échoue aussi.
       }
 
+      applyServerRun(run)
+      answerRef.current = source === 'manual' ? submittedAnswer : ''
+      setAnswer(answerRef.current)
+      setAnswerFeedback(null)
       setFeedbackTone('error')
       setSaveError(error instanceof Error ? error.message : 'Réponse non enregistrée.')
     } finally {
       answerSubmittingRef.current = false
+      setAnswerPending(false)
     }
   }
 
@@ -850,11 +926,13 @@ export function GamePage() {
         <ChallengeArenaScreen
           answer={answer}
           answerCount={stats.totalQuestions}
+          answerDisabled={answerPending}
           answerInputRef={inputRef}
           answerPulse={answerFeedback ? (answerFeedback.isCorrect ? 'correct' : 'wrong') : ''}
           contextLabel={`${modeLabel} - ${LEVEL_RUN_LABELS[config.level]}`}
           correctAnswerCount={stats.correctAnswers}
           elapsedLabel={`${elapsedSeconds}/${activeTimerTotalSeconds}`}
+          exitDisabled={answerPending}
           feedbackSlot={feedbackSlot}
           metrics={statsCards}
           modeLabel="Solo"

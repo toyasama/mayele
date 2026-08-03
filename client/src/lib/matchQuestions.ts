@@ -145,6 +145,26 @@ function questionOperands(prompt: string) {
   return prompt.match(/-?\d+/g)?.map(Number).slice(0, 2) ?? []
 }
 
+export function solveDisplayedQuestion(question: Pick<MatchQuestion, 'operation' | 'prompt'>) {
+  const operands = questionOperands(question.prompt)
+
+  if (operands.length < 2) {
+    throw new Error(`invalid_question_prompt:${question.prompt}`)
+  }
+
+  const [left, right] = operands
+
+  if (question.operation === 'addition') return left + right
+  if (question.operation === 'soustraction') return left - right
+  if (question.operation === 'multiplication') return left * right
+
+  if (right === 0 || left % right !== 0) {
+    throw new Error(`invalid_division_prompt:${question.prompt}`)
+  }
+
+  return left / right
+}
+
 export function matchQuestionIdentity(question: Pick<MatchQuestion, 'operation' | 'prompt'>) {
   const operands = questionOperands(question.prompt)
 
