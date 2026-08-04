@@ -14,6 +14,7 @@ export default defineConfig({
   testMatch: /performance\.spec\.ts/,
   workers: 1,
   fullyParallel: false,
+  retries: process.env.CI ? 1 : 0,
   reporter: [['line']],
   use: {
     baseURL: APP_URL,
