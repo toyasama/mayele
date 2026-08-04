@@ -2221,6 +2221,9 @@ export function MultiplayerGamePage() {
               answerDisabled={Boolean(tempoPendingAnswer)}
               answerInputRef={answerInputRef}
               answerPulse={multiplayerLastAnswer ? (multiplayerLastAnswer.isCorrect ? 'correct' : 'wrong') : ''}
+              answerPulseKey={multiplayerLastAnswer
+                ? `${displayedMatch.id}:${multiplayerLastAnswer.questionIndex ?? matchAnswers.length - 1}`
+                : undefined}
               contextLabel={`${config.challengeMode === 'tempo' ? 'Tempo' : 'Sprint'} - ${config.level ? LEVEL_LABELS[config.level] : 'Salon'}`}
               elapsedLabel={`${activeTimerElapsedSeconds}/${activeTimerTotalSeconds}`}
               exitDisabled={action === `stop:${displayedMatch.id}`}
@@ -2232,6 +2235,7 @@ export function MultiplayerGamePage() {
               onSubmit={handleAnswerSubmit}
               progressPercent={activeTimerProgress}
               question={question.prompt}
+              questionKey={config.challengeMode === 'tempo' ? tempoActiveQuestionIndex : matchAnswers.length}
               questionProgressLabel={tempoQuestionProgressLabel}
               criticalRemainingSeconds={criticalRemainingSeconds(activeTimerTotalSeconds)}
               remainingSeconds={activeTimerSeconds ?? 0}

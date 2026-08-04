@@ -10,7 +10,14 @@ import { SoloResultStage } from '../features/solo/SoloResultStage'
 import { useDailyScopeKey } from '../hooks/useDailyScopeKey'
 import { useRealtimeEvents } from '../hooks/useRealtimeEvents'
 import { clearCachePrefix, DASHBOARD_CACHE_PREFIX } from '../lib/appCache'
-import { ApiRequestError, api, type DailyObjective, type SoloRunData, type SoloRunQuestion } from '../lib/api'
+import {
+  ApiRequestError,
+  api,
+  type DailyObjective,
+  type SoloRunData,
+  type SoloRunQuestion,
+  type SoloRunQuestionPreview,
+} from '../lib/api'
 import '../styles/routes/game.css'
 import { parseAnswerInput } from '../lib/answerInput'
 import { LEVEL_RUN_LABELS } from '../lib/challengeLabels'
@@ -122,6 +129,14 @@ function canFallbackToSoloAnswerHttp(error: unknown) {
   )
 }
 
+function isSameQuestionPreview(question: SoloRunQuestion | null, preview: SoloRunQuestionPreview | null) {
+  return Boolean(question && preview
+    && question.index === preview.index
+    && question.prompt === preview.prompt
+    && question.operation === preview.operation
+    && question.skill === preview.skill)
+}
+
 export function GamePage() {
   const { getToken, isAuthenticated, user } = useAuth()
   const { profile } = useProfile()
@@ -140,6 +155,7 @@ export function GamePage() {
   const [config, setConfig] = useState<SoloChallengeConfig>(initialConfig)
   const [sessionState, setSessionState] = useState<SoloSessionState>(() => createSoloSessionState(initialConfig))
   const [question, setQuestion] = useState<SoloRunQuestion | null>(null)
+  const [questionPreview, setQuestionPreview] = useState<SoloRunQuestionPreview | null>(null)
   const [answer, setAnswer] = useState('')
   const [remainingSeconds, setRemainingSeconds] = useState(activeTimerSecondsForSoloConfig(initialConfig))
   const [status, setStatus] = useState<SessionStatus>('idle')
@@ -228,7 +244,7 @@ export function GamePage() {
     void refreshDailyObjectives()
   }, [currentDailyScope, refreshDailyObjectives])
 
-  const applyServerRun = useCallback((run: SoloRunData) => {
+  const applyServerRun = useCallback((run: SoloRunData, options: { preserveAnswer?: boolean } = {}) => {
     const nextConfig = configFromRun(run)
     const nextState = stateFromRun(run)
     runRef.current = run
@@ -238,7 +254,12 @@ export function GamePage() {
     setConfig(nextConfig)
     setSessionState(nextState)
     setQuestion(run.question)
-    setAnswer('')
+    setQuestionPreview(null)
+
+    if (!options.preserveAnswer) {
+      answerRef.current = ''
+      setAnswer('')
+    }
 
     if (run.status === 'completed') {
       setRemainingSeconds(0)
@@ -396,6 +417,7 @@ export function GamePage() {
     setConfig(nextConfig)
     setSessionState(nextState)
     setQuestion(null)
+    setQuestionPreview(null)
     setAnswer('')
     setRemainingSeconds(activeTimerSecondsForSoloConfig(nextConfig))
     setStatus('idle')
@@ -525,6 +547,8 @@ export function GamePage() {
     setSessionState(optimisticState)
     answerRef.current = ''
     setAnswer('')
+    const optimisticNextQuestion = run.nextQuestion
+    setQuestionPreview(optimisticNextQuestion)
 
     if (optimisticCorrection) {
       setFeedbackTone(optimisticCorrection.isCorrect ? 'success' : 'error')
@@ -556,7 +580,9 @@ export function GamePage() {
         response = await api.submitSoloAnswer(getToken, run.id, payload)
       }
 
-      applyServerRun(response.run)
+      const preserveNextAnswer = response.run.status === 'active'
+        && isSameQuestionPreview(response.run.question, optimisticNextQuestion)
+      applyServerRun(response.run, { preserveAnswer: preserveNextAnswer })
       if (response.run.status === 'completed') void refreshDailyObjectives()
 
       if (response.correction) {
@@ -580,7 +606,9 @@ export function GamePage() {
         )
 
         if (storedCorrection) {
-          applyServerRun(latestRun)
+          const preserveNextAnswer = latestRun.status === 'active'
+            && isSameQuestionPreview(latestRun.question, optimisticNextQuestion)
+          applyServerRun(latestRun, { preserveAnswer: preserveNextAnswer })
           if (latestRun.status === 'completed') void refreshDailyObjectives()
           setFeedbackTone(storedCorrection.isCorrect ? 'success' : 'error')
           setAnswerFeedback({
@@ -624,6 +652,7 @@ export function GamePage() {
   }
 
   const stats = sessionState.stats
+  const displayedQuestion = questionPreview ?? question
   const modeLabel = SOLO_MODE_LABELS[config.mode]
   const subjectLabel = config.focusSkill ? SKILL_LABELS[config.focusSkill] : GAME_LABELS[config.game]
   const sessionLabel = `${modeLabel} - ${subjectLabel} - ${LEVEL_LABELS[config.level]}`
@@ -933,8 +962,10 @@ export function GamePage() {
           answer={answer}
           answerCount={stats.totalQuestions}
           answerDisabled={answerPending}
+          answerInputLocked={answerPending && !questionPreview}
           answerInputRef={inputRef}
           answerPulse={answerFeedback ? (answerFeedback.isCorrect ? 'correct' : 'wrong') : ''}
+          answerPulseKey={stats.totalQuestions}
           contextLabel={`${modeLabel} - ${LEVEL_RUN_LABELS[config.level]}`}
           correctAnswerCount={stats.correctAnswers}
           elapsedLabel={`${elapsedSeconds}/${activeTimerTotalSeconds}`}
@@ -946,7 +977,8 @@ export function GamePage() {
           onExit={finishSession}
           onSubmit={handleSubmit}
           progressPercent={sessionProgress}
-          question={question?.prompt ?? 'Question en préparation...'}
+          question={displayedQuestion?.prompt ?? 'Question en préparation...'}
+          questionKey={displayedQuestion?.index}
           questionProgressLabel={tempoQuestionProgressLabel}
           criticalRemainingSeconds={criticalRemainingSeconds(activeTimerTotalSeconds)}
           remainingSeconds={remainingSeconds}

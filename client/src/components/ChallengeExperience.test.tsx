@@ -98,6 +98,60 @@ describe('ChallengeArenaScreen', () => {
     expect(onAnswerChange).not.toHaveBeenCalled()
   })
 
+  it("autorise le brouillon de la question suivante pendant l'attente serveur", () => {
+    const onAnswerChange = vi.fn()
+
+    render(
+      <ChallengeArenaScreen
+        answer=""
+        answerDisabled
+        answerInputLocked={false}
+        contextLabel="Sprint - Debutant"
+        elapsedLabel="1/60"
+        metrics={[]}
+        modeLabel="Solo"
+        onAnswerChange={onAnswerChange}
+        onSubmit={(event) => event.preventDefault()}
+        progressPercent={0}
+        question="2 + 2"
+        questionKey={1}
+        remainingSeconds={59}
+      />,
+    )
+
+    const input = screen.getByRole('textbox', { name: /Votre reponse/i })
+    fireEvent.change(input, { target: { value: '4' } })
+
+    expect(input).toHaveAttribute('aria-disabled', 'false')
+    expect(onAnswerChange).toHaveBeenCalledWith('4')
+    expect(screen.getByRole('button', { name: /En attente/i })).toBeDisabled()
+  })
+
+  it("rend le retour visuel derriere l'arene sans animer l'enonce", () => {
+    const { container } = render(
+      <ChallengeArenaScreen
+        answer=""
+        answerPulse="correct"
+        answerPulseKey={1}
+        contextLabel="Sprint - Debutant"
+        elapsedLabel="1/60"
+        metrics={[]}
+        modeLabel="Solo"
+        onAnswerChange={vi.fn()}
+        onSubmit={(event) => event.preventDefault()}
+        progressPercent={0}
+        question="2 + 2"
+        questionKey={1}
+        remainingSeconds={59}
+      />,
+    )
+
+    expect(container.querySelector('.challenge-arena')).not.toHaveClass('is-correct')
+    expect(container.querySelector('.challenge-answer-effect.is-correct')).toHaveAttribute('aria-hidden', 'true')
+    expect(screen.getByText('2 + 2')).toHaveClass('question-line')
+    expect(screen.getByText('2 + 2')).not.toHaveClass('is-correct')
+  })
+
   it('affiche le suivi de question quand il est fourni', () => {
     render(
       <ChallengeArenaScreen
