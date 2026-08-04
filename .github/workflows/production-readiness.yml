@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main, develop]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -64,8 +64,16 @@ jobs:
       - name: Clean-code scans
         shell: bash
         run: |
-          ! grep -RInE '@clerk/react/legacy|legacy-match|responsive-legacy|tempoFallback|Ãƒ|Ã¢â‚¬â„¢|ÃƒÆ’|\?\?tre|\?\?fini' client/src server/src client/e2e
-          ! grep -RInE 'console\.log|REST legacy|route REST legacy|routes REST legacy' client/e2e
+          # Ces motifs detectent precisement des marqueurs Unicode corrompus.
+          # shellcheck disable=SC1112
+          if grep -RInE '@clerk/react/legacy|legacy-match|responsive-legacy|tempoFallback|Ãƒ|Ã¢â‚¬â„¢|ÃƒÆ’|\?\?tre|\?\?fini' client/src server/src client/e2e; then
+            echo "Des marqueurs legacy ou du texte corrompu ont ete detectes." >&2
+            exit 1
+          fi
+          if grep -RInE 'console\.log|REST legacy|route REST legacy|routes REST legacy' client/e2e; then
+            echo "Des traces ou routes legacy ont ete detectees dans les E2E." >&2
+            exit 1
+          fi
 
       - name: Server audit
         working-directory: server
@@ -105,13 +113,9 @@ jobs:
             --env DIRECT_URL="$DIRECT_URL" \
             --env E2E_AUTH_BYPASS=true \
             "$image")"
-          cleanup() {
-            docker logs --tail 100 "$container_id" || true
-            docker rm --force "$container_id" >/dev/null 2>&1 || true
-          }
-          trap cleanup EXIT
+          trap 'docker logs --tail 100 "$container_id" || true; docker rm --force "$container_id" >/dev/null 2>&1 || true' EXIT
 
-          for attempt in {1..30}; do
+          for _ in {1..30}; do
             if curl --fail --silent --show-error --max-time 5 http://127.0.0.1:4000/api/ready >/dev/null; then
               echo "Image API operationnelle."
               exit 0
@@ -445,9 +449,11 @@ jobs:
           fi
 
           echo "RAILWAY_DEPLOYMENT_ID=${deployment_id}" >> "$GITHUB_ENV"
-          echo "### Railway deployment" >> "$GITHUB_STEP_SUMMARY"
-          echo "- ID: \`${deployment_id}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Commit: \`${GITHUB_SHA}\`" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "### Railway deployment"
+            echo "- ID: \`${deployment_id}\`"
+            echo "- Commit: \`${GITHUB_SHA}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
           print_railway_logs() {
             echo "Logs Railway pour le déploiement ${deployment_id} :"

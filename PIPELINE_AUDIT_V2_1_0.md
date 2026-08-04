@@ -77,9 +77,11 @@ Le déploiement `72b0b4f6` du run #37 a, lui, passé le healthcheck à la deuxi�
 - Les migrations ne font plus partie du restart path. Le healthcheck `/api/ready` conserve la vérification PostgreSQL, realtime et workers ; Railway ne bascule le trafic qu'après un HTTP 200 ([healthchecks Railway](https://docs.railway.com/deployments/healthchecks)).
 - Playwright effectue un retry unique en CI. Le réglage `trace: on-first-retry`, jusque-là inactif faute de retry, produit maintenant une trace utile sur les intermittences sans transformer une erreur répétable en succès silencieux.
 - Un workflow `actionlint` séparé détecte une syntaxe GitHub Actions invalide même si le workflow principal ne peut créer aucun job.
+- Les validations complètes s'exécutent sur les pull requests vers `main`, puis au push sur `main` pour le déploiement. Un même SHA de `develop` ne lance plus simultanément une pipeline `push` et une pipeline `pull_request` identiques.
 - Les actions et l'image Node sont figées par SHA/digest. GitHub indique qu'un SHA complet est la seule référence immuable pour une action ([guide de sécurisation](https://docs.github.com/en/actions/reference/security/secure-use)).
 - Dependabot surveille npm, GitHub Actions et Docker chaque semaine. Les avis de sécurité sont ainsi traités en PR au lieu d'être découverts au moment d'une mise en production.
 - Le smoke de production vérifie désormais que Clerk initialise réellement le formulaire de connexion. Les tests métier restent isolés de Clerk ; les tests Clerk complets devront utiliser `@clerk/testing`, une instance de développement et des testing tokens dans une suite séparée ([guide Clerk Playwright](https://clerk.com/docs/guides/development/testing/playwright/overview)).
+- Vercel Analytics n'est plus injecté dans les bundles E2E. Les navigateurs WebKit ne dépendent donc plus de la disponibilité ou des règles HTTP d'un script analytics externe ; le composant reste actif dans le bundle `production`.
 
 ## Limite d'architecture Railway actuelle
 

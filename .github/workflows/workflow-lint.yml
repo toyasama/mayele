@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main, develop]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -34,4 +34,4 @@ jobs:
           tar --extract --gzip --file "$RUNNER_TEMP/$archive" --directory "$RUNNER_TEMP" actionlint
 
       - name: Validate workflows
-        run: "$RUNNER_TEMP/actionlint -color"
+        run: '"$RUNNER_TEMP/actionlint" -color'
