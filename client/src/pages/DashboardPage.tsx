@@ -3,11 +3,13 @@ import { useSearchParams } from 'react-router-dom'
 import { PageFrame } from '../components/layout/PageFrame'
 import { ResponsiveTabs } from '../components/layout/ResponsiveTabs'
 import { useAuth } from '../context/auth'
+import { useProfile } from '../context/profile-context'
 import { DashboardPlayerHeader } from '../features/dashboard/DashboardPlayerHeader'
 import { PerformanceCockpit } from '../features/dashboard/PerformanceCockpit'
 import { QuestPath } from '../features/dashboard/QuestPath'
 import { SessionTimeline } from '../features/dashboard/SessionTimeline'
 import { TrophyShelf } from '../features/dashboard/TrophyShelf'
+import { useDailyScopeKey } from '../hooks/useDailyScopeKey'
 import { DASHBOARD_CACHE_PREFIX, readCache, userCacheKey, writeCache } from '../lib/appCache'
 import { api, type DashboardData } from '../lib/api'
 import { GAME_LABELS, LEVEL_LABELS, SKILL_LABELS, getPlayerProgress, type GameLevel, type GameType, type SkillTag } from '../lib/game'
@@ -33,12 +35,18 @@ function dashboardCacheKey(clerkUserId: string) {
   return userCacheKey(DASHBOARD_CACHE_PREFIX, clerkUserId)
 }
 
-function readCachedDashboard(key: string) {
-  return readCache<DashboardData>(key)
+type CachedDashboard = {
+  dailyScopeKey: string
+  payload: DashboardData
 }
 
-function writeCachedDashboard(key: string, payload: DashboardData) {
-  writeCache(key, payload)
+function readCachedDashboard(key: string, dailyScopeKey: string) {
+  const cached = readCache<CachedDashboard>(key)
+  return cached?.dailyScopeKey === dailyScopeKey ? cached.payload : null
+}
+
+function writeCachedDashboard(key: string, dailyScopeKey: string, payload: DashboardData) {
+  writeCache(key, { dailyScopeKey, payload })
 }
 
 function profileInitials(profile: DashboardProfileSource | null | undefined) {
@@ -290,17 +298,28 @@ function DashboardLoadingState({ profile, profileName }: { profile: DashboardPro
 
 export function DashboardPage() {
   const { user, getToken, isAuthenticated } = useAuth()
+  const { profile } = useProfile()
   const [searchParams, setSearchParams] = useSearchParams()
+  const currentDailyScope = useDailyScopeKey(profile?.timeZone ?? user?.timeZone)
   const cacheKey = user?.clerkUserId ? dashboardCacheKey(user.clerkUserId) : null
-  const cachedDashboard = useMemo(() => (cacheKey ? readCachedDashboard(cacheKey) : null), [cacheKey])
-  const [liveDashboard, setLiveDashboard] = useState<{ cacheKey: string; payload: DashboardData } | null>(null)
+  const cachedDashboard = useMemo(
+    () => (cacheKey ? readCachedDashboard(cacheKey, currentDailyScope) : null),
+    [cacheKey, currentDailyScope],
+  )
+  const [liveDashboard, setLiveDashboard] = useState<{
+    cacheKey: string
+    dailyScopeKey: string
+    payload: DashboardData
+  } | null>(null)
   const [error, setError] = useState('')
   const [refreshRequestId, setRefreshRequestId] = useState(0)
   const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null)
   const [selectedBadge, setSelectedBadge] = useState<BadgeItem | null>(null)
   const viewParam = searchParams.get('view') as DashboardMobileTab | null
   const activeView = viewParam && DASHBOARD_VIEWS.includes(viewParam) ? viewParam : 'overview'
-  const data = liveDashboard?.cacheKey === cacheKey ? liveDashboard.payload : cachedDashboard
+  const data = liveDashboard?.cacheKey === cacheKey && liveDashboard.dailyScopeKey === currentDailyScope
+    ? liveDashboard.payload
+    : cachedDashboard
   const loadOperationHistory = useCallback(
     async (game: GameType, level: GameLevel) => (await api.getOperationHistory(getToken, game, level)).sessions,
     [getToken],
@@ -352,9 +371,9 @@ export function DashboardPage() {
       .getDashboard(getToken)
       .then((payload) => {
         if (active) {
-          setLiveDashboard({ cacheKey, payload })
+          setLiveDashboard({ cacheKey, dailyScopeKey: currentDailyScope, payload })
           setError('')
-          writeCachedDashboard(cacheKey, payload)
+          writeCachedDashboard(cacheKey, currentDailyScope, payload)
         }
       })
       .catch((err) => {
@@ -367,7 +386,7 @@ export function DashboardPage() {
     return () => {
       active = false
     }
-  }, [cacheKey, cachedDashboard, getToken, isAuthenticated, refreshRequestId])
+  }, [cacheKey, cachedDashboard, currentDailyScope, getToken, isAuthenticated, refreshRequestId])
 
   const levelGroups = useMemo(() => {
     if (!data) {

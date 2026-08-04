@@ -540,6 +540,7 @@ export const api = {
   getDashboard: (getToken: TokenProvider) =>
     request<DashboardData>('/dashboard', {
       method: 'GET',
+      cache: 'no-store',
       getToken,
     }),
 

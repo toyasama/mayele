@@ -154,6 +154,23 @@ test.beforeEach(async ({ page, request }) => {
   await authenticate(page)
 })
 
+test('Safari iPhone conserve le focus apres une validation tactile', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'webkit-iphone-safari', 'Regression specifique au clavier Safari iPhone.')
+
+  await gotoSurface(page, coreSurfaces[6])
+  await page.getByRole('button', { name: /Commencer le sprint/i }).click()
+  await expect(page.locator('.question-line')).toBeVisible()
+
+  const input = page.getByRole('textbox', { name: /Votre reponse/i })
+  const prompt = await page.locator('.question-line').innerText()
+  await input.fill(String(solvePrompt(prompt)))
+  await page.getByRole('button', { name: /Valider/i }).click()
+
+  await expect(page.locator('.challenge-run-answer-summary')).toContainText('1')
+  await expect(input).not.toHaveAttribute('readonly')
+  await expect(input).toBeFocused()
+})
+
 test('toutes les vues principales restent lisibles et sans débordement', async ({ page }, testInfo) => {
   const runtimeErrors: string[] = []
   const failedRequests: string[] = []

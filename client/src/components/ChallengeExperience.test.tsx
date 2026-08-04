@@ -40,8 +40,62 @@ describe('ChallengeArenaScreen', () => {
   it("rend explicite l'attente de validation d'une reponse tempo", () => {
     renderArena(8, criticalRemainingSeconds(10), true)
 
-    expect(screen.getByRole('textbox', { name: /Votre reponse/i })).toBeVisible()
+    const input = screen.getByRole('textbox', { name: /Votre reponse/i })
+
+    expect(input).toBeVisible()
+    expect(input).not.toHaveAttribute('readonly')
     expect(screen.getByRole('button', { name: /En attente/i })).toBeDisabled()
+  })
+
+  it("garde le clavier mobile actif pendant la validation sans accepter une seconde saisie", () => {
+    const onAnswerChange = vi.fn()
+    const onSubmit = vi.fn((event) => event.preventDefault())
+
+    const { rerender } = render(
+      <ChallengeArenaScreen
+        answer="2"
+        contextLabel="Tempo - Debutant"
+        elapsedLabel="0/10"
+        metrics={[]}
+        modeLabel="Solo"
+        onAnswerChange={onAnswerChange}
+        onSubmit={onSubmit}
+        progressPercent={0}
+        question="1 + 1"
+        remainingSeconds={10}
+      />,
+    )
+    const input = screen.getByRole('textbox', { name: /Votre reponse/i })
+    const submit = screen.getByRole('button', { name: /Valider/i })
+
+    input.focus()
+    const mousedownAccepted = submit.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }))
+    fireEvent.click(submit)
+
+    expect(mousedownAccepted).toBe(false)
+    expect(document.activeElement).toBe(input)
+    expect(onSubmit).toHaveBeenCalledOnce()
+
+    rerender(
+      <ChallengeArenaScreen
+        answer=""
+        answerDisabled
+        contextLabel="Tempo - Debutant"
+        elapsedLabel="0/10"
+        metrics={[]}
+        modeLabel="Solo"
+        onAnswerChange={onAnswerChange}
+        onSubmit={onSubmit}
+        progressPercent={0}
+        question="2 + 2"
+        remainingSeconds={10}
+      />,
+    )
+    fireEvent.change(input, { target: { value: '4' } })
+
+    expect(input).not.toHaveAttribute('readonly')
+    expect(document.activeElement).toBe(input)
+    expect(onAnswerChange).not.toHaveBeenCalled()
   })
 
   it('affiche le suivi de question quand il est fourni', () => {

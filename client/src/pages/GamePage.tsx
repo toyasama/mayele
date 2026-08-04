@@ -5,7 +5,9 @@ import { PageFrame } from '../components/layout/PageFrame'
 import { PlayModeNavigationDialog } from '../components/PlayModeNavigationDialog'
 import { PlayModeTabs, type PlayModePath } from '../components/PlayModeTabs'
 import { useAuth } from '../context/auth'
+import { useProfile } from '../context/profile-context'
 import { SoloResultStage } from '../features/solo/SoloResultStage'
+import { useDailyScopeKey } from '../hooks/useDailyScopeKey'
 import { useRealtimeEvents } from '../hooks/useRealtimeEvents'
 import { clearCachePrefix, DASHBOARD_CACHE_PREFIX } from '../lib/appCache'
 import { ApiRequestError, api, type DailyObjective, type SoloRunData, type SoloRunQuestion } from '../lib/api'
@@ -122,6 +124,8 @@ function canFallbackToSoloAnswerHttp(error: unknown) {
 
 export function GamePage() {
   const { getToken, isAuthenticated, user } = useAuth()
+  const { profile } = useProfile()
+  const currentDailyScope = useDailyScopeKey(profile?.timeZone ?? user?.timeZone)
   const { isRealtimeReady, submitSoloAnswer: submitSoloAnswerRealtime } = useRealtimeEvents({
     isAuthenticated,
     getToken,
@@ -219,6 +223,10 @@ export function GamePage() {
       setDailyObjectivesLoading(false)
     }
   }, [getToken, isAuthenticated])
+
+  useEffect(() => {
+    void refreshDailyObjectives()
+  }, [currentDailyScope, refreshDailyObjectives])
 
   const applyServerRun = useCallback((run: SoloRunData) => {
     const nextConfig = configFromRun(run)
@@ -318,8 +326,6 @@ export function GamePage() {
     const ownerId = user?.clerkUserId
     if (!isAuthenticated || !ownerId || restoredOwnerRef.current === ownerId) return
     let cancelled = false
-
-    void refreshDailyObjectives()
 
     void api.getActiveSoloRun(getTokenRef.current)
       .then(({ run }) => {
