@@ -7,12 +7,13 @@ import { initSentry } from './lib/sentry.ts'
 import './index.css'
 
 initSentry()
+const shouldEnableAnalytics = import.meta.env.MODE === 'production'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
       <ClerkRoot />
-      <Analytics />
+      {shouldEnableAnalytics ? <Analytics /> : null}
     </BrowserRouter>
   </StrictMode>,
 )
