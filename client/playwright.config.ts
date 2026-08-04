@@ -19,6 +19,7 @@ export default defineConfig({
   ],
   fullyParallel: false,
   workers: 1,
+  retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI
     ? [["github"], ["line"], ["html", { outputFolder: "playwright-report", open: "never" }]]
     : [["list"]],

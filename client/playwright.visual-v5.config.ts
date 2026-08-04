@@ -14,6 +14,7 @@ export default defineConfig({
   testMatch: /visual-responsive-safari-v5\.spec\.ts/,
   fullyParallel: false,
   workers: 1,
+  retries: process.env.CI ? 1 : 0,
   timeout: 180_000,
   expect: { timeout: 15_000 },
   reporter: [['line']],

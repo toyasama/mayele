@@ -10,6 +10,7 @@
     "start": "node dist/server.js",
     "typecheck": "npm run prisma:generate && tsc --noEmit -p tsconfig.json",
     "test": "npm run prisma:generate && vitest run",
+    "check:production-env": "tsx scripts/check-production-env.ts",
     "prisma:generate": "prisma generate",
     "db:check-domain": "node scripts/check-domain-constraints.mjs",
     "db:verify-ledger": "tsx scripts/verify-xp-ledger.ts",

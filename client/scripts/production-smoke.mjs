@@ -55,6 +55,13 @@ try {
       await page.waitForURL(/\/connexion(?:[/?#]|$)/, { timeout: 15_000 })
       await page.locator('.auth-card').waitFor({ state: 'visible', timeout: 15_000 })
 
+      await page.getByLabel('Email').fill('smoke@example.test')
+      await page.getByLabel('Mot de passe').fill('not-a-real-password')
+      await page.getByRole('button', { name: 'Se connecter' }).waitFor({ state: 'visible', timeout: 15_000 })
+      if (await page.getByRole('button', { name: 'Se connecter' }).isDisabled()) {
+        throw new Error('Le SDK Clerk ne rend pas le formulaire de connexion operationnel.')
+      }
+
       await page.screenshot({ path: screenshotPath, fullPage: true })
 
       if (await page.locator('.app-bootstrap-error').isVisible()) {
