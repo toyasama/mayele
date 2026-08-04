@@ -47,8 +47,10 @@ type ChallengeArenaScreenProps = {
   answer: string
   answerCount?: number
   answerDisabled?: boolean
+  answerInputLocked?: boolean
   answerInputRef?: Ref<HTMLInputElement>
   answerPulse?: 'correct' | 'wrong' | ''
+  answerPulseKey?: number | string
   contextLabel: string
   correctAnswerCount?: number
   elapsedLabel: string
@@ -62,6 +64,7 @@ type ChallengeArenaScreenProps = {
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
   progressPercent: number
   question: string
+  questionKey?: number | string
   questionProgressLabel?: string
   criticalRemainingSeconds?: number
   remainingSeconds: number
@@ -157,8 +160,10 @@ export function ChallengeArenaScreen({
   answer,
   answerCount,
   answerDisabled = false,
+  answerInputLocked,
   answerInputRef,
   answerPulse = '',
+  answerPulseKey,
   contextLabel,
   correctAnswerCount,
   elapsedLabel,
@@ -172,12 +177,14 @@ export function ChallengeArenaScreen({
   onSubmit,
   progressPercent,
   question,
+  questionKey,
   questionProgressLabel,
   criticalRemainingSeconds = criticalSecondsForTotal(SPRINT_SESSION_SECONDS),
   remainingSeconds,
 }: ChallengeArenaScreenProps) {
   const safeProgressPercent = Math.min(100, Math.max(0, progressPercent))
   const critical = remainingSeconds <= criticalRemainingSeconds
+  const inputLocked = answerInputLocked ?? answerDisabled
   const answerLabel = answerCount === 1 ? 'réponse' : 'réponses'
   const correctAnswerLabel = correctAnswerCount === 1 ? 'bonne réponse' : 'bonnes réponses'
   const submitAnswerFromKeyboard = (event: KeyboardEvent<HTMLInputElement>) => {
@@ -196,7 +203,7 @@ export function ChallengeArenaScreen({
   }
 
   return (
-    <section className={`challenge-arena ${critical ? 'is-critical' : ''} ${answerPulse ? `is-${answerPulse}` : ''}`}>
+    <section className={`challenge-arena ${critical ? 'is-critical' : ''}`}>
       <header className="challenge-run-meta">
         {onExit ? (
           <button type="button" disabled={exitDisabled} onClick={onExit}>
@@ -243,7 +250,14 @@ export function ChallengeArenaScreen({
       </div>
 
       <div className="challenge-question-zone">
-        <p className="question-line" key={question}>{question}</p>
+        {answerPulse ? (
+          <span
+            aria-hidden="true"
+            className={`challenge-answer-effect is-${answerPulse}`}
+            key={`${answerPulse}-${answerPulseKey ?? 'current'}`}
+          />
+        ) : null}
+        <p className="question-line" data-question-index={questionKey} key={questionKey ?? question}>{question}</p>
         <form className="challenge-answer-form" onSubmit={onSubmit}>
           <label>
             <span>Votre reponse</span>
@@ -260,9 +274,9 @@ export function ChallengeArenaScreen({
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck={false}
-              aria-disabled={answerDisabled}
+              aria-disabled={inputLocked}
               onChange={(event) => {
-                if (!answerDisabled) {
+                if (!inputLocked) {
                   onAnswerChange(normalizeAnswerInput(event.currentTarget.value))
                 }
               }}

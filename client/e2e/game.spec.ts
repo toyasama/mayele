@@ -87,6 +87,35 @@ async function submitAndObserveAnswerCountLatencyMs(page: Page) {
   }))
 }
 
+async function submitAndObserveNextQuestionLatencyMs(page: Page) {
+  return page.evaluate(() => new Promise<number>((resolve, reject) => {
+    const question = document.querySelector<HTMLElement>('.question-line')
+    const initialQuestionIndex = question?.dataset.questionIndex
+    const button = Array.from(document.querySelectorAll('button')).find((item) => /Valider/i.test(item.textContent ?? '') && !item.disabled)
+
+    if (!question || initialQuestionIndex === undefined || !button) {
+      reject(new Error('Question courante ou bouton de validation introuvable'))
+      return
+    }
+
+    const startedAt = performance.now()
+    const observer = new MutationObserver(() => {
+      const nextQuestionIndex = document.querySelector<HTMLElement>('.question-line')?.dataset.questionIndex
+      if (nextQuestionIndex === undefined || nextQuestionIndex === initialQuestionIndex) return
+      window.clearTimeout(timeoutId)
+      observer.disconnect()
+      resolve(performance.now() - startedAt)
+    })
+    const timeoutId = window.setTimeout(() => {
+      observer.disconnect()
+      reject(new Error("La question suivante optimiste n'a pas ete affichee"))
+    }, 1_000)
+
+    observer.observe(document.body, { attributes: true, characterData: true, childList: true, subtree: true })
+    button.click()
+  }))
+}
+
 async function selectSoloMode(page: Page, mode: 'Sprint' | 'Tempo') {
   await page.getByRole('button', { name: new RegExp(`^${mode}$`, 'i') }).click()
 }
@@ -147,6 +176,55 @@ test('solo sprint valide une reponse en quelques millisecondes et conserve le fo
     await expect(page.locator('.challenge-metrics > div').nth(0).locator('strong')).not.toHaveText('0')
     await expect(page.locator('.challenge-metrics > div').nth(1).locator('strong')).toHaveText('1')
     await expect(page.getByRole('textbox', { name: /Votre reponse/i })).toBeFocused()
+  } finally {
+    await context.close()
+  }
+})
+
+test("solo affiche la question suivante apres une reponse juste ou fausse sans attendre l'ACK", async ({ browser }, testInfo) => {
+  const { context, page } = await e2ePage(browser)
+
+  try {
+    await page.routeWebSocket('**/socket.io/**', (webSocket) => webSocket.close())
+    await page.route('**/socket.io/**', (route) => route.abort())
+    await page.route('**/api/solo-runs/*/answers', async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 350))
+      await route.continue()
+    })
+
+    await startSoloSprint(page)
+    const prompt = await page.locator('.question-line').innerText()
+    await page.getByRole('textbox', { name: /Votre reponse/i }).fill(String(solvePrompt(prompt)))
+
+    const correctLatencyMs = await submitAndObserveNextQuestionLatencyMs(page)
+    expect(correctLatencyMs).toBeLessThan(ANSWER_UI_CI_BUDGET_MS)
+
+    const input = page.getByRole('textbox', { name: /Votre reponse/i })
+    await expect(page.getByRole('button', { name: /En attente/i })).toBeDisabled()
+    await input.fill('7')
+    await expect(input).toHaveValue('7')
+    await expect(page.locator('.challenge-answer-effect.is-correct')).toHaveCount(1)
+    await page.screenshot({ path: 'test-results/solo-next-question-optimistic.png', fullPage: true })
+
+    await expect(page.getByRole('button', { name: /Valider/i })).toBeEnabled()
+    await expect(input).toHaveValue('7')
+    await expect(input).toBeFocused()
+
+    const secondPrompt = await page.locator('.question-line').innerText()
+    await input.fill(String(solvePrompt(secondPrompt) + 1))
+    const incorrectLatencyMs = await submitAndObserveNextQuestionLatencyMs(page)
+    expect(incorrectLatencyMs).toBeLessThan(ANSWER_UI_CI_BUDGET_MS)
+    await expect(page.locator('.challenge-answer-effect.is-wrong')).toHaveCount(1)
+
+    await input.fill('9')
+    await expect(page.getByRole('button', { name: /Valider/i })).toBeEnabled()
+    await expect(input).toHaveValue('9')
+
+    console.info(`[performance] solo-next-question-ui correct=${correctLatencyMs.toFixed(2)}ms incorrect=${incorrectLatencyMs.toFixed(2)}ms`)
+    await testInfo.attach('solo-next-question-ui.json', {
+      body: JSON.stringify({ correctLatencyMs, incorrectLatencyMs, thresholdMs: ANSWER_UI_CI_BUDGET_MS, serverDelayMs: 350 }, null, 2),
+      contentType: 'application/json',
+    })
   } finally {
     await context.close()
   }

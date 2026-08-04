@@ -170,6 +170,8 @@ export type SoloRunQuestion = {
   deadlineAt: string
 }
 
+export type SoloRunQuestionPreview = Pick<SoloRunQuestion, 'index' | 'prompt' | 'operation' | 'skill'>
+
 export type SoloRunProgress = {
   correctAnswers: number
   totalQuestions: number
@@ -201,6 +203,7 @@ export type SoloRunData = {
   finishedAt: string | null
   serverNow: string
   question: SoloRunQuestion | null
+  nextQuestion: SoloRunQuestionPreview | null
   progress: SoloRunProgress
   answers: SoloRunAnswer[]
   result: SoloRunResult | null

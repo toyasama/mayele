@@ -765,6 +765,15 @@ test('Sprint multijoueur valide localement une reponse en quelques millisecondes
     await proposeChallenge(host.page)
     await guest.page.getByRole('button', { name: /Accepter le defi/i }).click()
     await expect(host.page.locator('.question-line')).toBeVisible()
+    await host.page.evaluate(() => {
+      document.body.dataset.haloAnimationCount = '0'
+      document.addEventListener('animationstart', (event) => {
+        const target = event.target
+        if (!(target instanceof HTMLElement) || !target.classList.contains('challenge-answer-effect')) return
+        const count = Number(document.body.dataset.haloAnimationCount ?? 0)
+        document.body.dataset.haloAnimationCount = String(count + 1)
+      })
+    })
 
     const latencyMs = await answerOneQuestionAndObserveMetricLatencyMs(host.page, 'Score', '^[1-9][0-9]*$')
 
@@ -772,6 +781,11 @@ test('Sprint multijoueur valide localement une reponse en quelques millisecondes
     await attachLatencyMetric(testInfo, 'realtime-sprint-answer-ui', latencyMs, ANSWER_UI_CI_BUDGET_MS)
     expect(latencyMs).toBeLessThan(ANSWER_UI_CI_BUDGET_MS)
     await expect(host.page.getByRole('textbox', { name: /Votre reponse|Votre r.*ponse/i })).toBeFocused()
+    await expect.poll(() => host.page.locator('body').getAttribute('data-halo-animation-count')).toBe('1')
+    await expect(host.page.locator('.question-line')).toHaveAttribute('data-question-index', '1')
+
+    await answerOneQuestion(host.page)
+    await expect.poll(() => host.page.locator('body').getAttribute('data-halo-animation-count')).toBe('2')
   } finally {
     await host.context.close()
     await guest.context.close()

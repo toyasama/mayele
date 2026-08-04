@@ -17,6 +17,7 @@ type SoloRunResponse = {
     id: string
     status: string
     question: { index: number; prompt: string } | null
+    nextQuestion: { index: number; prompt: string } | null
     progress: { correctAnswers: number; totalQuestions: number }
     result: unknown
   }
@@ -72,6 +73,9 @@ test('le run Solo est corrigé et finalisé par le serveur sans double récompen
   expect(started.run).not.toHaveProperty('questionSeed')
   expect(started.run.question).not.toHaveProperty('answer')
   expect(started.run.question).not.toHaveProperty('correctAnswer')
+  expect(started.run.nextQuestion).toMatchObject({ index: 1 })
+  expect(started.run.nextQuestion).not.toHaveProperty('answer')
+  expect(started.run.nextQuestion).not.toHaveProperty('correctAnswer')
 
   const startRetry = await request.post(`${API_URL}/api/solo-runs`, { headers, data: startPayload })
   expect(startRetry.status()).toBe(201)

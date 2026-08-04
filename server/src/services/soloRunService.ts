@@ -41,24 +41,35 @@ function questionDeadline(run: SoloRun) {
   return perQuestionDeadline < run.endsAt ? perQuestionDeadline : run.endsAt
 }
 
-function buildQuestion(run: SoloRun) {
-  if (run.currentQuestionIndex >= run.questionCount || run.status !== 'active') {
+function buildQuestionPreview(run: SoloRun, questionIndex: number) {
+  if (questionIndex >= run.questionCount || run.status !== 'active') {
     return null
   }
 
   const question = generateMatchQuestion(
     run.questionSeed,
-    run.currentQuestionIndex,
+    questionIndex,
     run.game as GameType,
     run.level as GameLevel,
     run.practiceSkill as SkillTag | null,
   )
 
   return {
-    index: run.currentQuestionIndex,
+    index: questionIndex,
     prompt: question.prompt,
     operation: question.operation,
     skill: question.skill,
+  }
+}
+
+function buildQuestion(run: SoloRun) {
+  const question = buildQuestionPreview(run, run.currentQuestionIndex)
+  if (!question) {
+    return null
+  }
+
+  return {
+    ...question,
     issuedAt: run.questionStartedAt.toISOString(),
     deadlineAt: questionDeadline(run).toISOString(),
   }
@@ -103,6 +114,7 @@ function buildRunView(run: SoloRunWithAnswers, now = new Date()) {
     finishedAt: run.finishedAt?.toISOString() ?? null,
     serverNow: now.toISOString(),
     question: buildQuestion(run),
+    nextQuestion: buildQuestionPreview(run, run.currentQuestionIndex + 1),
     progress: buildProgress(run),
     answers: run.answers.map((answer) => ({
       questionIndex: answer.questionIndex,

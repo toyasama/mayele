@@ -50,6 +50,50 @@
   }
 }
 
+@keyframes challengeCorrectHalo {
+  0% {
+    opacity: 0.76;
+    transform: translate(-50%, -50%) scale(0.72);
+  }
+
+  38% {
+    opacity: 0.64;
+    transform: translate(-50%, -50%) scale(0.9);
+  }
+
+  76% {
+    opacity: 0.3;
+    transform: translate(-50%, -50%) scale(1.07);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.2);
+  }
+}
+
+@keyframes challengeWrongHalo {
+  0% {
+    opacity: 0.72;
+    transform: translate(-50%, -50%) scale(0.78);
+  }
+
+  42% {
+    opacity: 0.6;
+    transform: translate(calc(-50% - 7px), -50%) scale(0.94);
+  }
+
+  76% {
+    opacity: 0.28;
+    transform: translate(calc(-50% + 4px), -50%) scale(1.05);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.18);
+  }
+}
+
 .challenge-setup {
   width: min(100%, 790px);
   margin: 0 auto;
@@ -593,6 +637,10 @@
   .launch-action-button .launch-action-icon {
     animation: none !important;
   }
+
+  .challenge-answer-effect {
+    display: none;
+  }
 }
 
 .challenge-arena {
@@ -758,10 +806,45 @@
 }
 
 .challenge-question-zone {
+  position: relative;
+  isolation: isolate;
   grid-column: 1 / -1;
   display: grid;
   gap: 22px;
   margin-top: clamp(26px, 6vh, 48px);
+}
+
+.challenge-answer-effect {
+  position: absolute;
+  z-index: 0;
+  top: 48px;
+  left: 50%;
+  width: min(78vw, 560px);
+  height: 180px;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  pointer-events: none;
+  will-change: opacity, transform;
+}
+
+.challenge-question-zone > .question-line,
+.challenge-question-zone > .challenge-answer-form {
+  position: relative;
+  z-index: 1;
+}
+
+.challenge-answer-effect.is-correct {
+  border-color: rgba(10, 159, 143, 0.58);
+  background: radial-gradient(circle, rgba(10, 159, 143, 0.32) 0%, rgba(10, 159, 143, 0.08) 48%, rgba(10, 159, 143, 0) 72%);
+  box-shadow: 0 0 54px rgba(10, 159, 143, 0.3);
+  animation: challengeCorrectHalo 0.62s ease-out both;
+}
+
+.challenge-answer-effect.is-wrong {
+  border-color: rgba(255, 91, 66, 0.54);
+  background: radial-gradient(circle, rgba(255, 91, 66, 0.29) 0%, rgba(255, 91, 66, 0.07) 48%, rgba(255, 91, 66, 0) 72%);
+  box-shadow: 0 0 54px rgba(255, 91, 66, 0.27);
+  animation: challengeWrongHalo 0.62s ease-out both;
 }
 
 .challenge-question-zone .question-line {
@@ -777,14 +860,6 @@
   text-shadow: none;
   font-size: clamp(3.4rem, 9vw, 5.8rem);
   line-height: 1;
-}
-
-.challenge-arena.is-correct .question-line {
-  animation: challengeCorrect 0.34s ease;
-}
-
-.challenge-arena.is-wrong .question-line {
-  animation: challengeWrong 0.36s ease;
 }
 
 .challenge-answer-form {
