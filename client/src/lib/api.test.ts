@@ -121,6 +121,32 @@ describe('API GET request coalescing', () => {
   })
 })
 
+describe('admin reverification requests', () => {
+  it('laisse Clerk lire la reponse de reverification au lieu de la transformer en erreur generique', async () => {
+    const hint = {
+      clerk_error: {
+        type: 'forbidden',
+        reason: 'reverification-error',
+        metadata: { reverification: 'strict' },
+      },
+    }
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(hint), {
+      status: 403,
+      headers: { 'Content-Type': 'application/json' },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const response = await api.resetAdminUserProgress(async () => 'token', 'player-1', 'ada')
+
+    expect(response).toBeInstanceOf(Response)
+    await expect(response.json()).resolves.toEqual(hint)
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/admin/users/player-1/reset-progress'),
+      expect.objectContaining({ method: 'POST' }),
+    )
+  })
+})
+
 describe('authoritative solo commands', () => {
   it('starts a run with a stable command id, then sends only the answer choice', async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({

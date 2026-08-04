@@ -41,3 +41,6 @@ export const notificationMutationRateLimit = limit(60 * 1000, 120, 'Trop d actio
   skip: isSafeRead,
 })
 export const searchRateLimit = limit(60 * 1000, 45, 'Trop de recherches. Reessayez dans une minute.')
+export const adminMutationRateLimit = limit(60 * 1000, 10, 'Trop d actions administratives. Reessayez dans une minute.', {
+  skip: isSafeRead,
+})

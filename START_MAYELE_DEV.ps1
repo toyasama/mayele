@@ -212,6 +212,10 @@ Assert-EnvFile -Path $clientEnv -RequiredKeys @(
     'VITE_CLERK_PUBLISHABLE_KEY'
 )
 
+if (-not (Select-String -Path $serverEnv -Pattern '^\s*ADMIN_CLERK_USER_IDS\s*=\s*user_' -Quiet)) {
+    Write-Warn "ADMIN_CLERK_USER_IDS n'est pas configure : l'espace /administration restera inaccessible."
+}
+
 $corsLine = Select-String -Path $serverEnv -Pattern '^\s*CORS_ORIGINS\s*=' | Select-Object -First 1
 if ($corsLine -and $corsLine.Line -notlike "*http://localhost:$ClientPort*") {
     Write-Warn "CORS_ORIGINS devrait contenir http://localhost:$ClientPort pour le dev local."

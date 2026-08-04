@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { DEFAULT_AUTHENTICATED_ROUTE } from '../../lib/routes'
-import { DashboardNavIcon, DuelNavIcon, FriendsNavIcon } from './navigationIcons'
+import { AdminNavIcon, DashboardNavIcon, DuelNavIcon, FriendsNavIcon } from './navigationIcons'
 
 export type NavigationMatchContext = {
   pathname: string
@@ -45,6 +45,17 @@ export const mainNavigationItems: NavigationItem[] = [
     activeMatch: ({ pathname }) => pathname.startsWith('/amis'),
   },
 ]
+
+const adminNavigationItem: NavigationItem = {
+  label: 'Administration',
+  to: '/administration',
+  icon: <AdminNavIcon />,
+  activeMatch: ({ pathname }) => pathname.startsWith('/administration'),
+}
+
+export function navigationItemsForAccess(isAdmin: boolean) {
+  return isAdmin ? [...mainNavigationItems, adminNavigationItem] : mainNavigationItems
+}
 
 export function isNavigationItemActive(item: NavigationItem | NavigationChildItem, context: NavigationMatchContext) {
   if (item.activeMatch) {

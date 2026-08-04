@@ -39,3 +39,14 @@ export function LogoutNavIcon() {
     </svg>
   )
 }
+
+export function AdminNavIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M4.75 6.25h14.5v12.5H4.75z" />
+      <path d="M8 6.25v-2h8v2" />
+      <path d="M8 10h3v5H8zM14 10h2" />
+      <path d="M14 13h2M14 16h2" />
+    </svg>
+  )
+}

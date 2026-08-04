@@ -6,6 +6,7 @@ function readStylesheet(relativePath: string) {
 }
 
 const routeEntries = {
+  admin: readStylesheet('./routes/admin.css'),
   auth: readStylesheet('./routes/auth.css'),
   dashboard: readStylesheet('./routes/dashboard.css'),
   friendProfile: readStylesheet('./routes/friend-profile.css'),
@@ -43,6 +44,7 @@ describe('route CSS splitting', () => {
 
   it('declares a dedicated stylesheet entry for every lazy feature family', () => {
     expect(routeEntries.auth).toContain('auth-v2.css')
+    expect(routeEntries.admin).toContain('admin.css')
     expect(routeEntries.dashboard).toContain('dashboard-core.css')
     expect(routeEntries.dashboard).toContain('dashboard-stats.css')
     expect(routeEntries.dashboard).toContain('experience-architecture.css')

@@ -16,6 +16,7 @@ import { DEFAULT_AUTHENTICATED_ROUTE } from './lib/routes'
 import { HomePage } from './pages/HomePage'
 
 const DashboardPage = lazy(() => import('./pages/DashboardPage').then((module) => ({ default: module.DashboardPage })))
+const AdminPage = lazy(() => import('./pages/AdminPage').then((module) => ({ default: module.AdminPage })))
 const FriendProfilePage = lazy(() => import('./pages/FriendProfilePage').then((module) => ({ default: module.FriendProfilePage })))
 const FriendsPage = lazy(() => import('./pages/FriendsPage').then((module) => ({ default: module.FriendsPage })))
 const GamePage = lazy(() => import('./pages/GamePage').then((module) => ({ default: module.GamePage })))
@@ -61,6 +62,7 @@ function App() {
   const [floatingToasts, setFloatingToasts] = useState<FloatingToast[]>([])
   const [presenceHidden, setPresenceHidden] = useState(false)
   const [presenceVisibilityUpdating, setPresenceVisibilityUpdating] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
   const knownNotificationIdsRef = useRef<Set<string>>(new Set())
   const notificationsLoadedRef = useRef(false)
   const displayUser = profile ?? user
@@ -173,6 +175,27 @@ function App() {
     isRealtimeReady: realtime.isRealtimeReady,
     setPresenceActivity: realtime.setPresenceActivity,
   })
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setIsAdmin(false)
+      return
+    }
+
+    let cancelled = false
+    void api.getAdminAccess(getToken)
+      .then(({ isAdmin: allowed }) => {
+        if (!cancelled) setIsAdmin(allowed)
+      })
+      .catch((error) => {
+        if (!cancelled) setIsAdmin(false)
+        reportBackgroundError('Verification de l acces administrateur impossible.', error)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [getToken, isAuthenticated])
 
   useEffect(() => {
     if (!isAuthenticated || !profile?.profileComplete) {
@@ -351,6 +374,14 @@ function App() {
           </ProtectedRoute>
         }
       />
+      <Route
+        path="/administration"
+        element={
+          <ProtectedRoute requireCompleteProfile={false}>
+            <AdminPage />
+          </ProtectedRoute>
+        }
+      />
       <Route path="/jeu" element={<Navigate replace to="/jeu/solo" />} />
       <Route
         path="/jeu/solo"
@@ -392,6 +423,7 @@ function App() {
     <>
       <AppShell
         authenticated={isAuthenticated}
+        isAdmin={isAdmin}
         displayName={displayName}
         displayUser={displayUser}
         notificationsSlot={isAuthenticated ? (

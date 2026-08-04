@@ -7,6 +7,7 @@ import { isAllowedCorsOrigin } from './config/origin.js'
 import { errorHandler, ApiError } from './errors.js'
 import { requireClerkUser } from './middleware/auth.js'
 import {
+  adminMutationRateLimit,
   matchHeartbeatRateLimit,
   matchMutationRateLimit,
   notificationMutationRateLimit,
@@ -18,6 +19,7 @@ import {
 } from './middleware/rateLimits.js'
 import { requestContext } from './middleware/requestContext.js'
 import { dashboardRoutes } from './routes/dashboardRoutes.js'
+import { adminRoutes } from './routes/adminRoutes.js'
 import { e2eRoutes } from './routes/e2eRoutes.js'
 import { friendRoutes } from './routes/friendRoutes.js'
 import { healthRoutes } from './routes/healthRoutes.js'
@@ -81,6 +83,8 @@ export function createApp(options: CreateAppOptions = {}) {
   app.use('/api/matches/:matchId/heartbeat', authMiddleware, matchHeartbeatRateLimit)
   app.use('/api/matches', authMiddleware, matchMutationRateLimit)
   app.use('/api/notifications', authMiddleware, notificationMutationRateLimit)
+  app.use('/api/admin/users', authMiddleware, adminMutationRateLimit)
+  app.use('/api', authMiddleware, adminRoutes())
   app.use('/api', authMiddleware, profileRoutes())
   app.use('/api', authMiddleware, friendRoutes())
   app.use('/api', authMiddleware, matchRoutes())

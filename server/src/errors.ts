@@ -21,6 +21,10 @@ export function unauthorized(message = 'Authentification requise.') {
   return new ApiError(401, message, 'unauthorized')
 }
 
+export function forbidden(message = 'Acces refuse.') {
+  return new ApiError(403, message, 'forbidden')
+}
+
 function isPayloadTooLarge(error: unknown) {
   return (
     typeof error === 'object' &&

@@ -1,12 +1,13 @@
 import { useEffect, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { isNavigationItemActive, mainNavigationItems, type NavigationMatchContext } from './navigation'
+import { isNavigationItemActive, navigationItemsForAccess, type NavigationMatchContext } from './navigation'
 import { LogoutNavIcon } from './navigationIcons'
 
 type MobileDrawerProps = {
   displayName: string
   open: boolean
   presenceSlot?: ReactNode
+  isAdmin?: boolean
   context: NavigationMatchContext
   expandedGroups: Set<string>
   onClose: () => void
@@ -22,6 +23,7 @@ export function MobileDrawer({
   displayName,
   open,
   presenceSlot,
+  isAdmin = false,
   context,
   expandedGroups,
   onClose,
@@ -69,7 +71,7 @@ export function MobileDrawer({
 
         {presenceSlot}
 
-        {mainNavigationItems.map((item) => {
+        {navigationItemsForAccess(isAdmin).map((item) => {
           const active = isNavigationItemActive(item, context)
           const expanded = expandedGroups.has(item.label)
 

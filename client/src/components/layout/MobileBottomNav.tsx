@@ -1,14 +1,15 @@
 import { Link } from 'react-router-dom'
-import { isNavigationItemActive, mainNavigationItems, type NavigationMatchContext } from './navigation'
+import { isNavigationItemActive, navigationItemsForAccess, type NavigationMatchContext } from './navigation'
 
 type MobileBottomNavProps = {
   context: NavigationMatchContext
+  isAdmin?: boolean
 }
 
-export function MobileBottomNav({ context }: MobileBottomNavProps) {
+export function MobileBottomNav({ context, isAdmin = false }: MobileBottomNavProps) {
   return (
-    <nav className="mobile-bottom-nav" aria-label="Navigation principale mobile">
-      {mainNavigationItems.map((item) => {
+    <nav className={isAdmin ? 'mobile-bottom-nav admin-visible' : 'mobile-bottom-nav'} aria-label="Navigation principale mobile">
+      {navigationItemsForAccess(isAdmin).map((item) => {
         const active = isNavigationItemActive(item, context)
 
         return (

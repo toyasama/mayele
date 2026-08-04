@@ -19,6 +19,7 @@ type AppShellProps = {
   displayUser: ShellUser | null | undefined
   notificationsSlot?: ReactNode
   presenceSlot?: (className?: string) => ReactNode
+  isAdmin?: boolean
   onLogout: () => void
 }
 
@@ -39,6 +40,7 @@ export function AppShell({
   displayUser,
   notificationsSlot,
   presenceSlot,
+  isAdmin = false,
   onLogout,
 }: AppShellProps) {
   const location = useLocation()
@@ -100,15 +102,17 @@ export function AppShell({
             context={context}
             expandedGroups={expandedGroups}
             presenceSlot={presenceSlot?.('sidebar-presence-control')}
+            isAdmin={isAdmin}
             onToggleCollapsed={() => setSidebarCollapsed((current) => !current)}
             onToggleGroup={toggleGroup}
             onLogout={handleLogout}
           />
-          <MobileBottomNav context={context} />
+          <MobileBottomNav context={context} isAdmin={isAdmin} />
           <MobileDrawer
             displayName={displayName}
             open={drawerOpen}
             presenceSlot={presenceSlot?.('mobile-presence-control')}
+            isAdmin={isAdmin}
             context={context}
             expandedGroups={expandedGroups}
             onClose={() => setDrawerOpen(false)}

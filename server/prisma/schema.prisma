@@ -366,3 +366,18 @@ model JobLease {
   @@index([lockedUntil])
   @@map("job_leases")
 }
+
+model AdminAuditLog {
+  id                 String   @id @default(cuid())
+  actorClerkUserId   String   @map("actor_clerk_user_id")
+  action             String
+  targetPlayerId     String?  @map("target_player_id")
+  targetClerkUserId  String?  @map("target_clerk_user_id")
+  targetLabel        String?  @map("target_label")
+  metadata           Json?
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt(sort: Desc)])
+  @@index([actorClerkUserId, createdAt(sort: Desc)])
+  @@map("admin_audit_logs")
+}

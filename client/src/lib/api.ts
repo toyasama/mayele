@@ -398,6 +398,75 @@ export type FriendProfileData = {
   }
 }
 
+export type AdminAuditEntry = {
+  id: string
+  actorClerkUserId: string
+  action: 'player.progress_reset' | 'player.account_deleted' | string
+  targetPlayerId: string | null
+  targetLabel: string | null
+  createdAt: string
+}
+
+export type AdminWorkerHealth = {
+  started: boolean
+  running: boolean
+  lastSucceededAt: string | null
+  lastFailedAt: string | null
+}
+
+export type AdminOverviewData = {
+  serverTime: string
+  metrics: {
+    registeredUsers: number
+    completeProfiles: number
+    newUsersSevenDays: number
+    activeUsers: number
+    totalSessions: number
+    sessionsLastDay: number
+    matchesLastDay: number
+    activeSoloRuns: number
+  }
+  operations: {
+    database: 'operational'
+    outboxBacklog: number
+    failedOutboxEvents: number
+    latestActivityAt: string | null
+  }
+  workers: {
+    outbox: AdminWorkerHealth
+    matchExpiration: AdminWorkerHealth
+  }
+  recentAudit: AdminAuditEntry[]
+}
+
+export type AdminUser = {
+  id: string
+  clerkUserId: string
+  email: string | null
+  name: string
+  firstName: string | null
+  lastName: string | null
+  username: string | null
+  avatarUrl: string | null
+  age: number | null
+  presenceStatus: PresenceStatus
+  presenceUpdatedAt: string
+  totalXp: number
+  sessionsCount: number
+  createdAt: string
+  confirmationValue: string
+}
+
+export type AdminUsersData = {
+  users: AdminUser[]
+  pagination: {
+    page: number
+    pageSize: number
+    total: number
+    totalPages: number
+  }
+}
+
 type TokenProvider = () => Promise<string | null>
 
 type RequestOptions = RequestInit & {
@@ -509,7 +578,81 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   }
 }
 
+async function reverificationRequest(path: string, options: RequestOptions): Promise<Response> {
+  const { getToken, headers, ...rest } = options
+  const token = getToken ? await waitForAuthToken(getToken) : null
+
+  if (!token) {
+    throw new ApiRequestError('Session en cours d initialisation.', 0, 'auth_pending')
+  }
+
+  let response: Response
+
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      ...rest,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        ...(headers ?? {}),
+      },
+    })
+  } catch {
+    throw new Error(apiUnavailableMessage())
+  }
+
+  // Clerk doit pouvoir lire lui-meme le corps 403 pour ouvrir sa fenetre de
+  // reverification, puis rejouer exactement la meme requete.
+  if (response.status === 403) return response
+
+  if (!response.ok) {
+    const contentType = response.headers.get('content-type') ?? ''
+    const payload = contentType.includes('application/json') ? await response.json() : null
+    throw new ApiRequestError(payload?.message ?? 'Une erreur est survenue.', response.status, payload?.code ?? null)
+  }
+
+  return response
+}
+
 export const api = {
+  getAdminAccess: (getToken: TokenProvider) =>
+    request<{ isAdmin: boolean }>('/admin/access', {
+      method: 'GET',
+      cache: 'no-store',
+      getToken,
+    }),
+
+  getAdminOverview: (getToken: TokenProvider) =>
+    request<AdminOverviewData>('/admin/overview', {
+      method: 'GET',
+      cache: 'no-store',
+      getToken,
+    }),
+
+  getAdminUsers: (getToken: TokenProvider, input: { page: number; pageSize?: number; search?: string }) => {
+    const params = new URLSearchParams({ page: String(input.page), pageSize: String(input.pageSize ?? 20) })
+    if (input.search) params.set('search', input.search)
+    return request<AdminUsersData>(`/admin/users?${params}`, {
+      method: 'GET',
+      cache: 'no-store',
+      getToken,
+    })
+  },
+
+  resetAdminUserProgress: (getToken: TokenProvider, playerId: string, confirmation: string) =>
+    reverificationRequest(`/admin/users/${encodeURIComponent(playerId)}/reset-progress`, {
+      method: 'POST',
+      getToken,
+      body: JSON.stringify({ confirmation }),
+    }),
+
+  deleteAdminUser: (getToken: TokenProvider, playerId: string, confirmation: string) =>
+    reverificationRequest(`/admin/users/${encodeURIComponent(playerId)}`, {
+      method: 'DELETE',
+      getToken,
+      body: JSON.stringify({ confirmation }),
+    }),
+
   getMe: (getToken: TokenProvider) =>
     request<{ user: AuthUser }>('/me', {
       method: 'GET',

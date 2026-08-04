@@ -10,6 +10,7 @@ function validProductionEnv() {
     directUrl: 'postgresql://user:password@db.example/mayele?sslmode=verify-full',
     clerkSecretKey: 'sk_live_1234567890abcdefghij',
     clerkPublishableKey: 'pk_live_1234567890abcdefghij',
+    adminClerkUserIds: ['user_admin123'],
     corsOrigins: ['https://mayele-learning.com'],
     e2eAuthBypass: false,
     sentryDsn: 'https://public@example.ingest.sentry.io/1',

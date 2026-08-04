@@ -25,6 +25,15 @@ function parseOrigins(value: string | undefined) {
     })
 }
 
+function parseClerkUserIds(value: string | undefined) {
+  return [...new Set(
+    String(value ?? '')
+      .split(',')
+      .map((userId) => userId.trim())
+      .filter((userId) => /^user_[a-z0-9]+$/i.test(userId)),
+  )]
+}
+
 const nodeEnv = process.env.NODE_ENV ?? 'development'
 const parsedCorsOrigins = parseOrigins(process.env.CORS_ORIGINS)
 const corsOrigins = parsedCorsOrigins.length
@@ -41,6 +50,7 @@ export const env = {
   directUrl: process.env.DIRECT_URL ?? '',
   clerkSecretKey: process.env.CLERK_SECRET_KEY ?? '',
   clerkPublishableKey: process.env.CLERK_PUBLISHABLE_KEY ?? '',
+  adminClerkUserIds: parseClerkUserIds(process.env.ADMIN_CLERK_USER_IDS),
   corsOrigins,
   e2eAuthBypass: process.env.E2E_AUTH_BYPASS === 'true',
   sentryDsn: process.env.SENTRY_DSN ?? '',
@@ -89,6 +99,7 @@ export function productionEnvProblems(candidate: ProductionEnv) {
     ['DIRECT_URL', candidate.directUrl],
     ['CLERK_SECRET_KEY', candidate.clerkSecretKey],
     ['CLERK_PUBLISHABLE_KEY', candidate.clerkPublishableKey],
+    ['ADMIN_CLERK_USER_IDS', candidate.adminClerkUserIds.length ? 'set' : ''],
     ['CORS_ORIGINS', candidate.corsOrigins.length ? 'set' : ''],
   ] as const
 
