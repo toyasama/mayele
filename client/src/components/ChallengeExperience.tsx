@@ -1,4 +1,4 @@
-import { type FormEvent, type KeyboardEvent, type ReactNode, type Ref } from 'react'
+import { type FormEvent, type KeyboardEvent, type MouseEvent, type ReactNode, type Ref } from 'react'
 import { normalizeAnswerInput } from '../lib/answerInput'
 import { SPRINT_SESSION_SECONDS, criticalRemainingSeconds as criticalSecondsForTotal } from '../lib/challengeTiming'
 import { GAME_LABELS, LEVEL_LABELS, type GameLevel, type GameType } from '../lib/game'
@@ -188,6 +188,12 @@ export function ChallengeArenaScreen({
     event.preventDefault()
     event.currentTarget.form?.requestSubmit()
   }
+  const preserveAnswerFocus = (event: MouseEvent<HTMLButtonElement>) => {
+    // Mobile Safari closes the software keyboard when the submit button takes
+    // focus. Cancelling the mousedown default keeps the active input focused;
+    // the subsequent click still submits the form normally.
+    event.preventDefault()
+  }
 
   return (
     <section className={`challenge-arena ${critical ? 'is-critical' : ''} ${answerPulse ? `is-${answerPulse}` : ''}`}>
@@ -254,15 +260,20 @@ export function ChallengeArenaScreen({
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck={false}
-              readOnly={answerDisabled}
               aria-disabled={answerDisabled}
-              onChange={(event) => onAnswerChange(normalizeAnswerInput(event.currentTarget.value))}
+              onChange={(event) => {
+                if (!answerDisabled) {
+                  onAnswerChange(normalizeAnswerInput(event.currentTarget.value))
+                }
+              }}
               onKeyDown={submitAnswerFromKeyboard}
               placeholder="?"
               required={!answerDisabled}
             />
           </label>
-          <button type="submit" disabled={answerDisabled}>{answerDisabled ? 'En attente' : 'Valider'}</button>
+          <button type="submit" disabled={answerDisabled} onMouseDown={preserveAnswerFocus}>
+            {answerDisabled ? 'En attente' : 'Valider'}
+          </button>
         </form>
       </div>
 

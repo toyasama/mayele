@@ -19,6 +19,7 @@ export function dashboardRoutes() {
 
       const dashboard = await getDashboard(player.id, player.timeZone, player.totalXp)
 
+      res.set('Cache-Control', 'private, no-store')
       res.json({
         player: {
           id: player.id,
@@ -85,6 +86,7 @@ export function dashboardRoutes() {
         throw new ApiError(428, 'Profil incomplet. Veuillez renseigner vos informations avant de continuer.', 'profile_incomplete')
       }
 
+      res.set('Cache-Control', 'private, no-store')
       res.json({ objectives: await getDailyObjectives(player.id, player.timeZone) })
     } catch (error) {
       next(error)

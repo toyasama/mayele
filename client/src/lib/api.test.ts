@@ -34,6 +34,18 @@ describe('resolveApiBase', () => {
 })
 
 describe('API GET request coalescing', () => {
+  it('interdit le cache HTTP pour le dashboard quotidien', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ summary: {} }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await api.getDashboard(async () => 'token')
+
+    expect(fetchMock).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ cache: 'no-store' }))
+  })
+
   it('relance automatiquement un GET apres une erreur serveur transitoire', async () => {
     vi.useFakeTimers()
     const fetchMock = vi
