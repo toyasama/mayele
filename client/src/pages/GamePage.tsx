@@ -262,6 +262,7 @@ export function GamePage() {
     }
 
     if (run.status === 'completed') {
+      clearTimers()
       setRemainingSeconds(0)
       setStatus('finished')
       setFeedback(
@@ -275,7 +276,7 @@ export function GamePage() {
 
     setStatus('running')
     setFeedback('')
-  }, [])
+  }, [clearTimers])
 
   const armCountdownUntil = useCallback(
     (deadlineAt: string, serverNow: string, onExpire: () => void) => {
@@ -325,6 +326,7 @@ export function GamePage() {
 
     finishedRef.current = true
     clearTimers()
+    inputRef.current?.blur()
     setSaving(true)
     setSaveError('')
 
@@ -504,7 +506,13 @@ export function GamePage() {
   async function recordCurrentAnswer(source: AnswerFeedback['source']) {
     const run = runRef.current
     const currentQuestion = run?.question
-    if (statusRef.current !== 'running' || !run || !currentQuestion || answerSubmittingRef.current) return
+    if (
+      statusRef.current !== 'running'
+      || !run
+      || !currentQuestion
+      || finishedRef.current
+      || answerSubmittingRef.current
+    ) return
 
     const submittedAnswer = answerRef.current
     const numericAnswer = source === 'timeout' ? null : parseAnswerInput(submittedAnswer)
@@ -605,20 +613,25 @@ export function GamePage() {
           (storedAnswer) => storedAnswer.questionIndex === currentQuestion.index,
         )
 
-        if (storedCorrection) {
+        // The timer can finalize the run while its last answer is still in flight.
+        // A completed snapshot is authoritative even when that late answer was not
+        // accepted, so never restore the stale active snapshot in that case.
+        if (storedCorrection || latestRun.status === 'completed') {
           const preserveNextAnswer = latestRun.status === 'active'
             && isSameQuestionPreview(latestRun.question, optimisticNextQuestion)
           applyServerRun(latestRun, { preserveAnswer: preserveNextAnswer })
           if (latestRun.status === 'completed') void refreshDailyObjectives()
-          setFeedbackTone(storedCorrection.isCorrect ? 'success' : 'error')
-          setAnswerFeedback({
-            prompt: storedCorrection.prompt,
-            userAnswer: storedCorrection.userAnswer,
-            correctAnswer: storedCorrection.correctAnswer,
-            isCorrect: storedCorrection.isCorrect,
-            streak: latestRun.progress.currentStreak,
-            source,
-          })
+          if (storedCorrection) {
+            setFeedbackTone(storedCorrection.isCorrect ? 'success' : 'error')
+            setAnswerFeedback({
+              prompt: storedCorrection.prompt,
+              userAnswer: storedCorrection.userAnswer,
+              correctAnswer: storedCorrection.correctAnswer,
+              isCorrect: storedCorrection.isCorrect,
+              streak: latestRun.progress.currentStreak,
+              source,
+            })
+          }
           if (latestRun.status === 'active') armRunTimer(latestRun)
           return
         }
@@ -961,15 +974,15 @@ export function GamePage() {
         <ChallengeArenaScreen
           answer={answer}
           answerCount={stats.totalQuestions}
-          answerDisabled={answerPending}
-          answerInputLocked={answerPending && !questionPreview}
+          answerDisabled={answerPending || saving}
+          answerInputLocked={saving || (answerPending && !questionPreview)}
           answerInputRef={inputRef}
           answerPulse={answerFeedback ? (answerFeedback.isCorrect ? 'correct' : 'wrong') : ''}
           answerPulseKey={stats.totalQuestions}
           contextLabel={`${modeLabel} - ${LEVEL_RUN_LABELS[config.level]}`}
           correctAnswerCount={stats.correctAnswers}
           elapsedLabel={`${elapsedSeconds}/${activeTimerTotalSeconds}`}
-          exitDisabled={answerPending}
+          exitDisabled={answerPending || saving}
           feedbackSlot={feedbackSlot}
           metrics={statsCards}
           modeLabel="Solo"
