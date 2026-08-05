@@ -55,6 +55,9 @@ import {
   computeCurrentStreak,
   errorMessage,
   isOlderMatchSnapshot,
+  isMatchSettlementConfirmed,
+  isMatchSettlementError,
+  isRealtimeCommandOutcomeUnknown,
   isParticipantInRoom,
   isStaleRoomError,
   isTransientAuthError,
@@ -442,6 +445,15 @@ export function MultiplayerGamePage() {
     }
 
     const mergedMatch = mergeMonotonicMatchFields(current, match)
+    const currentSettlementConfirmed = current
+      ? isMatchSettlementConfirmed(current, current.id, profile?.id)
+      : false
+    const nextSettlementConfirmed = isMatchSettlementConfirmed(mergedMatch, mergedMatch.id, profile?.id)
+
+    if (nextSettlementConfirmed && !currentSettlementConfirmed) {
+      answerInputRef.current?.blur()
+      setError('')
+    }
 
     serverTimeOffsetMsRef.current = new Date(mergedMatch.serverNow).getTime() - Date.now()
     clearSupersededRoomAction(mergedMatch)
@@ -468,7 +480,7 @@ export function MultiplayerGamePage() {
     activeMatchRef.current = mergedMatch
     setActiveMatch(mergedMatch)
     return mergedMatch
-  }, [clearSupersededRoomAction, setTempoQuestionIndex])
+  }, [clearSupersededRoomAction, profile?.id, setTempoQuestionIndex])
 
   const localPendingConfig = useCallback((matchId: string) => {
     if (configDraftRef.current?.matchId === matchId) {
@@ -1680,10 +1692,12 @@ export function MultiplayerGamePage() {
     resultSubmittedRef.current = submissionKey
     const durationSeconds = calculateElapsedSessionSeconds(matchStartedAtRef.current, serverNowMs())
 
+    answerInputRef.current?.blur()
     setAction(`result:${displayedMatch.id}`)
     setError('')
 
     try {
+      await Promise.allSettled(Array.from(sprintAnswerSyncPromisesRef.current))
       const submitMatchResultRealtime = submitMatchResultRealtimeRef.current
 
       if (!submitMatchResultRealtime) {
@@ -1705,9 +1719,25 @@ export function MultiplayerGamePage() {
       applyMatchSnapshot(payload.match)
       showToast(payload.match.status === 'completed' ? 'Defi termine.' : 'Resultat enregistre.')
     } catch (caughtError) {
-      if (caughtError instanceof ApiRequestError && caughtError.code === 'match_already_completed') {
-        await refreshRoomData()
+      if (isMatchSettlementConfirmed(activeMatchRef.current, displayedMatch.id, profile?.id)) {
+        setError('')
         return
+      }
+
+      if (isMatchSettlementError(caughtError) || isRealtimeCommandOutcomeUnknown(caughtError)) {
+        try {
+          await refreshRoomData()
+        } catch (refreshError) {
+          reportBackgroundRoomError(refreshError, 'Impossible de verifier la fin du defi.')
+        }
+
+        if (
+          isMatchSettlementError(caughtError) ||
+          isMatchSettlementConfirmed(activeMatchRef.current, displayedMatch.id, profile?.id)
+        ) {
+          setError('')
+          return
+        }
       }
 
       resultSubmittedRef.current = null
@@ -1715,12 +1745,16 @@ export function MultiplayerGamePage() {
     } finally {
       setAction('')
     }
-  }, [applyMatchSnapshot, displayedMatch, profile?.id, refreshRoomData, serverNowMs, showToast])
+  }, [applyMatchSnapshot, displayedMatch, profile?.id, refreshRoomData, reportBackgroundRoomError, serverNowMs, showToast])
 
   const appendMatchAnswer = useCallback((userAnswer: number | null, responseTimeMs: number, forcedQuestionIndex?: number) => {
     const currentMatch = activeMatchRef.current
     const currentConfig = configRef.current
     const currentAnswers = matchAnswersRef.current
+
+    if (currentMatch && resultSubmittedRef.current === `${currentMatch.id}:${profile?.id ?? 'current'}`) {
+      return currentAnswers
+    }
 
     if (!currentMatch?.questionSeed || !currentConfig.game || !currentConfig.level) {
       setError('Configuration de defi incomplete.')
@@ -1778,6 +1812,10 @@ export function MultiplayerGamePage() {
       }).then((payload) => {
         applyMatchSnapshot(payload.match)
       }).catch((caughtError) => {
+        if (isMatchSettlementConfirmed(activeMatchRef.current, currentMatch.id, profile?.id)) {
+          return
+        }
+
         if (!isTransientAuthError(caughtError) && !isStaleRoomError(caughtError)) {
           setError(caughtError instanceof Error ? caughtError.message : 'Reponse sprint impossible.')
         }
@@ -1789,7 +1827,7 @@ export function MultiplayerGamePage() {
     }
 
     return nextAnswers
-  }, [applyMatchSnapshot])
+  }, [applyMatchSnapshot, profile?.id])
 
   const removeTempoAnswer = useCallback((questionIndex: number) => {
     const nextAnswers = matchAnswersRef.current.filter((item) => item.questionIndex !== questionIndex)
@@ -1872,6 +1910,10 @@ export function MultiplayerGamePage() {
         completeTempoQuestionRef.current(payload.progress.questionIndex, new Date(payload.match.serverNow).getTime())
       }
     }).catch((caughtError) => {
+      if (isMatchSettlementConfirmed(activeMatchRef.current, displayedMatch.id, profile?.id)) {
+        return
+      }
+
       if (isStaleRoomError(caughtError)) {
         void refreshRoomData().catch((refreshError) => {
           reportBackgroundRoomError(refreshError, 'Impossible de resynchroniser la fin du tempo.')
@@ -1896,7 +1938,7 @@ export function MultiplayerGamePage() {
         setError(caughtError instanceof Error ? caughtError.message : 'Reponse tempo impossible.')
       }
     })
-  }, [appendMatchAnswer, applyMatchSnapshot, config.game, config.level, displayedMatch, focusAnswerInput, refreshRoomData, removeTempoAnswer, reportBackgroundRoomError, serverNowMs])
+  }, [appendMatchAnswer, applyMatchSnapshot, config.game, config.level, displayedMatch, focusAnswerInput, profile?.id, refreshRoomData, removeTempoAnswer, reportBackgroundRoomError, serverNowMs])
 
   const recordMatchAnswer = useCallback((userAnswer: number) => {
     if (config.challengeMode === 'tempo') {

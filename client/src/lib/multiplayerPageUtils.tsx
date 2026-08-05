@@ -216,6 +216,40 @@ export function isStaleRoomError(error: unknown) {
   )
 }
 
+export function isMatchSettlementConfirmed(
+  match: MatchData | null | undefined,
+  matchId: string,
+  playerId: string | null | undefined,
+) {
+  if (!match || match.id !== matchId) {
+    return false
+  }
+
+  if (match.status === 'completed') {
+    return true
+  }
+
+  const participant = playerId
+    ? match.participants.find((item) => item.player.id === playerId)
+    : null
+
+  return participant?.status === 'submitting' || participant?.status === 'completed'
+}
+
+export function isMatchSettlementError(error: unknown) {
+  return error instanceof ApiRequestError && (
+    error.code === 'match_already_completed' ||
+    error.code === 'match_not_in_progress'
+  )
+}
+
+export function isRealtimeCommandOutcomeUnknown(error: unknown) {
+  return error instanceof ApiRequestError && (
+    error.code === 'realtime_timeout' ||
+    error.code === 'realtime_invalid_response'
+  )
+}
+
 export function isTransientAuthError(error: unknown) {
   if (error instanceof ApiRequestError) {
     return error.status === 401 || error.code === 'unauthorized' || error.code === 'auth_pending'
