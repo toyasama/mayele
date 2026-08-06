@@ -122,9 +122,7 @@ async function selectSoloMode(page: Page, mode: 'Sprint' | 'Tempo') {
 
 async function startSoloSprint(page: Page, durationSeconds = 60) {
   await page.goto(`${APP_URL}/jeu/solo`)
-  await page.getByRole('button', { name: /Informations sur les modes de jeu/i }).click()
-  await page.getByLabel(/Duree Sprint/i).selectOption(String(durationSeconds))
-  await page.getByRole('button', { name: /C’est compris/i }).click()
+  await page.getByLabel(/Durée Sprint/i).selectOption(String(durationSeconds))
   await page.getByRole('button', { name: /Commencer le sprint|Rejouer le sprint/i }).click()
   await expect(page.locator('.question-line')).toBeVisible()
   await expect(page.getByRole('textbox', { name: /Votre reponse/i })).toBeFocused()
@@ -133,9 +131,7 @@ async function startSoloSprint(page: Page, durationSeconds = 60) {
 async function startSoloTempo(page: Page, perQuestionSeconds = 10) {
   await page.goto(`${APP_URL}/jeu/solo`)
   await selectSoloMode(page, 'Tempo')
-  await page.getByRole('button', { name: /Informations sur les modes de jeu/i }).click()
   await page.getByLabel(/Temps par question Tempo/i).fill(String(perQuestionSeconds))
-  await page.getByRole('button', { name: /C’est compris/i }).click()
   await page.getByRole('button', { name: /Commencer le tempo|Rejouer le tempo/i }).click()
   await expect(page.locator('.question-line')).toBeVisible()
   await expect(page.getByText(/Question 1\/30/i)).toBeVisible()

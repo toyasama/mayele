@@ -244,10 +244,8 @@ test('le parcours solo authoritative résiste au rechargement et affiche le rés
 
   await gotoSurface(page, coreSurfaces[6])
   await page.getByRole('button', { name: 'Tempo', exact: true }).click()
-  await page.getByRole('button', { name: /Informations sur les modes de jeu/i }).click()
   await page.getByRole('spinbutton', { name: 'Questions Tempo' }).fill('10')
   await page.getByRole('spinbutton', { name: 'Temps par question Tempo' }).fill('10')
-  await page.getByRole('button', { name: /C’est compris/i }).click()
   await page.getByRole('button', { name: /Commencer le tempo/i }).click()
   await expect(page.locator('.question-line')).toBeVisible()
   await captureSurface(page, testInfo.project.name, 'solo-run')

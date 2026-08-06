@@ -33,6 +33,57 @@
   line-height: 1;
 }
 
+.solo-mode-section .challenge-mode-grid .segment {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  align-content: center;
+  gap: 2px;
+  padding-inline: 6px;
+}
+
+.solo-mode-section .challenge-mode-grid .segment strong {
+  font-size: 0.86rem;
+}
+
+.solo-mode-section .challenge-mode-grid .segment small {
+  color: var(--challenge-muted);
+  font-size: 0.62rem;
+  font-weight: 800;
+}
+
+.solo-mode-section .challenge-mode-grid .segment.active small {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.solo-config-settings {
+  gap: 10px;
+}
+
+.solo-config-settings label > span:first-child {
+  font-size: 0.78rem;
+}
+
+.solo-setting-input-unit {
+  position: relative;
+}
+
+.solo-setting-input-unit input {
+  width: 100%;
+  padding-right: 76px;
+}
+
+.solo-setting-input-unit em {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  color: #6b7f8c;
+  font-size: 0.72rem;
+  font-style: normal;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
 .solo-mode-help-trigger:hover,
 .solo-mode-help-trigger:focus-visible,
 .solo-mode-help-close:hover,
@@ -113,50 +164,41 @@
   line-height: 1;
 }
 
-.solo-mode-help-settings {
+.solo-mode-help-descriptions {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
 
-.solo-mode-help-settings label {
+.solo-mode-help-descriptions article {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(130px, 170px);
-  align-items: center;
-  gap: 16px;
-  font-weight: 900;
-}
-
-.solo-mode-help-settings input,
-.solo-mode-help-settings select {
-  width: 100%;
-  min-width: 0;
-  min-height: 48px;
-  padding: 10px 13px;
-  border: 1px solid rgba(180, 212, 218, 0.9);
-  border-radius: 14px;
+  gap: 7px;
+  padding: 15px;
+  border: 1px solid rgba(180, 212, 218, 0.78);
+  border-radius: 16px;
   background: #f5f9fa;
-  color: var(--challenge-ink);
-  font: inherit;
-  font-weight: 900;
 }
 
-.solo-mode-help-input-unit {
-  position: relative;
+.solo-mode-help-descriptions article.active {
+  border-color: rgba(10, 159, 143, 0.42);
+  background: rgba(229, 248, 244, 0.72);
 }
 
-.solo-mode-help-input-unit input {
-  padding-right: 76px;
+.solo-mode-help-descriptions article > span {
+  color: var(--challenge-primary);
+  font-size: 0.65rem;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
-.solo-mode-help-input-unit em {
-  position: absolute;
-  top: 50%;
-  right: 12px;
-  color: #6b7f8c;
-  font-size: 0.72rem;
-  font-style: normal;
-  transform: translateY(-50%);
-  pointer-events: none;
+.solo-mode-help-descriptions article > strong {
+  font-size: 1rem;
+}
+
+.solo-mode-help-descriptions article > p {
+  font-size: 0.78rem;
+  line-height: 1.45;
 }
 
 .solo-mode-help-done {
@@ -196,6 +238,15 @@
     height: 28px;
   }
 
+  .solo-mode-section .challenge-mode-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .solo-mode-section .challenge-mode-grid .segment small {
+    font-size: 0.54rem;
+    white-space: nowrap;
+  }
+
   .solo-mode-help-backdrop {
     align-items: end;
     padding: 10px;
@@ -209,9 +260,36 @@
     border-radius: 24px;
   }
 
-  .solo-mode-help-settings label {
+  .solo-mode-help-descriptions {
     grid-template-columns: 1fr;
-    gap: 7px;
+  }
+
+  .challenge-config-board .solo-config-settings label {
+    grid-template-columns: 76px minmax(0, 1fr);
+    gap: 8px;
+  }
+}
+
+@media (max-width: 767px) {
+  .game-page.solo-idle .challenge-config-operation .challenge-choice-tile {
+    width: auto;
+    min-width: 126px;
+    min-height: 62px;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 8px;
+    padding: 9px 12px;
+    border-radius: 16px;
+    text-align: left;
+  }
+
+  .game-page.solo-idle .challenge-config-operation .challenge-choice-symbol + span {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip: auto;
+    white-space: normal;
   }
 }
 

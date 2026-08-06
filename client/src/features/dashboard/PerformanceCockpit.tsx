@@ -5,22 +5,27 @@ import type { GameLevel, GameType } from '../../lib/game'
 import { OperationInsightPanel } from './OperationInsightPanel'
 import '../../styles/dashboard-performance-v2.css'
 
-type LevelStat = DashboardData['stats']['byLevel'][number]
+type PerformanceStats = Pick<DashboardData['stats'], 'byLevel'>
+type LevelStat = PerformanceStats['byLevel'][number]
 type ProgressItem = DashboardData['progressByMode'][number]
 
-type PerformanceCockpitProps = {
-  stats: DashboardData['stats']
+type PerformanceCockpitBaseProps = {
+  stats: PerformanceStats
   progressByMode: DashboardData['progressByMode']
-  recentSessions: DashboardData['recentSessions']
-  loadOperationHistory: (game: GameType, level: GameLevel) => Promise<OperationHistorySession[]>
   gameLabel: (game: string) => string
   levelLabel: (level: string | null) => string
   formatResponseTime: (value: number | null | undefined) => string
-  playHref: (level: GameLevel, game?: GameType) => string
+}
+
+type PerformanceCockpitProps = PerformanceCockpitBaseProps & {
+  recentSessions?: DashboardData['recentSessions']
+  loadOperationHistory?: (game: GameType, level: GameLevel) => Promise<OperationHistorySession[]>
+  playHref?: (level: GameLevel, game?: GameType) => string
 }
 
 const LEVELS: GameLevel[] = ['debutant', 'intermediaire', 'avance', 'expert']
 const GAMES: GameType[] = ['addition', 'soustraction', 'multiplication', 'division', 'mixte']
+const EMPTY_RECENT_SESSIONS: DashboardData['recentSessions'] = []
 
 function boundedPercent(value: number) {
   return Math.max(0, Math.min(100, Math.round(value)))
@@ -62,7 +67,7 @@ function performanceLabel(accuracy: number, attempts: number) {
   return 'Ce niveau demande encore de la pratique'
 }
 
-function levelStatFor(stats: DashboardData['stats'], level: GameLevel): LevelStat {
+function levelStatFor(stats: PerformanceStats, level: GameLevel): LevelStat {
   return stats.byLevel.find((item) => item.level === level) ?? {
     level,
     attempts: 0,
@@ -114,7 +119,7 @@ function gameProgressForLevel(progressByMode: ProgressItem[], level: GameLevel) 
   })
 }
 
-function defaultSelectedLevel(stats: DashboardData['stats']) {
+function defaultSelectedLevel(stats: PerformanceStats) {
   return [...LEVELS]
     .reverse()
     .find((level) => levelStatFor(stats, level).attempts > 0) ?? LEVELS[0]
@@ -144,7 +149,7 @@ type OperationHistoryState =
 export function PerformanceCockpit({
   stats,
   progressByMode,
-  recentSessions,
+  recentSessions = EMPTY_RECENT_SESSIONS,
   loadOperationHistory,
   gameLabel,
   levelLabel,
@@ -160,6 +165,7 @@ export function PerformanceCockpit({
   const selectedGames = gameProgressForLevel(progressByMode, selectedLevel)
   const playedGames = selectedGames.filter((item) => item.attempts > 0)
   const selectedProgress = selectedGame ? selectedGames.find((item) => item.game === selectedGame) : undefined
+  const canInspectOperations = Boolean(loadOperationHistory)
   const historyKey = selectedGame ? `${selectedLevel}:${selectedGame}` : null
   const historyState = historyKey ? operationHistories[historyKey] : undefined
   const fallbackHistory = useMemo(
@@ -178,7 +184,7 @@ export function PerformanceCockpit({
   })[0]
   const closeOperationDetail = useCallback(() => setSelectedGame(null), [])
   const retryOperationHistory = useCallback(() => {
-    if (!historyKey) {
+    if (!historyKey || !loadOperationHistory) {
       return
     }
 
@@ -188,7 +194,7 @@ export function PerformanceCockpit({
       delete next[historyKey]
       return next
     })
-  }, [historyKey])
+  }, [historyKey, loadOperationHistory])
 
   useEffect(() => {
     mountedRef.current = true
@@ -198,7 +204,7 @@ export function PerformanceCockpit({
   }, [])
 
   useEffect(() => {
-    if (!selectedGame || !selectedProgress?.attempts || !historyKey || historyState || historyRequestsRef.current.has(historyKey)) {
+    if (!loadOperationHistory || !selectedGame || !selectedProgress?.attempts || !historyKey || historyState || historyRequestsRef.current.has(historyKey)) {
       return
     }
 
@@ -274,7 +280,7 @@ export function PerformanceCockpit({
         aria-labelledby={`performance-tab-${selectedLevel}`}
         aria-live="polite"
       >
-        {selectedGame && selectedProgress ? (
+        {loadOperationHistory && selectedGame && selectedProgress ? (
           <OperationInsightPanel
             game={selectedGame}
             level={selectedLevel}
@@ -334,28 +340,39 @@ export function PerformanceCockpit({
               {selectedGames.map((item) => {
                 const accuracy = boundedPercent(item.averageAccuracy)
                 const active = selectedGame === item.game
+                const rowContent = (
+                  <>
+                    <span className="performance-mode-name">
+                      <strong>{gameLabel(item.game)}</strong>
+                      <small>{item.attempts ? `${item.attempts} sprint${item.attempts > 1 ? 's' : ''}` : 'Pas encore joué'}</small>
+                    </span>
+                    <span className="performance-mode-track" aria-hidden="true">
+                      <i style={{ width: `${accuracy}%` }} />
+                    </span>
+                    <span className="performance-mode-score">
+                      <strong>{item.attempts ? `${accuracy}%` : '—'}</strong>
+                      <small>{item.attempts ? `record ${item.bestScore}%` : ''}</small>
+                    </span>
+                  </>
+                )
 
                 return (
                   <div className="performance-mode-list-item" role="listitem" key={item.game}>
-                    <button
-                      className={`performance-mode-row ${item.attempts ? 'played' : 'unplayed'} ${active ? 'active' : ''}`}
-                      type="button"
-                      aria-expanded={active}
-                      aria-controls={active ? `operation-insight-${selectedLevel}-${item.game}` : undefined}
-                      onClick={() => setSelectedGame((current) => current === item.game ? null : item.game as GameType)}
-                    >
-                      <span className="performance-mode-name">
-                        <strong>{gameLabel(item.game)}</strong>
-                        <small>{item.attempts ? `${item.attempts} sprint${item.attempts > 1 ? 's' : ''}` : 'Pas encore joué'}</small>
-                      </span>
-                      <span className="performance-mode-track" aria-hidden="true">
-                        <i style={{ width: `${accuracy}%` }} />
-                      </span>
-                      <span className="performance-mode-score">
-                        <strong>{item.attempts ? `${accuracy}%` : '—'}</strong>
-                        <small>{item.attempts ? `record ${item.bestScore}%` : ''}</small>
-                      </span>
-                    </button>
+                    {canInspectOperations ? (
+                      <button
+                        className={`performance-mode-row ${item.attempts ? 'played' : 'unplayed'} ${active ? 'active' : ''}`}
+                        type="button"
+                        aria-expanded={active}
+                        aria-controls={active ? `operation-insight-${selectedLevel}-${item.game}` : undefined}
+                        onClick={() => setSelectedGame((current) => current === item.game ? null : item.game as GameType)}
+                      >
+                        {rowContent}
+                      </button>
+                    ) : (
+                      <div className={`performance-mode-row performance-mode-row-public ${item.attempts ? 'played' : 'unplayed'}`}>
+                        {rowContent}
+                      </div>
+                    )}
                   </div>
                 )
               })}
@@ -363,15 +380,17 @@ export function PerformanceCockpit({
 
           </div>
 
-          <div className="performance-level-action">
-            <div>
-              <span>{nextActionLabel(priorityGame)}</span>
-              <strong>{priorityGame ? gameLabel(priorityGame.game) : 'Mixte'}</strong>
+          {playHref ? (
+            <div className="performance-level-action">
+              <div>
+                <span>{nextActionLabel(priorityGame)}</span>
+                <strong>{priorityGame ? gameLabel(priorityGame.game) : 'Mixte'}</strong>
+              </div>
+              <Link className="primary-button" to={playHref(selectedLevel, (priorityGame?.game as GameType | undefined) ?? 'mixte')}>
+                Jouer en {levelLabel(selectedLevel)}
+              </Link>
             </div>
-            <Link className="primary-button" to={playHref(selectedLevel, (priorityGame?.game as GameType | undefined) ?? 'mixte')}>
-              Jouer en {levelLabel(selectedLevel)}
-            </Link>
-          </div>
+          ) : null}
         </div>
       </article>
     </section>

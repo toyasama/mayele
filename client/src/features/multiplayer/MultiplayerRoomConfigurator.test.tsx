@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { useState } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { DEFAULT_ROOM_CONFIG, type RoomConfig } from '../../lib/multiplayerConfig'
@@ -52,5 +52,20 @@ describe('MultiplayerRoomConfigurator', () => {
     expect(sprint).toHaveClass('active')
     expect(addition).toHaveClass('active')
     expect(beginner).toHaveClass('active')
+  })
+
+  it('explique les modes sans masquer leurs réglages dans l’aide', () => {
+    render(<Harness />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Informations sur les modes de jeu' }))
+
+    const dialog = screen.getByRole('dialog', { name: /Sprint ou Tempo/i })
+    expect(dialog).toHaveTextContent('Contre la montre')
+    expect(dialog).toHaveTextContent('Question par question')
+    expect(within(dialog).queryByRole('spinbutton')).not.toBeInTheDocument()
+    expect(within(dialog).queryByRole('combobox')).not.toBeInTheDocument()
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Fermer' }))
+    expect(screen.queryByRole('dialog', { name: /Sprint ou Tempo/i })).not.toBeInTheDocument()
   })
 })

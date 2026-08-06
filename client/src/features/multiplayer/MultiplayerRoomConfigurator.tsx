@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { DifficultyChoiceGrid, OperationChoiceGrid } from '../../components/ChallengeExperience'
 import type { ChallengeMode } from '../../lib/api'
 import { GAME_LABELS, LEVEL_LABELS, type GameLevel, type GameType } from '../../lib/game'
@@ -34,6 +36,24 @@ export function MultiplayerRoomConfigurator({
 }: MultiplayerRoomConfiguratorProps) {
   const completion = selectedCount(authoritativeConfig)
   const labels = configLabel(authoritativeConfig)
+  const [modeHelpOpen, setModeHelpOpen] = useState(false)
+
+  useEffect(() => {
+    if (!modeHelpOpen) return
+
+    const previousOverflow = document.body.style.overflow
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setModeHelpOpen(false)
+    }
+
+    document.body.style.overflow = 'hidden'
+    window.addEventListener('keydown', closeOnEscape)
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [modeHelpOpen])
 
   return (
     <div className="multiplayer-config-stage">
@@ -58,7 +78,19 @@ export function MultiplayerRoomConfigurator({
 
       <div className="multiplayer-config-board" aria-label="Configuration du défi">
         <div className="control-group multiplayer-config-row multiplayer-config-mode">
-          <span className="panel-label">Mode</span>
+          <div className="multiplayer-mode-label">
+            <span className="panel-label">Mode</span>
+            <button
+              type="button"
+              className="multiplayer-mode-help-trigger"
+              aria-label="Informations sur les modes de jeu"
+              aria-haspopup="dialog"
+              aria-expanded={modeHelpOpen}
+              onClick={() => setModeHelpOpen(true)}
+            >
+              ?
+            </button>
+          </div>
           <div className="segmented-grid">
             {(['sprint', 'tempo'] as ChallengeMode[]).map((mode) => (
               <button
@@ -158,6 +190,57 @@ export function MultiplayerRoomConfigurator({
           )}
         </div>
       </div>
+
+      {modeHelpOpen ? createPortal(
+        <div
+          className="multiplayer-mode-help-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.currentTarget === event.target) setModeHelpOpen(false)
+          }}
+        >
+          <section
+            className="multiplayer-mode-help-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="multiplayer-mode-help-title"
+          >
+            <header>
+              <div>
+                <span>Mode de jeu</span>
+                <h2 id="multiplayer-mode-help-title">Sprint ou Tempo&nbsp;?</h2>
+              </div>
+              <button
+                type="button"
+                className="multiplayer-mode-help-close"
+                aria-label="Fermer"
+                autoFocus
+                onClick={() => setModeHelpOpen(false)}
+              >
+                ×
+              </button>
+            </header>
+
+            <div className="multiplayer-mode-help-descriptions">
+              <article className={authoritativeConfig.challengeMode === 'sprint' ? 'active' : ''}>
+                <span>Contre la montre</span>
+                <strong>Sprint</strong>
+                <p>Répondez correctement au plus grand nombre de questions avant la fin du chrono.</p>
+              </article>
+              <article className={authoritativeConfig.challengeMode === 'tempo' ? 'active' : ''}>
+                <span>Question par question</span>
+                <strong>Tempo</strong>
+                <p>Chaque question possède son propre chrono. Le défi se termine après le nombre de questions choisi.</p>
+              </article>
+            </div>
+
+            <button type="button" className="multiplayer-mode-help-done" onClick={() => setModeHelpOpen(false)}>
+              C’est compris
+            </button>
+          </section>
+        </div>,
+        document.body,
+      ) : null}
     </div>
   )
 }

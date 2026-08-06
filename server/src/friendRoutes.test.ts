@@ -39,6 +39,7 @@ const friendMocks = vi.hoisted(() => ({
   declineFriendRequestInTransaction: vi.fn(),
   cancelFriendRequestInTransaction: vi.fn(),
   removeFriendInTransaction: vi.fn(),
+  getFriendOperationHistory: vi.fn(),
 }))
 const notificationMocks = vi.hoisted(() => ({
   createNotification: vi.fn(),
@@ -64,6 +65,7 @@ vi.mock('./services/friendService.js', () => ({
   declineFriendRequestInTransaction: friendMocks.declineFriendRequestInTransaction,
   cancelFriendRequestInTransaction: friendMocks.cancelFriendRequestInTransaction,
   removeFriendInTransaction: friendMocks.removeFriendInTransaction,
+  getFriendOperationHistory: friendMocks.getFriendOperationHistory,
 }))
 vi.mock('./services/notificationService.js', () => notificationMocks)
 vi.mock('./services/outboxService.js', () => ({ enqueueOutboxEvent: outboxMocks.enqueueOutboxEvent }))
@@ -100,10 +102,37 @@ describe('friend request transactional route', () => {
     friendMocks.declineFriendRequestInTransaction.mockResolvedValue(friend)
     friendMocks.cancelFriendRequestInTransaction.mockResolvedValue(friend)
     friendMocks.removeFriendInTransaction.mockResolvedValue(undefined)
+    friendMocks.getFriendOperationHistory.mockResolvedValue([])
     notificationMocks.createNotification.mockResolvedValue(notification)
     notificationMocks.dismissNotificationByDedupeKey.mockResolvedValue(true)
     outboxMocks.enqueueOutboxEvent.mockResolvedValue({ id: 'event-1' })
     transactionMock.mockImplementation(async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx))
+  })
+
+  it("retourne l'historique agrégé d'une opération pour un ami", async () => {
+    const sessions = [{
+      id: 'session-1',
+      score: 80,
+      correctAnswers: 8,
+      totalQuestions: 10,
+      bestStreak: 5,
+      playedAt: '2026-07-19T00:00:00.000Z',
+      averageResponseTimeMs: 2000,
+    }]
+    friendMocks.getFriendOperationHistory.mockResolvedValueOnce(sessions)
+
+    const response = await request(app())
+      .get('/api/friends/player-2/operation-history?game=addition&level=debutant&limit=5')
+      .expect(200)
+
+    expect(response.body).toEqual({ sessions })
+    expect(friendMocks.getFriendOperationHistory).toHaveBeenCalledWith(
+      'player-1',
+      'player-2',
+      'addition',
+      'debutant',
+      5,
+    )
   })
 
   it('commit la demande, la notification et les deux événements dans une transaction', async () => {

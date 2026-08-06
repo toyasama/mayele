@@ -749,10 +749,12 @@ export function GamePage() {
             key={mode}
             type="button"
             className={`segment ${config.mode === mode ? 'active' : ''}`}
+            aria-label={SOLO_MODE_LABELS[mode]}
             aria-pressed={config.mode === mode}
             onClick={() => updateConfig({ mode })}
           >
-            {SOLO_MODE_LABELS[mode]}
+            <strong>{SOLO_MODE_LABELS[mode]}</strong>
+            <small>{mode === 'sprint' ? 'Contre la montre' : 'Question par question'}</small>
           </button>
         ))}
       </div>
@@ -833,19 +835,83 @@ export function GamePage() {
     </section>
   ) : null
 
-  const setupOptionsSlot = config.focusSkill ? (
-    <div className="focus-note">
-      <span>Entrainement cible</span>
-      <strong>{SKILL_LABELS[config.focusSkill]}</strong>
-      <button
-        type="button"
-        className="secondary-button full-width"
-        onClick={() => updateConfig({ game: 'mixte', focusSkill: null })}
+  const setupOptionsSlot = (
+    <>
+      {config.focusSkill ? (
+        <div className="focus-note">
+          <span>Entrainement cible</span>
+          <strong>{SKILL_LABELS[config.focusSkill]}</strong>
+          <button
+            type="button"
+            className="secondary-button full-width"
+            onClick={() => updateConfig({ game: 'mixte', focusSkill: null })}
+          >
+            Revenir au mixte
+          </button>
+        </div>
+      ) : null}
+
+      <div
+        className="solo-rule-panel solo-config-settings challenge-config-rules"
+        aria-label={`Configuration ${SOLO_MODE_LABELS[config.mode]}`}
       >
-        Revenir au mixte
-      </button>
-    </div>
-  ) : null
+        {config.mode === 'tempo' ? (
+          <>
+            <label>
+              <span>Nombre de questions</span>
+              <input
+                type="number"
+                min={MIN_TEMPO_QUESTION_COUNT}
+                max={MAX_TEMPO_QUESTION_COUNT}
+                aria-label="Questions Tempo"
+                value={config.tempoQuestionCount}
+                onChange={(event) => {
+                  const nextValue = event.currentTarget.valueAsNumber
+                  updateConfig({
+                    tempoQuestionCount: Number.isFinite(nextValue) ? nextValue : configRef.current.tempoQuestionCount,
+                  })
+                }}
+              />
+            </label>
+            <label>
+              <span>Temps par question</span>
+              <span className="solo-setting-input-unit">
+                <input
+                  type="number"
+                  min={MIN_TEMPO_QUESTION_SECONDS}
+                  max={MAX_TEMPO_QUESTION_SECONDS}
+                  aria-label="Temps par question Tempo"
+                  value={config.tempoQuestionSeconds}
+                  onChange={(event) => {
+                    const nextValue = event.currentTarget.valueAsNumber
+                    updateConfig({
+                      tempoQuestionSeconds: Number.isFinite(nextValue) ? nextValue : configRef.current.tempoQuestionSeconds,
+                    })
+                  }}
+                />
+                <em>secondes</em>
+              </span>
+            </label>
+          </>
+        ) : (
+          <label>
+            <span>Durée</span>
+            <select
+              aria-label="Durée Sprint"
+              value={config.sprintDurationSeconds}
+              onChange={(event) => updateConfig({ sprintDurationSeconds: Number(event.currentTarget.value) as SoloChallengeConfig['sprintDurationSeconds'] })}
+            >
+              {SPRINT_DURATION_SECONDS_OPTIONS.map((seconds) => (
+                <option key={seconds} value={seconds}>
+                  {seconds} secondes
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+      </div>
+    </>
+  )
 
   const modeHelpDialog = modeHelpOpen ? (
     <div
@@ -864,7 +930,7 @@ export function GamePage() {
         <header>
           <div>
             <span>Comment ça marche ?</span>
-            <h2 id="solo-mode-help-title">{modeLabel}</h2>
+            <h2 id="solo-mode-help-title">Sprint ou Tempo&nbsp;?</h2>
           </div>
           <button
             type="button"
@@ -877,67 +943,17 @@ export function GamePage() {
           </button>
         </header>
 
-        <p>
-          {config.mode === 'tempo'
-            ? 'Réponds à chaque question avant la fin de son chrono. La partie se termine après le nombre de questions choisi.'
-            : 'Réponds correctement au plus grand nombre de questions avant la fin du chrono.'}
-        </p>
-
-        <div className="solo-mode-help-settings">
-          {config.mode === 'tempo' ? (
-            <>
-              <label>
-                <span>Nombre de questions</span>
-                <input
-                  type="number"
-                  min={MIN_TEMPO_QUESTION_COUNT}
-                  max={MAX_TEMPO_QUESTION_COUNT}
-                  aria-label="Questions Tempo"
-                  value={config.tempoQuestionCount}
-                  onChange={(event) => {
-                    const nextValue = event.currentTarget.valueAsNumber
-                    updateConfig({
-                      tempoQuestionCount: Number.isFinite(nextValue) ? nextValue : configRef.current.tempoQuestionCount,
-                    })
-                  }}
-                />
-              </label>
-              <label>
-                <span>Temps par question</span>
-                <span className="solo-mode-help-input-unit">
-                  <input
-                    type="number"
-                    min={MIN_TEMPO_QUESTION_SECONDS}
-                    max={MAX_TEMPO_QUESTION_SECONDS}
-                    aria-label="Temps par question Tempo"
-                    value={config.tempoQuestionSeconds}
-                    onChange={(event) => {
-                      const nextValue = event.currentTarget.valueAsNumber
-                      updateConfig({
-                        tempoQuestionSeconds: Number.isFinite(nextValue) ? nextValue : configRef.current.tempoQuestionSeconds,
-                      })
-                    }}
-                  />
-                  <em>secondes</em>
-                </span>
-              </label>
-            </>
-          ) : (
-            <label>
-              <span>Durée du sprint</span>
-              <select
-                aria-label="Duree Sprint"
-                value={config.sprintDurationSeconds}
-                onChange={(event) => updateConfig({ sprintDurationSeconds: Number(event.currentTarget.value) as SoloChallengeConfig['sprintDurationSeconds'] })}
-              >
-                {SPRINT_DURATION_SECONDS_OPTIONS.map((seconds) => (
-                  <option key={seconds} value={seconds}>
-                    {seconds} secondes
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
+        <div className="solo-mode-help-descriptions">
+          <article className={config.mode === 'sprint' ? 'active' : ''}>
+            <span>Contre la montre</span>
+            <strong>Sprint</strong>
+            <p>Réponds correctement au plus grand nombre de questions avant la fin du chrono.</p>
+          </article>
+          <article className={config.mode === 'tempo' ? 'active' : ''}>
+            <span>Question par question</span>
+            <strong>Tempo</strong>
+            <p>Chaque question possède son propre chrono. La partie se termine après le nombre de questions choisi.</p>
+          </article>
         </div>
 
         <button type="button" className="solo-mode-help-done" onClick={() => setModeHelpOpen(false)}>
