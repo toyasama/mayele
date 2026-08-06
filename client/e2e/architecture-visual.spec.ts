@@ -90,10 +90,8 @@ test('valide visuellement les nouvelles architectures hors landing page', async 
 
   await page.goto(`${APP_URL}/jeu/solo`)
   await page.getByRole('button', { name: /^Tempo$/ }).click()
-  await page.getByRole('button', { name: /Informations sur les modes de jeu/i }).click()
   await page.getByRole('spinbutton', { name: 'Questions Tempo' }).fill('10')
   await page.getByRole('spinbutton', { name: 'Temps par question Tempo' }).fill('10')
-  await page.getByRole('button', { name: /C’est compris/i }).click()
   await page.getByRole('button', { name: /Commencer le tempo/i }).click()
 
   for (let questionIndex = 0; questionIndex < 10; questionIndex += 1) {

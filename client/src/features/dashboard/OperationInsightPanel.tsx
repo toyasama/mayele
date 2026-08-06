@@ -18,7 +18,7 @@ type OperationInsightPanelProps = {
   gameLabel: (game: string) => string
   levelLabel: (level: string | null) => string
   formatResponseTime: (value: number | null | undefined) => string
-  playHref: (level: GameLevel, game?: GameType) => string
+  playHref?: (level: GameLevel, game?: GameType) => string
   onClose: () => void
   onRetry: () => void
 }
@@ -211,7 +211,7 @@ export function OperationInsightPanel({
             <h4>{gameLabel(game)}</h4>
             <p> {progress.attempts} sprint{progress.attempts > 1 ? 's' : ''}</p>
           </div>
-          {!isMobileDialog ? (
+          {!isMobileDialog && playHref ? (
             <Link className="primary-button operation-insight-header-play" to={playHref(level, game)}>
               Jouer en {gameLabel(game)}
             </Link>
@@ -391,7 +391,7 @@ export function OperationInsightPanel({
           ) : null}
         </section>
 
-        {isMobileDialog ? (
+        {isMobileDialog && playHref ? (
           <Link className="primary-button operation-insight-play" to={playHref(level, game)}>Jouer en {gameLabel(game)}</Link>
         ) : null}
       </aside>

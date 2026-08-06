@@ -2,6 +2,7 @@ import type { Prisma } from '../generated/prisma/client.js'
 import { prisma } from '../lib/prisma.js'
 import { VALID_GAMES, VALID_LEVELS, type GameLevel, type GameType } from '../domain/constants.js'
 import { getPlayerBadgeStates } from './badgeService.js'
+import { getOperationHistory } from './dashboardService.js'
 
 const PUBLIC_PLAYER_SELECT = {
   id: true,
@@ -214,7 +215,7 @@ export async function getFriendPublicProfile(playerId: string, friendId: string,
         finishedAt: true,
         participants: {
           where: { playerId: { in: [playerId, friendId] } },
-          select: { playerId: true, score: true },
+          select: { playerId: true, score: true, forfeitedAt: true },
         },
       },
     }),
@@ -238,6 +239,23 @@ export async function getFriendPublicProfile(playerId: string, friendId: string,
       lastPlayedAt: latestDate(progress),
     }
   })
+
+  const progressByMode = progressGroups
+    .map((item) => ({
+      game: item.game as GameType,
+      level: item.level as GameLevel,
+      attempts: item._count._all,
+      bestScore: item._max.score ?? 0,
+      averageScore: Math.round(item._avg.score ?? 0),
+      averageAccuracy: Math.round(item._avg.score ?? 0),
+      bestStreak: item._max.bestStreak ?? 0,
+      lastPlayedAt: item._max.playedAt?.toISOString() ?? null,
+    }))
+    .sort((left, right) => (
+      right.bestScore - left.bestScore
+      || right.attempts - left.attempts
+      || String(right.lastPlayedAt).localeCompare(String(left.lastPlayedAt))
+    ))
 
   const summary = { wins: 0, losses: 0, draws: 0 }
   for (const group of outcomeGroups) {
@@ -278,11 +296,18 @@ export async function getFriendPublicProfile(playerId: string, friendId: string,
         lastPlayedAt: string | null
       }>,
     },
+    progressByMode,
     headToHead: {
       summary,
       recent: recentChallenges.map((match) => {
         const currentParticipant = match.participants.find((participant) => participant.playerId === playerId)
         const friendParticipant = match.participants.find((participant) => participant.playerId === friendId)
+        const decidedBy = match.participants.some((participant) => Boolean(participant.forfeitedAt))
+          ? 'forfeit' as const
+          : 'score' as const
+        const scoresAreEqual = currentParticipant?.score !== undefined
+          && friendParticipant?.score !== undefined
+          && currentParticipant.score === friendParticipant.score
 
         return {
           id: match.id,
@@ -292,7 +317,8 @@ export async function getFriendPublicProfile(playerId: string, friendId: string,
           level: match.level ?? 'debutant',
           myScore: currentParticipant?.score ?? null,
           friendScore: friendParticipant?.score ?? null,
-          outcome: match.winnerPlayerId === null
+          decidedBy,
+          outcome: (decidedBy === 'score' && scoresAreEqual) || match.winnerPlayerId === null
             ? 'draw' as const
             : match.winnerPlayerId === playerId
               ? 'win' as const
@@ -301,6 +327,17 @@ export async function getFriendPublicProfile(playerId: string, friendId: string,
       }),
     },
   }
+}
+
+export async function getFriendOperationHistory(
+  playerId: string,
+  friendId: string,
+  game: GameType,
+  level: GameLevel,
+  limit = 20,
+) {
+  await assertFriends(playerId, friendId)
+  return getOperationHistory(friendId, game, level, limit)
 }
 
 async function sendFriendRequestWithDatabase(database: FriendRequestDatabase, senderId: string, receiverId: string) {

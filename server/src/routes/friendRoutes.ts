@@ -2,12 +2,14 @@ import { randomUUID } from 'node:crypto'
 import { Router } from 'express'
 import { ApiError, badRequest } from '../errors.js'
 import { getRequiredAuth } from '../middleware/auth.js'
+import { operationHistoryQuerySchema } from '../schemas/dashboardSchema.js'
 import { parseFriendRequestPayload, parsePlayerSearchQuery } from '../schemas/friendSchema.js'
 import {
   acceptFriendRequestInTransaction,
   cancelFriendRequestInTransaction,
   declineFriendRequestInTransaction,
   FriendServiceError,
+  getFriendOperationHistory,
   getFriendPublicProfile,
   getSocialOverview,
   listFriendRequests,
@@ -134,8 +136,28 @@ export function friendRoutes() {
         player: serializePublicPlayer(profile.player),
         badges: profile.badges,
         stats: profile.stats,
+        progressByMode: profile.progressByMode,
         headToHead: profile.headToHead,
       })
+    } catch (error) {
+      next(error instanceof FriendServiceError ? friendServiceErrorToApiError(error) : error)
+    }
+  })
+
+  router.get('/friends/:friendId/operation-history', async (req, res, next) => {
+    try {
+      const { clerkUserId } = getRequiredAuth(req)
+      const player = await getCompleteCurrentPlayer(clerkUserId)
+      const query = operationHistoryQuerySchema.parse(req.query)
+      const sessions = await getFriendOperationHistory(
+        player.id,
+        req.params.friendId,
+        query.game,
+        query.level,
+        query.limit,
+      )
+
+      res.json({ sessions })
     } catch (error) {
       next(error instanceof FriendServiceError ? friendServiceErrorToApiError(error) : error)
     }

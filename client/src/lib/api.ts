@@ -416,6 +416,7 @@ export type FriendProfileData = {
     byGame: DashboardData['stats']['byGame']
     byLevel: DashboardData['stats']['byLevel']
   }
+  progressByMode: DashboardData['progressByMode']
   headToHead?: {
     summary: { wins: number; losses: number; draws: number }
     recent: Array<{
@@ -427,6 +428,7 @@ export type FriendProfileData = {
       myScore: number | null
       friendScore: number | null
       outcome: 'win' | 'loss' | 'draw'
+      decidedBy: 'score' | 'forfeit'
     }>
   }
 }
@@ -755,6 +757,14 @@ export const api = {
       method: 'GET',
       getToken,
     }),
+
+  getFriendOperationHistory: (getToken: TokenProvider, friendId: string, game: string, level: string, limit = 20) => {
+    const params = new URLSearchParams({ game, level, limit: String(limit) })
+    return request<{ sessions: OperationHistorySession[] }>(`/friends/${encodeURIComponent(friendId)}/operation-history?${params}`, {
+      method: 'GET',
+      getToken,
+    })
+  },
 
   getFriendRequests: (getToken: TokenProvider) =>
     request<{ incoming: FriendRequestData[]; outgoing: FriendRequestData[] }>('/friends/requests', {

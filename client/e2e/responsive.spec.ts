@@ -306,13 +306,16 @@ test('solo setup puis arene restent utilisables', async ({ page }, testInfo) => 
   await expectNoHorizontalOverflow(page, 'solo setup')
   await attachScreenshot(page, testInfo, 'solo-setup')
 
+  await expect(page.getByLabel(/Durée Sprint/i)).toBeVisible()
   const helpButton = page.getByRole('button', { name: /Informations sur les modes de jeu/i })
   await expect(helpButton).toBeVisible()
   await helpButton.click()
-  const helpDialog = page.getByRole('dialog', { name: /Sprint/i })
+  const helpDialog = page.getByRole('dialog', { name: /Sprint ou Tempo/i })
   await expect(helpDialog).toBeVisible()
   await expect(helpDialog).toContainText(/plus grand nombre de questions/i)
-  await expect(helpDialog.getByLabel(/Duree Sprint/i)).toBeVisible()
+  await expect(helpDialog).toContainText(/chaque question possède son propre chrono/i)
+  await expect(helpDialog.getByRole('combobox')).toHaveCount(0)
+  await expect(helpDialog.getByRole('spinbutton')).toHaveCount(0)
   await page.keyboard.press('Escape')
   await expect(helpDialog).toHaveCount(0)
 
@@ -417,49 +420,96 @@ test('amis et profil restent lisibles sans debordement', async ({ page }, testIn
     await page.locator('.profile-card').filter({ hasText: /Bob Guest/i }).getByRole('button', { name: /Voir le profil/i }).click()
     await expect(page).toHaveURL(/\/amis\//)
     await expect(page.getByRole('heading', { name: /Bob Guest/i })).toBeVisible()
+    const profileTabs = page.locator('.friend-profile-section-nav')
+    await expect(profileTabs.getByRole('button', { name: /^Duels$/i })).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.locator('.friend-profile-duels-panel')).toBeVisible()
+    await expect(page.locator('.friend-profile-stats-panel')).toBeHidden()
 
     const friendProfileLayout = await page.evaluate(() => {
       const hero = document.querySelector('.friend-profile-hero')
       const comparison = document.querySelector('.friend-versus-record')
       const badgeGrid = document.querySelector('.friend-badge-grid')
-      const operationGrid = document.querySelector('.friend-operation-strip')
-      const levelGrid = document.querySelector('.friend-level-rail')
       const duelHistory = document.querySelector('.friend-duel-history')
       const heroRect = hero?.getBoundingClientRect()
 
       return {
-        heroColumns: hero ? window.getComputedStyle(hero).gridTemplateColumns.split(' ').length : 0,
         heroRight: heroRect?.right ?? 0,
         comparisonDisplay: comparison ? window.getComputedStyle(comparison).display : '',
         comparisonColumns: comparison ? window.getComputedStyle(comparison).gridTemplateColumns.split(' ').length : 0,
         badgeDisplay: badgeGrid ? window.getComputedStyle(badgeGrid).display : '',
         badgeOverflowX: badgeGrid ? window.getComputedStyle(badgeGrid).overflowX : '',
-        operationDisplay: operationGrid ? window.getComputedStyle(operationGrid).display : '',
-        operationColumns: operationGrid ? window.getComputedStyle(operationGrid).gridTemplateColumns.split(' ').length : 0,
-        levelDisplay: levelGrid ? window.getComputedStyle(levelGrid).display : '',
-        levelColumns: levelGrid ? window.getComputedStyle(levelGrid).gridTemplateColumns.split(' ').length : 0,
         duelHistoryDisplay: duelHistory ? window.getComputedStyle(duelHistory).display : '',
         innerWidth: window.innerWidth,
       }
     })
 
-    expect(friendProfileLayout.heroColumns).toBe(1)
     expect(friendProfileLayout.heroRight).toBeLessThanOrEqual(friendProfileLayout.innerWidth + 1)
     expect(friendProfileLayout.comparisonDisplay).toBe('grid')
     expect(friendProfileLayout.comparisonColumns).toBe(3)
     expect(friendProfileLayout.badgeDisplay).toBe('flex')
     expect(['auto', 'scroll']).toContain(friendProfileLayout.badgeOverflowX)
-    expect(friendProfileLayout.operationDisplay).toBe('grid')
-    expect(friendProfileLayout.operationColumns).toBe(1)
-    expect(friendProfileLayout.levelDisplay).toBe('grid')
-    expect(friendProfileLayout.levelColumns).toBe(1)
     expect(friendProfileLayout.duelHistoryDisplay).toBe('grid')
 
     await expectNoHorizontalOverflow(page, 'friend profile')
-    await attachScreenshot(page, testInfo, 'friend-profile')
+    await attachScreenshot(page, testInfo, 'friend-profile-duels')
+
+    await profileTabs.getByRole('button', { name: /^Stats$/i }).click()
+    await expect(page).toHaveURL(/\/amis\/.*\?view=stats/)
+    await expect(page.locator('.friend-profile-duels-panel')).toBeHidden()
+    await expect(page.locator('.friend-profile-stats-panel')).toBeVisible()
+
+    const friendStatsLayout = await page.evaluate(() => {
+      const levelTabs = document.querySelector('.friend-profile-stats-panel .performance-level-tabs')
+      const levelDetail = document.querySelector('.friend-profile-stats-panel .performance-level-detail')
+
+      return {
+        levelTabsDisplay: levelTabs ? window.getComputedStyle(levelTabs).display : '',
+        levelTabsOverflowX: levelTabs ? window.getComputedStyle(levelTabs).overflowX : '',
+        levelDetailColumns: levelDetail ? window.getComputedStyle(levelDetail).gridTemplateColumns.split(' ').length : 0,
+      }
+    })
+
+    expect(friendStatsLayout.levelTabsDisplay).toBe('flex')
+    expect(['auto', 'scroll']).toContain(friendStatsLayout.levelTabsOverflowX)
+    expect(friendStatsLayout.levelDetailColumns).toBe(1)
+    await expect(page.getByRole('link', { name: /Jouer en/i })).toHaveCount(0)
+    await expectNoHorizontalOverflow(page, 'friend profile stats')
+    await attachScreenshot(page, testInfo, 'friend-profile-stats')
+
+    const friendOperationRow = page.locator('.friend-profile-stats-panel .performance-mode-row.played').first()
+    await friendOperationRow.click()
+    const friendOperationDetail = page.getByRole('dialog', { name: /Détail .+ · .+/i })
+    await expect(friendOperationDetail.getByRole('img', { name: /Évolution de la précision/i })).toBeVisible()
+    await expect(friendOperationDetail.getByRole('link', { name: /Jouer/i })).toHaveCount(0)
+    await attachScreenshot(page, testInfo, 'friend-profile-stats-graph')
+    await friendOperationDetail.getByRole('button', { name: /Fermer le détail de l’opération/i }).click()
   } else {
     await expectNoHorizontalOverflow(page, 'friends')
     await attachScreenshot(page, testInfo, 'friends')
+
+    const profileButton = page.getByRole('button', { name: /Voir le profil/i }).first()
+    await expect(profileButton).toBeVisible()
+    await profileButton.click()
+    await expect(page.locator('.friend-profile-duels-panel')).toBeVisible()
+    await expect(page.locator('.friend-profile-stats-panel')).toBeHidden()
+    await expectNoHorizontalOverflow(page, 'friend profile duels')
+    await attachScreenshot(page, testInfo, 'friend-profile-duels')
+
+    const profileTabs = page.locator('.friend-profile-section-nav')
+    await profileTabs.getByRole('button', { name: /^Stats$/i }).click()
+    await expect(page.locator('.friend-profile-duels-panel')).toBeHidden()
+    await expect(page.locator('.friend-profile-stats-panel')).toBeVisible()
+    await expect(page.getByRole('link', { name: /Jouer en/i })).toHaveCount(0)
+    await expectNoHorizontalOverflow(page, 'friend profile stats')
+    await attachScreenshot(page, testInfo, 'friend-profile-stats')
+
+    const friendOperationRow = page.locator('.friend-profile-stats-panel .performance-mode-row.played').first()
+    await friendOperationRow.click()
+    const friendOperationDetail = page.getByRole('region', { name: /Détail .+ · .+/i })
+    await expect(friendOperationDetail.getByRole('img', { name: /Évolution de la précision/i })).toBeVisible()
+    await expect(friendOperationDetail.getByRole('link', { name: /Jouer/i })).toHaveCount(0)
+    await attachScreenshot(page, testInfo, 'friend-profile-stats-graph')
+    await friendOperationDetail.getByRole('button', { name: /Retour au niveau/i }).click()
   }
 
   await page.goto(`${APP_URL}/profil/configuration`)

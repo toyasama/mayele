@@ -70,6 +70,7 @@ const {
   acceptFriendRequest,
   cancelFriendRequest,
   FriendServiceError,
+  getFriendOperationHistory,
   getFriendPublicProfile,
   getSocialOverview,
   listFriends,
@@ -145,6 +146,19 @@ describe('friendService', () => {
   it("charge le profil public sans construire le dashboard complet et inclut l'historique direct", async () => {
     prismaMock.friendship.findUnique.mockResolvedValueOnce({ id: 'friendship_1' })
     prismaMock.player.findUnique.mockResolvedValueOnce(playerB)
+    prismaMock.gameSession.groupBy.mockResolvedValueOnce([{
+      game: 'addition',
+      level: 'debutant',
+      _count: { _all: 4 },
+      _max: { score: 90, correctAnswers: 18, bestStreak: 7, playedAt: new Date('2026-07-07T08:00:00.000Z') },
+      _avg: { score: 75 },
+    }])
+    prismaMock.answer.groupBy.mockResolvedValueOnce([{
+      game: 'addition',
+      level: 'debutant',
+      _count: { _all: 40 },
+      _avg: { responseTimeMs: 2100 },
+    }])
     prismaMock.match.groupBy.mockResolvedValueOnce([
       { winnerPlayerId: 'player_a', _count: { _all: 2 } },
       { winnerPlayerId: 'player_b', _count: { _all: 1 } },
@@ -160,8 +174,34 @@ describe('friendService', () => {
         createdAt: new Date('2026-07-07T09:00:00.000Z'),
         finishedAt: new Date('2026-07-07T10:00:00.000Z'),
         participants: [
-          { playerId: 'player_a', score: 80 },
-          { playerId: 'player_b', score: 60 },
+          { playerId: 'player_a', score: 80, forfeitedAt: null },
+          { playerId: 'player_b', score: 60, forfeitedAt: null },
+        ],
+      },
+      {
+        id: 'match_2',
+        challengeMode: 'sprint',
+        game: 'multiplication',
+        level: 'debutant',
+        winnerPlayerId: 'player_a',
+        createdAt: new Date('2026-07-06T09:00:00.000Z'),
+        finishedAt: new Date('2026-07-06T10:00:00.000Z'),
+        participants: [
+          { playerId: 'player_a', score: 0, forfeitedAt: null },
+          { playerId: 'player_b', score: 0, forfeitedAt: new Date('2026-07-06T09:01:00.000Z') },
+        ],
+      },
+      {
+        id: 'match_3',
+        challengeMode: 'tempo',
+        game: 'division',
+        level: 'intermediaire',
+        winnerPlayerId: 'player_a',
+        createdAt: new Date('2026-07-05T09:00:00.000Z'),
+        finishedAt: new Date('2026-07-05T10:00:00.000Z'),
+        participants: [
+          { playerId: 'player_a', score: 50, forfeitedAt: null },
+          { playerId: 'player_b', score: 50, forfeitedAt: null },
         ],
       },
     ])
@@ -174,8 +214,58 @@ describe('friendService', () => {
       myScore: 80,
       friendScore: 60,
       outcome: 'win',
+      decidedBy: 'score',
     })
+    expect(profile.headToHead.recent[1]).toMatchObject({
+      id: 'match_2',
+      myScore: 0,
+      friendScore: 0,
+      outcome: 'win',
+      decidedBy: 'forfeit',
+    })
+    expect(profile.headToHead.recent[2]).toMatchObject({
+      id: 'match_3',
+      myScore: 50,
+      friendScore: 50,
+      outcome: 'draw',
+      decidedBy: 'score',
+    })
+    expect(profile.progressByMode).toEqual([expect.objectContaining({
+      game: 'addition',
+      level: 'debutant',
+      attempts: 4,
+      averageAccuracy: 75,
+      bestScore: 90,
+      bestStreak: 7,
+    })])
     expect(prismaMock.match.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 3 }))
+  })
+
+  it("charge l'historique agrégé d'une opération seulement pour un ami", async () => {
+    prismaMock.friendship.findUnique.mockResolvedValueOnce({ id: 'friendship_1' })
+    prismaMock.gameSession.findMany.mockResolvedValueOnce([{
+      id: 'session_1',
+      score: 80,
+      correctAnswers: 8,
+      totalQuestions: 10,
+      bestStreak: 5,
+      playedAt: new Date('2026-07-07T10:00:00.000Z'),
+      answers: [{ responseTimeMs: 1800 }, { responseTimeMs: 2200 }],
+    }])
+
+    await expect(getFriendOperationHistory('player_a', 'player_b', 'addition', 'debutant', 5)).resolves.toEqual([{
+      id: 'session_1',
+      score: 80,
+      correctAnswers: 8,
+      totalQuestions: 10,
+      bestStreak: 5,
+      playedAt: '2026-07-07T10:00:00.000Z',
+      averageResponseTimeMs: 2000,
+    }])
+    expect(prismaMock.gameSession.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { playerId: 'player_b', game: 'addition', level: 'debutant' },
+      take: 5,
+    }))
   })
 
   it("rejette l'auto-demande d'ami", async () => {

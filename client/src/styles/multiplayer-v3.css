@@ -366,6 +366,161 @@
   gap: clamp(20px, 3vw, 30px);
 }
 
+.multiplayer-mode-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.multiplayer-mode-help-trigger,
+.multiplayer-mode-help-close {
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid rgba(10, 159, 143, 0.28);
+  background: rgba(229, 248, 244, 0.92);
+  color: var(--primary-dark);
+  font: inherit;
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.multiplayer-mode-help-trigger {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 0.88rem;
+  line-height: 1;
+}
+
+.multiplayer-mode-help-trigger:hover,
+.multiplayer-mode-help-trigger:focus-visible,
+.multiplayer-mode-help-close:hover,
+.multiplayer-mode-help-close:focus-visible {
+  border-color: var(--primary);
+  outline: 3px solid rgba(10, 159, 143, 0.13);
+  outline-offset: 2px;
+}
+
+.multiplayer-mode-help-backdrop {
+  position: fixed;
+  z-index: 1200;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(2, 31, 49, 0.48);
+  backdrop-filter: blur(7px);
+  -webkit-backdrop-filter: blur(7px);
+  animation: multiplayer-help-backdrop-in 160ms ease-out both;
+}
+
+.multiplayer-mode-help-dialog {
+  width: min(100%, 460px);
+  max-height: min(720px, calc(100dvh - 32px));
+  overflow-y: auto;
+  display: grid;
+  gap: 20px;
+  padding: 24px;
+  border: 1px solid rgba(180, 212, 218, 0.84);
+  border-radius: 26px;
+  background: #ffffff;
+  color: var(--ink);
+  box-shadow: 0 28px 80px rgba(2, 31, 49, 0.24);
+  animation: multiplayer-help-dialog-in 180ms ease-out both;
+}
+
+.multiplayer-mode-help-dialog header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.multiplayer-mode-help-dialog header span {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--primary-dark);
+  font-size: 0.72rem;
+  font-weight: 950;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.multiplayer-mode-help-dialog h2,
+.multiplayer-mode-help-dialog p {
+  margin: 0;
+}
+
+.multiplayer-mode-help-dialog h2 {
+  font-size: clamp(1.65rem, 6vw, 2rem);
+  line-height: 1;
+}
+
+.multiplayer-mode-help-dialog p {
+  color: var(--muted);
+  font-weight: 700;
+  line-height: 1.55;
+}
+
+.multiplayer-mode-help-close {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  padding: 0;
+  border-radius: 12px;
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.multiplayer-mode-help-descriptions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.multiplayer-mode-help-descriptions article {
+  display: grid;
+  gap: 7px;
+  padding: 15px;
+  border: 1px solid rgba(180, 212, 218, 0.78);
+  border-radius: 16px;
+  background: #f5f9fa;
+}
+
+.multiplayer-mode-help-descriptions article.active {
+  border-color: rgba(10, 159, 143, 0.42);
+  background: rgba(229, 248, 244, 0.72);
+}
+
+.multiplayer-mode-help-descriptions article > span {
+  color: var(--primary-dark);
+  font-size: 0.65rem;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.multiplayer-mode-help-descriptions article > strong {
+  font-size: 1rem;
+}
+
+.multiplayer-mode-help-descriptions article > p {
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.multiplayer-mode-help-done {
+  min-height: 48px;
+  border: 0;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #0aa391, #40c36f);
+  color: #ffffff;
+  font: inherit;
+  font-weight: 950;
+  cursor: pointer;
+}
+
 .multiplayer-config-stage .multiplayer-config-mode .segment {
   min-height: 66px;
   display: grid;
@@ -438,6 +593,17 @@
   50% { transform: translate3d(-18px, 14px, 0) scale(1.05); }
 }
 
+@keyframes multiplayer-help-backdrop-in {
+  from { opacity: 0; }
+}
+
+@keyframes multiplayer-help-dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+}
+
 .multiplayer-sync-error {
   display: flex;
   align-items: center;
@@ -473,6 +639,32 @@
 }
 
 @media (max-width: 620px) {
+  .multiplayer-mode-label {
+    gap: 6px;
+  }
+
+  .multiplayer-mode-help-trigger {
+    width: 28px;
+    height: 28px;
+  }
+
+  .multiplayer-mode-help-backdrop {
+    align-items: end;
+    padding: 10px;
+  }
+
+  .multiplayer-mode-help-dialog {
+    width: 100%;
+    max-height: min(640px, calc(100dvh - 20px));
+    gap: 16px;
+    padding: 20px;
+    border-radius: 24px;
+  }
+
+  .multiplayer-mode-help-descriptions {
+    grid-template-columns: 1fr;
+  }
+
   .multiplayer-sync-error {
     align-items: stretch;
     flex-direction: column;
@@ -526,6 +718,11 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .multiplayer-mode-help-backdrop,
+  .multiplayer-mode-help-dialog {
+    animation: none;
+  }
+
   .multiplayer-view-lobby .multiplayer-arena-hub::before {
     animation: none;
   }

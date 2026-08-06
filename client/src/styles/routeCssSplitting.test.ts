@@ -50,6 +50,7 @@ describe('route CSS splitting', () => {
     expect(routeEntries.dashboard).toContain('experience-architecture.css')
     expect(routeEntries.friends).toContain('social.css')
     expect(routeEntries.friendProfile).toContain('social-v2.css')
+    expect(routeEntries.friendProfile).toContain('friend-profile-navigation.css')
     expect(routeEntries.game).toContain('challenge-experience.css')
     expect(routeEntries.game).toContain('solo-results-v2.css')
     expect(routeEntries.multiplayer).toContain('multiplayer-mobile.css')

@@ -1,13 +1,21 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useCallback, useEffect, useState } from 'react'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { ResponsiveTabs } from '../components/layout/ResponsiveTabs'
 import { useAuth } from '../context/auth'
 import { FriendChallengeHistory } from '../features/social/FriendChallengeHistory'
 import { FriendPerformanceSummary } from '../features/social/FriendPerformanceSummary'
 import { api, type FriendProfileData, type PublicPlayer } from '../lib/api'
-import { LEVEL_LABELS, getPlayerProgress, type GameLevel } from '../lib/game'
+import { LEVEL_LABELS, getPlayerProgress, type GameLevel, type GameType } from '../lib/game'
 import '../styles/routes/friend-profile.css'
 
 type FriendBadge = FriendProfileData['badges'][number]
+type FriendProfileView = 'duels' | 'stats'
+
+const FRIEND_PROFILE_VIEWS: FriendProfileView[] = ['duels', 'stats']
+const FRIEND_PROFILE_TABS: Array<{ label: string; value: FriendProfileView }> = [
+  { label: 'Duels', value: 'duels' },
+  { label: 'Stats', value: 'stats' },
+]
 
 function playerInitials(player: Pick<PublicPlayer, 'name' | 'username'> | null | undefined) {
   const source = player?.name || player?.username || 'Joueur'
@@ -43,7 +51,12 @@ function badgeRankClass(tier: FriendBadge['tier']) {
 }
 
 function badgeFamilyIcon(badge: FriendBadge) {
-  return badge.family === 'mastery' ? levelLabel(badge.level) : badge.familyLabel
+  if (badge.family === 'mastery') {
+    return levelLabel(badge.level).slice(0, 1)
+  }
+
+  return ({ speed: 'V', streak: 'S', volume: 'XP' } as Record<string, string>)[badge.family]
+    ?? badge.familyLabel.slice(0, 2).toUpperCase()
 }
 
 function FriendAvatar({ player }: { player: PublicPlayer }) {
@@ -75,22 +88,11 @@ function FriendBadgeCard({ badge }: { badge: FriendBadge }) {
   )
 }
 
-function FriendSectionHeader({ eyebrow, title, meta }: { eyebrow: string; title: string; meta?: string }) {
-  return (
-    <div className="friend-profile-section-header">
-      <div className="section-kicker compact-kicker">
-        <span className="eyebrow">{eyebrow}</span>
-        <h2>{title}</h2>
-      </div>
-      {meta ? <span className="friend-profile-section-meta">{meta}</span> : null}
-    </div>
-  )
-}
-
 export function FriendProfilePage() {
   const { friendId } = useParams()
   const { getToken, isAuthenticated } = useAuth()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [profile, setProfile] = useState<FriendProfileData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -123,7 +125,30 @@ export function FriendProfilePage() {
     }
   }, [friendId, getToken, isAuthenticated])
 
-  const playerLevel = useMemo(() => (profile ? getPlayerProgress(profile.player.totalXp).level : 1), [profile])
+  const playerLevel = profile ? getPlayerProgress(profile.player.totalXp).level : 1
+  const viewParam = searchParams.get('view') as FriendProfileView | null
+  const activeView = viewParam && FRIEND_PROFILE_VIEWS.includes(viewParam) ? viewParam : 'duels'
+  const loadFriendOperationHistory = useCallback(async (game: GameType, level: GameLevel) => {
+    if (!friendId) {
+      return []
+    }
+
+    const result = await api.getFriendOperationHistory(getToken, friendId, game, level)
+    return result.sessions
+  }, [friendId, getToken])
+
+  function selectProfileView(view: FriendProfileView) {
+    const nextParams = new URLSearchParams(searchParams)
+
+    if (view === 'duels') {
+      nextParams.delete('view')
+    } else {
+      nextParams.set('view', view)
+    }
+
+    setSearchParams(nextParams)
+    window.scrollTo({ top: 0 })
+  }
 
   if (loading) {
     return (
@@ -147,14 +172,14 @@ export function FriendProfilePage() {
   }
 
   return (
-    <section className="page friend-profile-page">
+    <section className={`page friend-profile-page friend-profile-active-${activeView}`}>
       <div className="friend-profile-topbar">
         <button className="secondary-button friend-profile-back" type="button" onClick={() => navigate('/amis')}>
           Retour aux amis
         </button>
       </div>
 
-      <header className="friend-profile-hero friend-versus-stage">
+      <header className="friend-profile-hero friend-versus-stage friend-profile-identity-stage">
         <div className="friend-versus-player">
           <FriendAvatar player={profile.player} />
           <div className="friend-profile-hero-copy">
@@ -163,58 +188,61 @@ export function FriendProfilePage() {
             <p>
               {playerHandle(profile.player)} · Niveau {playerLevel}
             </p>
+
+            <div className="friend-profile-inline-badges">
+              <div className="friend-profile-inline-badges-heading">
+                <span className="eyebrow">Badges</span>
+                <strong>{profile.badges.length ? `${profile.badges.length} débloqué${profile.badges.length > 1 ? 's' : ''}` : 'En progression'}</strong>
+              </div>
+              <div className="friend-badge-grid" aria-label="Badges débloqués">
+                {profile.badges.length ? (
+                  profile.badges.map((badge) => (
+                    <FriendBadgeCard badge={badge} key={badge.key} />
+                  ))
+                ) : (
+                  <article className="card friend-badge-card friend-badge-placeholder">
+                    <span className="badge-art locked rank-one" aria-hidden="true">
+                      <span className="badge-core">
+                        <span className="badge-family-icon">?</span>
+                      </span>
+                      <span className="badge-tier-flourish" />
+                      <span className="badge-lock-icon" aria-hidden="true" />
+                    </span>
+                    <div>
+                      <strong>Pas de badge</strong>
+                      <em>Profil en progression</em>
+                    </div>
+                  </article>
+                )}
+              </div>
+            </div>
           </div>
         </div>
-
-        <aside className="friend-challenge-card" aria-label="Défier cet ami">
-          <div className="friend-challenge-heading">
-            <span className="eyebrow">Face-à-face</span>
-            <strong>{profile.headToHead?.summary.wins ?? 0} — {profile.headToHead?.summary.losses ?? 0}</strong>
-          </div>
-          <div className="friend-versus-record" aria-label="Bilan des défis">
-            <span><strong>{profile.headToHead?.summary.wins ?? 0}</strong> gagnés</span>
-            <span><strong>{profile.headToHead?.summary.losses ?? 0}</strong> perdus</span>
-            <span><strong>{profile.headToHead?.summary.draws ?? 0}</strong> nuls</span>
-          </div>
-          <button className="primary-button" type="button" onClick={() => navigate('/jeu/multijoueur')}>
-            Défier {profile.player.name}
-          </button>
-        </aside>
       </header>
 
-      <FriendChallengeHistory friendName={profile.player.name} headToHead={profile.headToHead} />
+      <ResponsiveTabs
+        ariaLabel="Sections du profil ami"
+        className="friend-profile-section-nav"
+        options={FRIEND_PROFILE_TABS}
+        value={activeView}
+        onChange={selectProfileView}
+      />
 
-      <FriendPerformanceSummary stats={profile.stats} />
-
-      <section className="friend-profile-section">
-        <FriendSectionHeader
-          eyebrow="Badges"
-          title="Badges débloqués"
-          meta={profile.badges.length ? `${profile.badges.length} obtenus` : undefined}
+      <div className={`friend-profile-view-panel friend-profile-duels-panel ${activeView === 'duels' ? 'active' : ''}`}>
+        <FriendChallengeHistory
+          friendName={profile.player.name}
+          headToHead={profile.headToHead}
+          onChallenge={() => navigate('/jeu/multijoueur')}
         />
-        <div className="friend-badge-grid">
-          {profile.badges.length ? (
-            profile.badges.map((badge) => (
-              <FriendBadgeCard badge={badge} key={badge.key} />
-            ))
-          ) : (
-            <article className="card friend-badge-card friend-badge-placeholder">
-              <span className="badge-art locked rank-one" aria-hidden="true">
-                <span className="badge-core">
-                  <span className="badge-family-icon">?</span>
-                </span>
-                <span className="badge-tier-flourish" />
-                <span className="badge-lock-icon" aria-hidden="true" />
-              </span>
-              <div>
-                <strong>Pas de badge</strong>
-                <em>Profil en progression</em>
-              </div>
-            </article>
-          )}
-        </div>
-      </section>
+      </div>
 
+      <div className={`friend-profile-view-panel friend-profile-stats-panel ${activeView === 'stats' ? 'active' : ''}`}>
+        <FriendPerformanceSummary
+          stats={profile.stats}
+          progressByMode={profile.progressByMode}
+          loadOperationHistory={loadFriendOperationHistory}
+        />
+      </div>
     </section>
   )
 }
