@@ -802,7 +802,17 @@ describe('matchService', () => {
         bestStreak: 1,
       }),
       'Europe/Paris',
-      { submissionKey: 'match:match_1:participant:participant_a' },
+      {
+        submissionKey: 'match:match_1:participant:participant_a',
+        dailyMissionContext: {
+          playContext: 'multiplayer',
+          challengeMode: 'sprint',
+          completedWithoutAbandonment: false,
+          configuredDurationSeconds: 60,
+          configuredQuestionCount: null,
+          configuredQuestionSeconds: null,
+        },
+      },
     )
     expect(prismaMock.matchParticipant.update).toHaveBeenCalledWith({
       where: { id: 'participant_a' },

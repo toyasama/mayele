@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { DashboardData } from '../../lib/api'
 import { TrophyShelf } from './TrophyShelf'
@@ -26,6 +26,18 @@ function makeBadge(overrides: Partial<Badge> = {}): Badge {
 
 describe('TrophyShelf', () => {
   afterEach(cleanup)
+
+  it('place les familles dans une sous-section Sprint explicite', () => {
+    render(<TrophyShelf badges={[makeBadge()]} onSelect={vi.fn()} />)
+
+    const sprintSection = screen.getByRole('region', { name: 'Sprint' })
+
+    expect(within(sprintSection).getByText('Mode de jeu')).toBeVisible()
+    expect(within(sprintSection).getByText('Badges obtenus lors des Sprints solo terminés.')).toBeVisible()
+    expect(within(sprintSection).getByRole('tablist', { name: 'Familles de badges Sprint' })).toBeVisible()
+    expect(within(sprintSection).getByRole('tab', { name: /Tous0\/1/i })).toBeVisible()
+    expect(within(sprintSection).getByRole('tab', { name: /Parcours0\/1/i })).toBeVisible()
+  })
 
   it('affiche une illustration et une progression propres à chaque badge', () => {
     const { container } = render(

@@ -215,6 +215,15 @@ test('navigation shell et dashboard sans overflow', async ({ page }, testInfo) =
       }
     }
 
+    if (view.name === 'dashboard-missions') {
+      const missionCards = page.locator('.mission-xp-card')
+      await expect(missionCards).toHaveCount(3)
+      await expect(missionCards.first().locator('.mission-tag-row em')).toHaveCount(5)
+      const prepareMissionLink = missionCards.first().getByRole('link', { name: /^Préparer$/i })
+      await expect(prepareMissionLink).toHaveAttribute('href', /\/jeu\/(solo|multijoueur)\?/)
+      expect(await prepareMissionLink.evaluate((link) => Boolean(link.closest('button')))).toBe(false)
+    }
+
     if (view.name === 'dashboard-stats') {
       const operationRow = page.locator('.performance-mode-row').first()
       await operationRow.click()
@@ -266,6 +275,13 @@ test('navigation shell et dashboard sans overflow', async ({ page }, testInfo) =
 test('solo setup puis arene restent utilisables', async ({ page }, testInfo) => {
   await page.goto(`${APP_URL}/jeu/solo`)
   await expect(page.getByRole('button', { name: /Commencer le sprint/i })).toBeVisible()
+  const dailyMissionCards = page.locator('.solo-daily-objective')
+  await expect(dailyMissionCards).toHaveCount(3)
+  await expect(dailyMissionCards.first().locator('.mission-tag-row em')).toHaveCount(5)
+  await dailyMissionCards.first().click()
+  await expect(page.getByRole('button', { name: /Préparer la mission/i })).toBeVisible()
+  expect(await dailyMissionCards.first().locator('button').count()).toBe(0)
+  await dailyMissionCards.first().click()
   if ((page.viewportSize()?.width ?? 1024) < 768) {
     const soloSetupLayout = await page.evaluate(() => {
       const board = document.querySelector('.challenge-config-board')

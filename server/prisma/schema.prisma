@@ -27,6 +27,7 @@ model Player {
   answers     Answer[]
   achievements Achievement[]
   dailyStats  DailyStat[]
+  dailyMissionAssignments DailyMissionAssignment[]
   missionCompletions MissionCompletion[]
   sentFriendRequests FriendRequest[] @relation("SentFriendRequests")
   receivedFriendRequests FriendRequest[] @relation("ReceivedFriendRequests")
@@ -190,6 +191,14 @@ model GameSession {
   totalQuestions  Int      @default(0) @map("total_questions")
   durationSeconds Int      @default(0) @map("duration_seconds")
   bestStreak      Int      @default(0) @map("best_streak")
+  missionDay      String?  @map("mission_day")
+  missionEligible Boolean  @default(false) @map("mission_eligible")
+  playContext     String?  @map("play_context")
+  challengeMode   String?  @map("challenge_mode")
+  configuredDurationSeconds Int? @map("configured_duration_seconds")
+  configuredQuestionCount Int? @map("configured_question_count")
+  configuredQuestionSeconds Int? @map("configured_question_seconds")
+  validAnswers    Int      @default(0) @map("valid_answers")
   playedAt        DateTime @default(now()) @map("played_at")
   player          Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
   answers         Answer[]
@@ -198,6 +207,7 @@ model GameSession {
 
   @@index([playerId, playedAt(sort: Desc)])
   @@index([playerId, game, level])
+  @@index([playerId, missionDay, missionEligible])
   @@unique([playerId, submissionKey])
   @@map("game_sessions")
 }
@@ -306,6 +316,22 @@ model DailyStat {
 
   @@unique([playerId, day])
   @@map("daily_stats")
+}
+
+model DailyMissionAssignment {
+  id             String   @id @default(cuid())
+  playerId       String   @map("player_id")
+  day            String
+  tier           String
+  missionKey     String   @map("mission_key")
+  catalogVersion Int      @map("catalog_version")
+  definition     Json
+  createdAt      DateTime @default(now()) @map("created_at")
+  player         Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([playerId, day, tier])
+  @@index([playerId, day])
+  @@map("daily_mission_assignments")
 }
 
 model MissionCompletion {

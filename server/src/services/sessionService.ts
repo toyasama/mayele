@@ -1,13 +1,15 @@
 import { createHash } from 'node:crypto'
 import { ACHIEVEMENTS, DAILY_GOAL } from '../domain/constants.js'
 import { getDailyScopeKey } from '../domain/daily.js'
+import { countValidMissionAnswers, qualifiesForDailyMissions } from '../domain/dailyMissionEligibility.js'
+import type { MissionChallengeMode, MissionPlayContext } from '../domain/dailyMissions.js'
 import { calculateSessionXp, getPlayerProgress } from '../domain/progression.js'
-import { buildMissionStates } from '../domain/rewards.js'
 import { calculateSessionScorePoints } from '../domain/scoring.js'
 import { ApiError } from '../errors.js'
 import type { Prisma } from '../generated/prisma/client.js'
 import { prisma } from '../lib/prisma.js'
 import type { SessionPayload } from '../schemas/sessionSchema.js'
+import { loadDailyMissionStates } from './dailyMissionService.js'
 import { invalidateDashboardCache } from './dashboardService.js'
 import { appendXpLedgerEntries } from './xpLedgerService.js'
 
@@ -34,6 +36,16 @@ type SaveSessionOptions = {
   // Internal callers (notably multiplayer) can provide a stable command key
   // without adding it to their public payload.
   submissionKey?: string | null
+  // The authoritative game service confirms that the player reached the
+  // natural end of the game and did not abandon it.
+  dailyMissionContext?: {
+    playContext: MissionPlayContext
+    challengeMode: MissionChallengeMode
+    completedWithoutAbandonment: boolean
+    configuredDurationSeconds: number | null
+    configuredQuestionCount: number | null
+    configuredQuestionSeconds: number | null
+  }
 }
 
 function calculatePayloadHash(payload: SessionPayload) {
@@ -111,6 +123,12 @@ export async function saveSession(
     isCorrect: answer.userAnswer === answer.correctAnswer,
   }))
   const correctAnswers = parsedAnswers.filter((answer) => answer.isCorrect).length
+  const validAnswerCount = countValidMissionAnswers(parsedAnswers)
+  const dailyMissionContext = options.dailyMissionContext ?? null
+  const dailyMissionEligible = qualifiesForDailyMissions(
+    dailyMissionContext?.completedWithoutAbandonment === true,
+    validAnswerCount,
+  )
   const score = calculateAccuracy(correctAnswers, parsedAnswers.length)
   const scorePoints = calculateSessionScorePoints(payload.level, parsedAnswers)
   const xp = calculateSessionXp({
@@ -139,6 +157,14 @@ export async function saveSession(
           totalQuestions: parsedAnswers.length,
           durationSeconds: payload.durationSeconds,
           bestStreak: payload.bestStreak,
+          missionDay: dailyMissionContext ? day : null,
+          missionEligible: dailyMissionEligible,
+          playContext: dailyMissionContext?.playContext ?? null,
+          challengeMode: dailyMissionContext?.challengeMode ?? null,
+          configuredDurationSeconds: dailyMissionContext?.configuredDurationSeconds ?? null,
+          configuredQuestionCount: dailyMissionContext?.configuredQuestionCount ?? null,
+          configuredQuestionSeconds: dailyMissionContext?.configuredQuestionSeconds ?? null,
+          validAnswers: validAnswerCount,
         },
       })
 
@@ -175,31 +201,10 @@ export async function saveSession(
         },
       })
 
-      const [totalSessions, existingMissionCompletions] = await Promise.all([
-        tx.gameSession.count({ where: { playerId } }),
-        tx.missionCompletion.findMany({
-          where: {
-            playerId,
-            scopeKey: day,
-          },
-          select: {
-            missionKey: true,
-            scopeKey: true,
-            completedAt: true,
-            xpAwarded: true,
-          },
-        }),
-      ])
-      const missionStates = buildMissionStates(
-        {
-          todaySessions: dailyStat.sessionsCount,
-          todayCorrectAnswers: dailyStat.correctAnswers,
-          todayQuestionsAnswered: dailyStat.totalQuestions,
-        },
-        existingMissionCompletions,
-        day,
-        playerId,
-      )
+      const totalSessions = await tx.gameSession.count({ where: { playerId } })
+      const missionStates = dailyMissionEligible
+        ? await loadDailyMissionStates(tx, playerId, day)
+        : []
       const newlyCompletedMissions = missionStates.filter((mission) => mission.completed && !mission.claimed)
       const awardedMissions = [] as typeof newlyCompletedMissions
 

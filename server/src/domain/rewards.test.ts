@@ -1,12 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { VALID_GAMES, type GameLevel } from './constants.js'
 import {
-  MISSION_CATALOG,
   MASTERY_ACCURACY_TARGETS,
   MASTERY_CADENCE_TARGETS,
   buildBadgeStates,
-  buildMissionStates,
-  selectDailyMissions,
   type BadgeProgressItem,
   type MasterySprintItem,
 } from './rewards.js'
@@ -38,72 +35,77 @@ function masterySprints(options: {
   }))
 }
 
-describe('buildMissionStates', () => {
-  const stats = {
-    todaySessions: 2,
-    todayCorrectAnswers: 12,
-    todayQuestionsAnswered: 18,
-  }
+describe('buildBadgeStates', () => {
+  it.each([
+    ['debutant', 'Confirmé Débutant · cadence 12/min', 'Maître Débutant · cadence 18/min'],
+    ['intermediaire', 'Confirmé Intermédiaire · cadence 10/min', 'Maître Intermédiaire · cadence 15/min'],
+    ['avance', 'Confirmé Avancé · cadence 8/min', 'Maître Avancé · cadence 12/min'],
+    ['expert', 'Confirmé Expert · cadence 6/min', 'Maître Expert · cadence 9/min'],
+  ] as const)('affiche les seuils de cadence dans les titres %s', (level, confirmedTitle, masterTitle) => {
+    const badges = buildBadgeStates(badgeProgress(level))
 
-  it('selects three daily missions from a larger catalog', () => {
-    const missions = buildMissionStates(
-      stats,
-      [],
-      '2026-07-01',
-      'player_1',
-    )
-
-    expect(MISSION_CATALOG.length).toBeGreaterThan(3)
-    expect(missions).toHaveLength(3)
-    expect(new Set(missions.map((mission) => mission.key)).size).toBe(3)
-    expect(missions.every((mission) => mission.scope === 'daily')).toBe(true)
-    expect(missions.every((mission) => mission.scopeKey === '2026-07-01')).toBe(true)
+    expect(badges.find((badge) => badge.key === `discovery_${level}`)?.title).not.toContain('cadence')
+    expect(badges.find((badge) => badge.key === `confirmed_${level}`)?.title).toBe(confirmedTitle)
+    expect(badges.find((badge) => badge.key === `master_${level}`)?.title).toBe(masterTitle)
   })
 
-  it('is deterministic and idempotent for the same player and local day', () => {
-    const firstSelection = selectDailyMissions('player_1', '2026-07-01').map((mission) => mission.key)
-    const repeatedSelection = selectDailyMissions('player_1', '2026-07-01').map((mission) => mission.key)
-    const firstState = buildMissionStates(stats, [], '2026-07-01', 'player_1')
-    const repeatedState = buildMissionStates(stats, [], '2026-07-01', 'player_1')
+  it('exige les cinq modes du niveau pour débloquer un badge', () => {
+    const progress = badgeProgress()
+    progress.find((item) => item.game === 'division')!.attempts = 0
 
-    expect(repeatedSelection).toEqual(firstSelection)
-    expect(repeatedState).toEqual(firstState)
-  })
+    const discovery = buildBadgeStates(progress)
+      .find((badge) => badge.key === 'discovery_debutant')
 
-  it('rotates the selection and resets its scope on the next local day', () => {
-    const firstDay = buildMissionStates(stats, [], '2026-07-01', 'player_1')
-    const nextDay = buildMissionStates(
-      { todaySessions: 0, todayCorrectAnswers: 0, todayQuestionsAnswered: 0 },
-      [],
-      '2026-07-02',
-      'player_1',
-    )
-
-    expect(nextDay.map((mission) => mission.key)).not.toEqual(firstDay.map((mission) => mission.key))
-    expect(nextDay.every((mission) => mission.scopeKey === '2026-07-02')).toBe(true)
-    expect(nextDay.every((mission) => mission.current === 0 && !mission.completed && !mission.claimed)).toBe(true)
-  })
-
-  it('does not reclaim an existing completion when rebuilding the same day', () => {
-    const selected = selectDailyMissions('player_1', '2026-07-01')
-    const completedAt = new Date('2026-07-01T12:00:00.000Z')
-    const missions = buildMissionStates(
-      stats,
-      [{ missionKey: selected[0].key, scopeKey: '2026-07-01', completedAt }],
-      '2026-07-01',
-      'player_1',
-    )
-
-    expect(missions[0]).toMatchObject({
-      key: selected[0].key,
-      completed: true,
-      claimed: true,
-      completedAt: completedAt.toISOString(),
+    expect(discovery).toMatchObject({
+      completed: false,
+      completedObjectives: 4,
+      totalObjectives: 5,
+      progress: 80,
     })
   })
-})
 
-describe('buildBadgeStates', () => {
+  it.each([
+    ['sprinter_apprentice_debutant', 'fastCorrectAnswers2500', 25],
+    ['sprinter_sharp_debutant', 'fastCorrectAnswers1800', 75],
+    ['sprinter_flash_debutant', 'fastCorrectAnswers1200', 150],
+  ] as const)('valide %s exactement à son seuil sur chaque mode', (badgeKey, field, target) => {
+    const exactProgress = badgeProgress().map((item) => ({ ...item, [field]: target }))
+    const belowOnOneMode = exactProgress.map((item) => (
+      item.game === 'division' ? { ...item, [field]: target - 1 } : item
+    ))
+
+    expect(buildBadgeStates(exactProgress).find((badge) => badge.key === badgeKey)?.completed).toBe(true)
+    expect(buildBadgeStates(belowOnOneMode).find((badge) => badge.key === badgeKey)?.completed).toBe(false)
+  })
+
+  it.each([
+    ['streak_stable_debutant', 5],
+    ['streak_solid_debutant', 10],
+    ['streak_long_debutant', 20],
+  ] as const)('valide %s exactement à son seuil de série sur chaque mode', (badgeKey, target) => {
+    const exactProgress = badgeProgress().map((item) => ({ ...item, bestStreak: target }))
+    const belowOnOneMode = exactProgress.map((item) => (
+      item.game === 'division' ? { ...item, bestStreak: target - 1 } : item
+    ))
+
+    expect(buildBadgeStates(exactProgress).find((badge) => badge.key === badgeKey)?.completed).toBe(true)
+    expect(buildBadgeStates(belowOnOneMode).find((badge) => badge.key === badgeKey)?.completed).toBe(false)
+  })
+
+  it.each([
+    ['volume_regular_debutant', 5],
+    ['volume_pillar_debutant', 20],
+    ['volume_marathon_debutant', 50],
+  ] as const)('valide %s exactement à son nombre de Sprints sur chaque mode', (badgeKey, target) => {
+    const exactProgress = badgeProgress().map((item) => ({ ...item, attempts: target }))
+    const belowOnOneMode = exactProgress.map((item) => (
+      item.game === 'division' ? { ...item, attempts: target - 1 } : item
+    ))
+
+    expect(buildBadgeStates(exactProgress).find((badge) => badge.key === badgeKey)?.completed).toBe(true)
+    expect(buildBadgeStates(belowOnOneMode).find((badge) => badge.key === badgeKey)?.completed).toBe(false)
+  })
+
   for (const level of ['debutant', 'intermediaire', 'avance', 'expert'] as const) {
     for (const durationSeconds of [60, 90, 120]) {
       it(`normalise la cadence par la durée pour ${level} en ${durationSeconds}s`, () => {

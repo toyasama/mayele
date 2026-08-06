@@ -1,9 +1,9 @@
 import { DAILY_GOAL, VALID_GAMES, VALID_LEVELS, type GameLevel, type GameType, type SkillTag } from '../domain/constants.js'
 import { getDailyScopeKey } from '../domain/daily.js'
 import { getPlayerProgress } from '../domain/progression.js'
-import { buildMissionStates } from '../domain/rewards.js'
 import { prisma } from '../lib/prisma.js'
 import { getPlayerBadgeStates } from './badgeService.js'
+import { getDailyMissionStates } from './dailyMissionService.js'
 
 const DASHBOARD_CACHE_TTL_MS = 60 * 1000
 type DashboardPayload = Awaited<ReturnType<typeof loadDashboard>>
@@ -126,29 +126,7 @@ export async function getPracticePlan(playerId: string) {
 
 export async function getDailyObjectives(playerId: string, timeZone?: string | null) {
   const day = getDailyScopeKey(undefined, timeZone)
-  const [todayStats, missionCompletions] = await Promise.all([
-    prisma.dailyStat.findUnique({ where: { playerId_day: { playerId, day } } }),
-    prisma.missionCompletion.findMany({
-      where: { playerId, scopeKey: day },
-      select: {
-        missionKey: true,
-        scopeKey: true,
-        completedAt: true,
-        xpAwarded: true,
-      },
-    }),
-  ])
-
-  return buildMissionStates(
-    {
-      todaySessions: todayStats?.sessionsCount ?? 0,
-      todayCorrectAnswers: todayStats?.correctAnswers ?? 0,
-      todayQuestionsAnswered: todayStats?.totalQuestions ?? 0,
-    },
-    missionCompletions,
-    day,
-    playerId,
-  )
+  return getDailyMissionStates(playerId, day)
 }
 
 export async function getOperationHistory(
@@ -242,7 +220,7 @@ async function loadDashboard(playerId: string, day: string, knownTotalXp?: numbe
     recentSessions,
     todayStats,
     achievements,
-    missionCompletions,
+    missions,
     badges,
   ] = await Promise.all([
     knownTotalXp === undefined
@@ -321,18 +299,7 @@ async function loadDashboard(playerId: string, day: string, knownTotalXp?: numbe
     }),
     prisma.dailyStat.findUnique({ where: { playerId_day: { playerId, day } } }),
     prisma.achievement.findMany({ where: { playerId }, orderBy: { earnedAt: 'desc' }, take: 8 }),
-    prisma.missionCompletion.findMany({
-      where: {
-        playerId,
-        scopeKey: day,
-      },
-      select: {
-        missionKey: true,
-        scopeKey: true,
-        completedAt: true,
-        xpAwarded: true,
-      },
-    }),
+    getDailyMissionStates(playerId, day),
     getPlayerBadgeStates(playerId),
   ])
 
@@ -340,11 +307,6 @@ async function loadDashboard(playerId: string, day: string, knownTotalXp?: numbe
   const practicePlan = buildPracticePlan(weakSkills, recentSessions[0]?.level ?? null)
   const totalXp = playerProjection.totalXp
   const playerProgress = getPlayerProgress(totalXp)
-  const missionStats = {
-    todaySessions: todayStats?.sessionsCount ?? 0,
-    todayCorrectAnswers: todayStats?.correctAnswers ?? 0,
-    todayQuestionsAnswered: todayStats?.totalQuestions ?? 0,
-  }
   const responseTimeByGameMap = new Map(responseTimeByGame.map((item) => [item.game, roundStat(item._avg.responseTimeMs)]))
   const responseTimeByLevelMap = new Map(responseTimeByLevel.map((item) => [item.level, roundStat(item._avg.responseTimeMs)]))
   const fastestAverageResponseTimeMs = responseTimeBySession.reduce<number | null>((fastest, item) => {
@@ -397,7 +359,7 @@ async function loadDashboard(playerId: string, day: string, knownTotalXp?: numbe
     },
     practicePlan,
     weakSkills,
-    missions: buildMissionStates(missionStats, missionCompletions, day, playerId),
+    missions,
     badges,
     stats: {
       averageResponseTimeMs: roundStat(responseTimeStats._avg.responseTimeMs),

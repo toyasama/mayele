@@ -28,6 +28,7 @@ import { parseAnswerInput } from '../lib/answerInput'
 import { criticalRemainingSeconds } from '../lib/challengeTiming'
 import { LEVEL_LABELS, calculateElapsedSessionSeconds, calculateRemainingSessionSeconds, type AnswerResult } from '../lib/game'
 import { generateMatchQuestion } from '../lib/matchQuestions'
+import { missionLaunchConfigFromSearch } from '../lib/missionNavigation'
 import '../styles/routes/multiplayer.css'
 import {
   completeConfigPayload,
@@ -84,6 +85,18 @@ export function MultiplayerGamePage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const selectedMatchId = searchParams.get('match')
+  const initialMissionConfig = missionLaunchConfigFromSearch(searchParams)
+  const initialRoomConfig = initialMissionConfig?.playContext === 'multiplayer'
+    ? normalizeRoomConfig({
+        game: initialMissionConfig.game,
+        level: initialMissionConfig.level,
+        challengeMode: initialMissionConfig.challengeMode,
+        durationSeconds: initialMissionConfig.sprintDurationSeconds ?? DEFAULT_ROOM_CONFIG.durationSeconds,
+        questionCount: initialMissionConfig.tempoQuestionCount ?? DEFAULT_ROOM_CONFIG.questionCount,
+        perQuestionTimeLimitSeconds: initialMissionConfig.tempoQuestionSeconds
+          ?? DEFAULT_ROOM_CONFIG.perQuestionTimeLimitSeconds,
+      })
+    : DEFAULT_ROOM_CONFIG
   const [friends, setFriends] = useState<PublicPlayer[]>([])
   const [matches, setMatches] = useState<MatchData[]>([])
   const [activeMatch, setActiveMatch] = useState<MatchData | null>(null)
@@ -92,8 +105,8 @@ export function MultiplayerGamePage() {
   const joinedRealtimeRoomRef = useRef<string | null>(null)
   const roomOverviewRequestRef = useRef<Promise<{ friends: PublicPlayer[]; matches: MatchData[] }> | null>(null)
   const realtimeRefreshTimerRef = useRef<number | null>(null)
-  const [config, setConfig] = useState<RoomConfig>(DEFAULT_ROOM_CONFIG)
-  const [roomDraftOpen, setRoomDraftOpen] = useState(Boolean(selectedMatchId))
+  const [config, setConfig] = useState<RoomConfig>(initialRoomConfig)
+  const [roomDraftOpen, setRoomDraftOpen] = useState(Boolean(selectedMatchId || initialMissionConfig?.playContext === 'multiplayer'))
   const [selectedOpponent, setSelectedOpponent] = useState<PublicPlayer | null>(null)
   const [friendPickerOpen, setFriendPickerOpen] = useState(false)
   const [mobileRoomView, setMobileRoomView] = useState<MobileRoomView>('primary')
@@ -106,9 +119,9 @@ export function MultiplayerGamePage() {
   const [matchAnswers, setMatchAnswers] = useState<AnswerResult[]>([])
   const [question, setQuestion] = useState(() => generateMatchQuestion('draft', 0, 'addition', 'debutant'))
   const [tempoActiveQuestionIndex, setTempoActiveQuestionIndex] = useState(0)
-  const [tempoRemainingSeconds, setTempoRemainingSeconds] = useState(DEFAULT_ROOM_CONFIG.perQuestionTimeLimitSeconds)
+  const [tempoRemainingSeconds, setTempoRemainingSeconds] = useState(initialRoomConfig.perQuestionTimeLimitSeconds)
   const [tempoPendingAnswer, setTempoPendingAnswer] = useState<PendingTempoAnswer>(null)
-  const [sprintRemainingSeconds, setSprintRemainingSeconds] = useState(DEFAULT_ROOM_CONFIG.durationSeconds)
+  const [sprintRemainingSeconds, setSprintRemainingSeconds] = useState(initialRoomConfig.durationSeconds)
   const roomActionInFlightRef = useRef<string | null>(null)
   const questionRef = useRef(question)
   const questionStartedAtRef = useRef(Date.now())
@@ -167,7 +180,7 @@ export function MultiplayerGamePage() {
   const notifiedInviteMatchIdsRef = useRef(new Set<string>())
   const configDraftRef = useRef<ConfigDraft | null>(null)
   const submittedConfigRef = useRef<ConfigDraft | null>(null)
-  const configRef = useRef<RoomConfig>(DEFAULT_ROOM_CONFIG)
+  const configRef = useRef<RoomConfig>(initialRoomConfig)
   const preferredMatchIdRef = useRef<string | null>(selectedMatchId)
   const selectedMatchIdRef = useRef<string | null>(selectedMatchId)
   const roomRevisionRef = useRef<Record<string, number>>({})

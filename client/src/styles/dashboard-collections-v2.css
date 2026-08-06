@@ -1,4 +1,60 @@
 /* Collection de badges : chaque trophée possède son illustration et sa progression. */
+.trophy-mode-section {
+  margin: 16px 22px 26px;
+  overflow: hidden;
+  border: 1px solid rgba(207, 222, 227, 0.95);
+  border-radius: 22px;
+  background: rgba(248, 252, 252, 0.86);
+}
+
+.trophy-mode-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 18px 20px;
+  border-bottom: 1px solid rgba(207, 222, 227, 0.88);
+  background:
+    radial-gradient(circle at 10% 0%, rgba(241, 238, 75, 0.14), transparent 42%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(235, 248, 247, 0.92));
+}
+
+.trophy-mode-heading > div {
+  display: grid;
+  gap: 2px;
+}
+
+.trophy-mode-heading span {
+  color: var(--primary-dark);
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.trophy-mode-heading h4 {
+  margin: 0;
+  color: var(--text);
+  font-size: 1.18rem;
+}
+
+.trophy-mode-heading p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 750;
+  text-align: right;
+}
+
+.trophy-mode-section .trophy-family-tabs {
+  padding-inline: 16px;
+}
+
+.trophy-mode-section .trophy-shelf-stack.badge-family-stack {
+  padding-inline: 16px;
+  padding-bottom: 20px;
+}
+
 .trophy-family-tabs button {
   display: inline-flex;
   align-items: center;
@@ -166,6 +222,36 @@
   border-radius: 16px;
   color: var(--muted);
   text-align: center;
+}
+
+@media (max-width: 767px) {
+  .dashboard-page .trophy-mode-section {
+    margin: 10px 10px 14px;
+    border-radius: 17px;
+  }
+
+  .dashboard-page .trophy-mode-heading {
+    align-items: flex-start;
+    padding: 13px 14px;
+  }
+
+  .dashboard-page .trophy-mode-heading h4 {
+    font-size: 1.05rem;
+  }
+
+  .dashboard-page .trophy-mode-heading p {
+    max-width: 190px;
+    font-size: 0.72rem;
+    line-height: 1.25;
+  }
+
+  .dashboard-page .trophy-mode-section .trophy-family-tabs {
+    padding-inline: 10px;
+  }
+
+  .dashboard-page .trophy-mode-section .trophy-shelf-stack.badge-family-stack {
+    padding-inline: 10px;
+  }
 }
 
 /* Historique : couleur, libellé et forme changent ensemble selon le score. */

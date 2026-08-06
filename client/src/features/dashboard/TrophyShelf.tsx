@@ -58,80 +58,90 @@ export function TrophyShelf({ badges, onSelect }: TrophyShelfProps) {
         <strong>{completedCount}/{badges.length} débloqués</strong>
       </div>
 
-      <div className="trophy-family-tabs" role="tablist" aria-label="Familles de badges">
-        <button
-          type="button"
-          id="trophy-family-all"
-          role="tab"
-          aria-controls="trophy-family-panel"
-          aria-selected={selectedFamily === 'all'}
-          className={selectedFamily === 'all' ? 'active' : ''}
-          onClick={() => setActiveFamily('all')}
-        >
-          <span>Tous</span>
-          <small>{completedCount}/{badges.length}</small>
-        </button>
-        {families.map(([family, label]) => {
-          const familyBadges = badges.filter((badge) => badge.family === family)
-          const familyCompleted = familyBadges.filter((badge) => badge.completed).length
-
-          return (
-            <button
-              type="button"
-              id={`trophy-family-${family}`}
-              role="tab"
-              aria-controls="trophy-family-panel"
-              aria-selected={selectedFamily === family}
-              className={selectedFamily === family ? 'active' : ''}
-              key={family}
-              onClick={() => setActiveFamily(family)}
-            >
-              <span>{label}</span>
-              <small>{familyCompleted}/{familyBadges.length}</small>
-            </button>
-          )
-        })}
-      </div>
-
-      <div
-        id="trophy-family-panel"
-        className="badge-family-stack trophy-shelf-stack"
-        role="tabpanel"
-        aria-labelledby={`trophy-family-${selectedFamily}`}
-      >
-        {visibleBadges.length ? Array.from({ length: Math.ceil(visibleBadges.length / 6) }, (_, shelfIndex) => (
-          <div className="trophy-shelf" key={`shelf-${shelfIndex}`}>
-            {visibleBadges.slice(shelfIndex * 6, shelfIndex * 6 + 6).map((badge) => {
-              const progress = clampPercent(badge.progress)
-
-              return (
-                <button
-                  type="button"
-                  className={`badge-objective-card trophy-item badge-family-${badge.family} badge-${badge.tier} ${badge.completed ? 'earned' : 'locked'}`}
-                  aria-label={`Afficher le détail du badge ${badge.title}, ${progress}%`}
-                  key={badge.key}
-                  onClick={() => onSelect(badge)}
-                >
-                  <BadgeIllustration badge={badge} />
-                  <span className="trophy-item-copy">
-                    <strong>{badge.title}</strong>
-                    <small>{badge.completed ? 'Débloqué' : `${badge.completedObjectives}/${badge.totalObjectives} objectifs`}</small>
-                  </span>
-                  <span className="trophy-item-progress">
-                    <span>
-                      <small>{badge.completed ? 'Terminé' : 'Progression'}</small>
-                      <strong>{progress}%</strong>
-                    </span>
-                    <progress max="100" value={progress} aria-label={`Progression du badge ${badge.title}`} />
-                  </span>
-                </button>
-              )
-            })}
+      <section className="trophy-mode-section" aria-labelledby="trophy-mode-sprint-title">
+        <header className="trophy-mode-heading">
+          <div>
+            <span>Mode de jeu</span>
+            <h4 id="trophy-mode-sprint-title">Sprint</h4>
           </div>
-        )) : (
-          <p className="trophy-empty-state">Aucun badge dans cette famille.</p>
-        )}
-      </div>
+          <p>Badges obtenus lors des Sprints solo terminés.</p>
+        </header>
+
+        <div className="trophy-family-tabs" role="tablist" aria-label="Familles de badges Sprint">
+          <button
+            type="button"
+            id="trophy-family-all"
+            role="tab"
+            aria-controls="trophy-family-panel"
+            aria-selected={selectedFamily === 'all'}
+            className={selectedFamily === 'all' ? 'active' : ''}
+            onClick={() => setActiveFamily('all')}
+          >
+            <span>Tous</span>
+            <small>{completedCount}/{badges.length}</small>
+          </button>
+          {families.map(([family, label]) => {
+            const familyBadges = badges.filter((badge) => badge.family === family)
+            const familyCompleted = familyBadges.filter((badge) => badge.completed).length
+
+            return (
+              <button
+                type="button"
+                id={`trophy-family-${family}`}
+                role="tab"
+                aria-controls="trophy-family-panel"
+                aria-selected={selectedFamily === family}
+                className={selectedFamily === family ? 'active' : ''}
+                key={family}
+                onClick={() => setActiveFamily(family)}
+              >
+                <span>{label}</span>
+                <small>{familyCompleted}/{familyBadges.length}</small>
+              </button>
+            )
+          })}
+        </div>
+
+        <div
+          id="trophy-family-panel"
+          className="badge-family-stack trophy-shelf-stack"
+          role="tabpanel"
+          aria-labelledby={`trophy-family-${selectedFamily}`}
+        >
+          {visibleBadges.length ? Array.from({ length: Math.ceil(visibleBadges.length / 6) }, (_, shelfIndex) => (
+            <div className="trophy-shelf" key={`shelf-${shelfIndex}`}>
+              {visibleBadges.slice(shelfIndex * 6, shelfIndex * 6 + 6).map((badge) => {
+                const progress = clampPercent(badge.progress)
+
+                return (
+                  <button
+                    type="button"
+                    className={`badge-objective-card trophy-item badge-family-${badge.family} badge-${badge.tier} ${badge.completed ? 'earned' : 'locked'}`}
+                    aria-label={`Afficher le détail du badge ${badge.title}, ${progress}%`}
+                    key={badge.key}
+                    onClick={() => onSelect(badge)}
+                  >
+                    <BadgeIllustration badge={badge} />
+                    <span className="trophy-item-copy">
+                      <strong>{badge.title}</strong>
+                      <small>{badge.completed ? 'Débloqué' : `${badge.completedObjectives}/${badge.totalObjectives} objectifs`}</small>
+                    </span>
+                    <span className="trophy-item-progress">
+                      <span>
+                        <small>{badge.completed ? 'Terminé' : 'Progression'}</small>
+                        <strong>{progress}%</strong>
+                      </span>
+                      <progress max="100" value={progress} aria-label={`Progression du badge ${badge.title}`} />
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          )) : (
+            <p className="trophy-empty-state">Aucun badge dans cette famille.</p>
+          )}
+        </div>
+      </section>
     </section>
   )
 }

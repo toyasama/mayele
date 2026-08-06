@@ -417,6 +417,40 @@
   font-size: 1.15rem;
 }
 
+.quest-step-copy .mission-tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 5px 0;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.quest-step-copy .mission-tag-row em {
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(10, 159, 143, 0.09);
+  color: var(--muted);
+  font-size: 0.64rem;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.quest-step-copy .mission-tag-row em[data-tier='easy'] {
+  background: rgba(72, 192, 96, 0.13);
+  color: #237d36;
+}
+
+.quest-step-copy .mission-tag-row em[data-tier='medium'] {
+  background: rgba(245, 183, 64, 0.18);
+  color: #80600f;
+}
+
+.quest-step-copy .mission-tag-row em[data-tier='hard'] {
+  background: rgba(229, 83, 83, 0.13);
+  color: #a33333;
+}
+
 .quest-step-copy p {
   margin: 0;
   color: var(--muted);
@@ -476,6 +510,28 @@
   margin-top: 3px;
   color: var(--muted);
   text-transform: none;
+}
+
+.mission-prepare-link {
+  margin-top: 7px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--primary);
+  font-size: 0.68rem;
+  font-weight: 900;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.mission-prepare-link:hover {
+  text-decoration: underline;
+}
+
+.mission-prepare-link:focus-visible {
+  outline: 3px solid rgba(10, 159, 143, 0.22);
+  outline-offset: 2px;
 }
 
 .quest-path-step.is-upcoming {

@@ -1,4 +1,5 @@
-export const DASHBOARD_CACHE_PREFIX = 'mayele.dashboard.v5.'
+// V6 invalidates dashboard payloads that still contain the pre-V2 mission shape.
+export const DASHBOARD_CACHE_PREFIX = 'mayele.dashboard.v6.'
 export const SOCIAL_CACHE_PREFIX = 'mayele.social.v1.'
 
 export function userCacheKey(prefix: string, clerkUserId: string) {
