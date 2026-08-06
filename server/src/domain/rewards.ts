@@ -1,5 +1,16 @@
 import { VALID_GAMES, VALID_LEVELS, type GameLevel, type GameType } from './constants.js'
 
+export {
+  MISSION_CATALOG,
+  buildMissionStates,
+  selectDailyMissions,
+} from './dailyMissions.js'
+export type {
+  MissionCompletionRef,
+  MissionDefinition,
+  MissionState,
+} from './dailyMissions.js'
+
 const GAME_LABELS: Record<GameType, string> = {
   addition: 'Addition',
   soustraction: 'Soustraction',
@@ -15,203 +26,12 @@ const LEVEL_LABELS: Record<GameLevel, string> = {
   expert: 'Expert',
 }
 
-export type MissionStats = {
-  todaySessions: number
-  todayCorrectAnswers: number
-  todayQuestionsAnswered: number
-}
-
-export type MissionCompletionRef = {
-  missionKey: string
-  scopeKey: string
-  completedAt?: Date | string
-  xpAwarded?: number
-}
-
-export type MissionState = {
-  key: string
-  title: string
-  description: string
-  rewardXp: number
-  scope: 'daily' | 'lifetime'
-  scopeKey: string
-  current: number
-  target: number
-  progress: number
-  completed: boolean
-  claimed: boolean
-  completedAt: string | null
-}
-
-type MissionDefinition = {
-  key: string
-  family: 'sessions' | 'correct_answers' | 'questions_answered'
-  title: string
-  description: string
-  rewardXp: number
-  scope: 'daily' | 'lifetime'
-  target: number
-  current: (stats: MissionStats) => number
-}
-
-export const MISSION_CATALOG: MissionDefinition[] = [
-  {
-    key: 'daily_first_sprint',
-    family: 'sessions',
-    title: 'Prendre son élan',
-    description: 'Terminer une partie aujourd’hui.',
-    rewardXp: 30,
-    scope: 'daily',
-    target: 1,
-    current: (stats) => stats.todaySessions,
-  },
-  {
-    key: 'daily_two_sprints',
-    family: 'sessions',
-    title: 'Garder le rythme',
-    description: 'Terminer 2 parties aujourd’hui.',
-    rewardXp: 60,
-    scope: 'daily',
-    target: 2,
-    current: (stats) => stats.todaySessions,
-  },
-  {
-    key: 'daily_three_sprints',
-    family: 'sessions',
-    title: 'Faire une belle série',
-    description: 'Terminer 3 parties aujourd’hui.',
-    rewardXp: 90,
-    scope: 'daily',
-    target: 3,
-    current: (stats) => stats.todaySessions,
-  },
-  {
-    key: 'daily_ten_correct',
-    family: 'correct_answers',
-    title: 'Viser juste',
-    description: 'Trouver 10 bonnes réponses aujourd’hui.',
-    rewardXp: 40,
-    scope: 'daily',
-    target: 10,
-    current: (stats) => stats.todayCorrectAnswers,
-  },
-  {
-    key: 'daily_twenty_correct',
-    family: 'correct_answers',
-    title: 'Œil de lynx',
-    description: 'Trouver 20 bonnes réponses aujourd’hui.',
-    rewardXp: 75,
-    scope: 'daily',
-    target: 20,
-    current: (stats) => stats.todayCorrectAnswers,
-  },
-  {
-    key: 'daily_thirty_correct',
-    family: 'correct_answers',
-    title: 'Sans trembler',
-    description: 'Trouver 30 bonnes réponses aujourd’hui.',
-    rewardXp: 110,
-    scope: 'daily',
-    target: 30,
-    current: (stats) => stats.todayCorrectAnswers,
-  },
-  {
-    key: 'daily_ten_answers',
-    family: 'questions_answered',
-    title: 'Échauffement',
-    description: 'Répondre à 10 questions aujourd’hui.',
-    rewardXp: 35,
-    scope: 'daily',
-    target: 10,
-    current: (stats) => stats.todayQuestionsAnswered,
-  },
-  {
-    key: 'daily_twenty_answers',
-    family: 'questions_answered',
-    title: 'Plein régime',
-    description: 'Répondre à 20 questions aujourd’hui.',
-    rewardXp: 65,
-    scope: 'daily',
-    target: 20,
-    current: (stats) => stats.todayQuestionsAnswered,
-  },
-  {
-    key: 'daily_thirty_answers',
-    family: 'questions_answered',
-    title: 'Grand parcours',
-    description: 'Répondre à 30 questions aujourd’hui.',
-    rewardXp: 95,
-    scope: 'daily',
-    target: 30,
-    current: (stats) => stats.todayQuestionsAnswered,
-  },
-]
-
-const DAILY_MISSION_FAMILIES: MissionDefinition['family'][] = ['sessions', 'correct_answers', 'questions_answered']
-
-function stableHash(value: string) {
-  let hash = 2166136261
-
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index)
-    hash = Math.imul(hash, 16777619)
-  }
-
-  return hash >>> 0
-}
-
-function dayOrdinal(day: string) {
-  const timestamp = Date.parse(`${day}T00:00:00.000Z`)
-  return Number.isNaN(timestamp) ? stableHash(day) : Math.floor(timestamp / 86_400_000)
-}
-
-/**
- * Selects one mission per family. The supplied day is already the player's
- * local calendar day, so repeated calls are idempotent and consecutive days
- * rotate every family.
- */
-export function selectDailyMissions(playerId: string, day: string) {
-  const ordinal = dayOrdinal(day)
-
-  return DAILY_MISSION_FAMILIES.map((family) => {
-    const candidates = MISSION_CATALOG.filter((mission) => mission.family === family)
-    const playerOffset = stableHash(`${playerId}:${family}`) % candidates.length
-    return candidates[(playerOffset + ordinal) % candidates.length]
-  })
-}
-
 function clampProgress(current: number, target: number) {
   if (target <= 0) {
     return 100
   }
 
   return Math.max(0, Math.min(100, Math.round((current / target) * 100)))
-}
-
-export function buildMissionStates(stats: MissionStats, completions: MissionCompletionRef[], day: string, playerId: string): MissionState[] {
-  const completedByScope = new Map(completions.map((completion) => [`${completion.missionKey}:${completion.scopeKey}`, completion]))
-
-  return selectDailyMissions(playerId, day).map((mission) => {
-    const scopeKey = mission.scope === 'daily' ? day : 'lifetime'
-    const completion = completedByScope.get(`${mission.key}:${scopeKey}`)
-    const current = Math.min(mission.target, Math.max(0, mission.current(stats)))
-    const completed = current >= mission.target || Boolean(completion)
-
-    return {
-      key: mission.key,
-      title: mission.title,
-      description: mission.description,
-      rewardXp: mission.rewardXp,
-      scope: mission.scope,
-      scopeKey,
-      current: completed ? mission.target : current,
-      target: mission.target,
-      progress: completed ? 100 : clampProgress(current, mission.target),
-      completed,
-      claimed: Boolean(completion),
-      completedAt: completion?.completedAt ? new Date(completion.completedAt).toISOString() : null,
-    }
-  })
 }
 
 export type BadgeProgressItem = {

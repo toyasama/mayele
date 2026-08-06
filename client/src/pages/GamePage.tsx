@@ -42,6 +42,13 @@ import {
 } from '../lib/game'
 import { solveDisplayedQuestion } from '../lib/matchQuestions'
 import {
+  isDailyMissionV2,
+  missionConfigurationLabel,
+  missionLaunchConfigFromSearch,
+  missionLaunchPath,
+  missionLevelLabel,
+} from '../lib/missionNavigation'
+import {
   DEFAULT_SOLO_CHALLENGE_CONFIG,
   activeTimerSecondsForSoloConfig,
   createSoloSessionState,
@@ -150,7 +157,20 @@ export function GamePage() {
   const initialFocusSkill = parseFocusSkill(searchParams.get('focus'))
   const initialGame = parseGameType(searchParams.get('game'))
   const initialLevel = parseGameLevel(searchParams.get('level'))
-  const initialConfig = buildInitialConfig(initialGame, initialLevel, initialFocusSkill)
+  const initialMissionConfig = missionLaunchConfigFromSearch(searchParams)
+  const initialConfig = normalizeSoloChallengeConfig({
+    ...buildInitialConfig(initialGame, initialLevel, initialFocusSkill),
+    ...(initialMissionConfig?.playContext === 'solo' ? {
+      mode: initialMissionConfig.challengeMode,
+      game: initialMissionConfig.game,
+      level: initialMissionConfig.level,
+      focusSkill: null,
+      sprintDurationSeconds: (initialMissionConfig.sprintDurationSeconds
+        ?? DEFAULT_SOLO_CHALLENGE_CONFIG.sprintDurationSeconds) as SoloChallengeConfig['sprintDurationSeconds'],
+      tempoQuestionCount: initialMissionConfig.tempoQuestionCount ?? DEFAULT_SOLO_CHALLENGE_CONFIG.tempoQuestionCount,
+      tempoQuestionSeconds: initialMissionConfig.tempoQuestionSeconds ?? DEFAULT_SOLO_CHALLENGE_CONFIG.tempoQuestionSeconds,
+    } : {}),
+  })
 
   const [config, setConfig] = useState<SoloChallengeConfig>(initialConfig)
   const [sessionState, setSessionState] = useState<SoloSessionState>(() => createSoloSessionState(initialConfig))
@@ -231,7 +251,7 @@ export function GamePage() {
     setDailyObjectivesLoading(true)
     try {
       const { objectives } = await api.getDailyObjectives(getToken)
-      setDailyObjectives(objectives)
+      setDailyObjectives(objectives.filter(isDailyMissionV2))
     } catch {
       // Les objectifs restent une information secondaire : la preparation
       // d'une partie doit rester disponible si leur lecture echoue.
@@ -434,6 +454,29 @@ export function GamePage() {
       ...configRef.current,
       ...patch,
     })
+  }
+
+  function prepareDailyObjective(objective: DailyObjective) {
+    if (objective.launchConfig.playContext === 'multiplayer') {
+      navigate(missionLaunchPath(objective))
+      return
+    }
+
+    updateConfig({
+      mode: objective.launchConfig.challengeMode,
+      game: objective.launchConfig.game,
+      level: objective.launchConfig.level,
+      focusSkill: null,
+      sprintDurationSeconds: (objective.launchConfig.sprintDurationSeconds
+        ?? DEFAULT_SOLO_CHALLENGE_CONFIG.sprintDurationSeconds) as SoloChallengeConfig['sprintDurationSeconds'],
+      tempoQuestionCount: objective.launchConfig.tempoQuestionCount
+        ?? DEFAULT_SOLO_CHALLENGE_CONFIG.tempoQuestionCount,
+      tempoQuestionSeconds: objective.launchConfig.tempoQuestionSeconds
+        ?? DEFAULT_SOLO_CHALLENGE_CONFIG.tempoQuestionSeconds,
+    })
+    setFeedback(`Configuration préparée pour « ${objective.title} ».`)
+    setExpandedObjectiveKey(null)
+    navigate(missionLaunchPath(objective), { replace: true })
   }
 
   async function startSession() {
@@ -746,6 +789,13 @@ export function GamePage() {
                     <strong>{objective.title}</strong>
                     <small aria-hidden="true">?</small>
                   </span>
+                  <span className="mission-tag-row" aria-label={`Mission ${objective.tierLabel}, ${objective.requirements.playContext === 'solo' ? 'Solo' : 'Multijoueur'}, ${objective.requirements.challengeMode === 'sprint' ? 'Sprint' : 'Tempo'}, niveau ${missionLevelLabel(objective)}, configuration ${missionConfigurationLabel(objective)}`}>
+                    <em data-tier={objective.tier}>{objective.tierLabel}</em>
+                    <em>{objective.requirements.playContext === 'solo' ? 'Solo' : 'Multi'}</em>
+                    <em>{objective.requirements.challengeMode === 'sprint' ? 'Sprint' : 'Tempo'}</em>
+                    <em>{missionLevelLabel(objective)}</em>
+                    <em>{missionConfigurationLabel(objective)}</em>
+                  </span>
                   <div className="solo-daily-objective-meta">
                     <span>{objective.current}/{objective.target}</span>
                     <small>+{objective.rewardXp} XP</small>
@@ -771,6 +821,13 @@ export function GamePage() {
             <strong>{expandedDailyObjective.title}</strong>
             {expandedDailyObjective.description}
           </p>
+          <button
+            type="button"
+            className="solo-daily-objective-prepare"
+            onClick={() => prepareDailyObjective(expandedDailyObjective)}
+          >
+            Préparer la mission
+          </button>
         </div>
       ) : null}
     </section>

@@ -185,6 +185,21 @@ describe('MultiplayerGamePage finalization', () => {
 
   afterEach(cleanup)
 
+  it('ouvre le configurateur multijoueur avec le preset Tempo de la mission', async () => {
+    apiMocks.getMatchRoomOverview.mockResolvedValue({ friends: [guest], matches: [] })
+
+    render(
+      <MemoryRouter initialEntries={['/jeu/multijoueur?mission=daily-v2&playContext=multiplayer&mode=tempo&game=division&level=expert&questions=50&questionSeconds=5']}>
+        <MultiplayerGamePage />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByRole('spinbutton', { name: 'Questions' })).toHaveValue(50)
+    expect(screen.getByRole('spinbutton', { name: 'Secondes par question' })).toHaveValue(5)
+    expect(screen.getByRole('button', { name: /Division/ })).toHaveClass('active')
+    expect(screen.getByRole('button', { name: /Expert/ })).toHaveClass('active')
+  })
+
   it("n'affiche pas l'expiration tardive d'une reponse apres la fin confirmee du defi", async () => {
     const match = activeMatch()
     let rejectAnswer!: (reason: unknown) => void

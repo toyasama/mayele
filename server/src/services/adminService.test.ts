@@ -5,6 +5,7 @@ const txMocks = vi.hoisted(() => ({
   achievement: { deleteMany: vi.fn() },
   adminAuditLog: { create: vi.fn() },
   dailyStat: { deleteMany: vi.fn() },
+  dailyMissionAssignment: { deleteMany: vi.fn() },
   gameSession: { deleteMany: vi.fn() },
   missionCompletion: { deleteMany: vi.fn() },
   player: { update: vi.fn() },

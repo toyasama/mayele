@@ -1,12 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { VALID_GAMES, type GameLevel } from './constants.js'
 import {
-  MISSION_CATALOG,
   MASTERY_ACCURACY_TARGETS,
   MASTERY_CADENCE_TARGETS,
   buildBadgeStates,
-  buildMissionStates,
-  selectDailyMissions,
   type BadgeProgressItem,
   type MasterySprintItem,
 } from './rewards.js'
@@ -37,71 +34,6 @@ function masterySprints(options: {
     durationSeconds: options.durationSeconds,
   }))
 }
-
-describe('buildMissionStates', () => {
-  const stats = {
-    todaySessions: 2,
-    todayCorrectAnswers: 12,
-    todayQuestionsAnswered: 18,
-  }
-
-  it('selects three daily missions from a larger catalog', () => {
-    const missions = buildMissionStates(
-      stats,
-      [],
-      '2026-07-01',
-      'player_1',
-    )
-
-    expect(MISSION_CATALOG.length).toBeGreaterThan(3)
-    expect(missions).toHaveLength(3)
-    expect(new Set(missions.map((mission) => mission.key)).size).toBe(3)
-    expect(missions.every((mission) => mission.scope === 'daily')).toBe(true)
-    expect(missions.every((mission) => mission.scopeKey === '2026-07-01')).toBe(true)
-  })
-
-  it('is deterministic and idempotent for the same player and local day', () => {
-    const firstSelection = selectDailyMissions('player_1', '2026-07-01').map((mission) => mission.key)
-    const repeatedSelection = selectDailyMissions('player_1', '2026-07-01').map((mission) => mission.key)
-    const firstState = buildMissionStates(stats, [], '2026-07-01', 'player_1')
-    const repeatedState = buildMissionStates(stats, [], '2026-07-01', 'player_1')
-
-    expect(repeatedSelection).toEqual(firstSelection)
-    expect(repeatedState).toEqual(firstState)
-  })
-
-  it('rotates the selection and resets its scope on the next local day', () => {
-    const firstDay = buildMissionStates(stats, [], '2026-07-01', 'player_1')
-    const nextDay = buildMissionStates(
-      { todaySessions: 0, todayCorrectAnswers: 0, todayQuestionsAnswered: 0 },
-      [],
-      '2026-07-02',
-      'player_1',
-    )
-
-    expect(nextDay.map((mission) => mission.key)).not.toEqual(firstDay.map((mission) => mission.key))
-    expect(nextDay.every((mission) => mission.scopeKey === '2026-07-02')).toBe(true)
-    expect(nextDay.every((mission) => mission.current === 0 && !mission.completed && !mission.claimed)).toBe(true)
-  })
-
-  it('does not reclaim an existing completion when rebuilding the same day', () => {
-    const selected = selectDailyMissions('player_1', '2026-07-01')
-    const completedAt = new Date('2026-07-01T12:00:00.000Z')
-    const missions = buildMissionStates(
-      stats,
-      [{ missionKey: selected[0].key, scopeKey: '2026-07-01', completedAt }],
-      '2026-07-01',
-      'player_1',
-    )
-
-    expect(missions[0]).toMatchObject({
-      key: selected[0].key,
-      completed: true,
-      claimed: true,
-      completedAt: completedAt.toISOString(),
-    })
-  })
-})
 
 describe('buildBadgeStates', () => {
   it.each([

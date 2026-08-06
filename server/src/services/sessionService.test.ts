@@ -1,14 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getDailyScopeKey } from '../domain/daily.js'
-import { buildMissionStates } from '../domain/rewards.js'
 import type { SessionPayload } from '../schemas/sessionSchema.js'
-
-type MissionCompletionRow = {
-  missionKey: string
-  scopeKey: string
-  completedAt: Date
-  xpAwarded: number
-}
 
 type MissionCompletionCreateInput = {
   data: Array<{
@@ -44,11 +36,14 @@ const tx = {
     createMany: vi.fn(async () => ({ count: 30 })),
   },
   dailyStat: {
-    upsert: vi.fn(async () => ({ sessionsCount: 3, correctAnswers: 30, totalQuestions: 30 })),
+    upsert: vi.fn(async () => ({
+      sessionsCount: 3,
+      correctAnswers: 30,
+      totalQuestions: 30,
+    })),
     update: vi.fn(async () => ({ xp: 940 })),
   },
   missionCompletion: {
-    findMany: vi.fn(async (): Promise<MissionCompletionRow[]> => []),
     createMany: vi.fn(async (_input: MissionCompletionCreateInput) => ({ count: 1 })),
   },
   achievement: {
@@ -71,12 +66,17 @@ const tx = {
 
 const gameSessionFindUnique = vi.fn()
 const transactionMock = vi.fn(async (callback: (txArg: typeof tx) => Promise<unknown>) => callback(tx))
+const loadDailyMissionStatesMock = vi.fn()
 
 vi.mock('../lib/prisma.js', () => ({
   prisma: {
     gameSession: { findUnique: gameSessionFindUnique },
     $transaction: transactionMock,
   },
+}))
+
+vi.mock('./dailyMissionService.js', () => ({
+  loadDailyMissionStates: loadDailyMissionStatesMock,
 }))
 
 const { saveSession } = await import('./sessionService.js')
@@ -105,6 +105,28 @@ const perfectSessionPayload: SessionPayload = {
   })),
 }
 
+const completedSoloSprintContext = {
+  playContext: 'solo' as const,
+  challengeMode: 'sprint' as const,
+  completedWithoutAbandonment: true,
+  configuredDurationSeconds: 60,
+  configuredQuestionCount: null,
+  configuredQuestionSeconds: null,
+}
+
+function completedMissionStates(day: string) {
+  return [
+    { key: 'daily-v2_easy', title: 'Mission facile', rewardXp: 40 },
+    { key: 'daily-v2_medium', title: 'Mission intermédiaire', rewardXp: 80 },
+    { key: 'daily-v2_hard', title: 'Mission difficile', rewardXp: 140 },
+  ].map((mission) => ({
+    ...mission,
+    completed: true,
+    claimed: false,
+    scopeKey: day,
+  }))
+}
+
 describe('saveSession', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -112,6 +134,7 @@ describe('saveSession', () => {
     transactionMock.mockImplementation(async (callback: (txArg: typeof tx) => Promise<unknown>) => callback(tx))
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-07-01T12:00:00.000Z'))
+    loadDailyMissionStatesMock.mockResolvedValue(completedMissionStates('2026-07-01'))
   })
 
   afterEach(() => {
@@ -120,14 +143,11 @@ describe('saveSession', () => {
 
   it('calculates XP server-side and does not abort when earned achievements already exist', async () => {
     const day = getDailyScopeKey(undefined, 'Europe/Paris')
-    const expectedMissions = buildMissionStates(
-      { todaySessions: 3, todayCorrectAnswers: 30, todayQuestionsAnswered: 30 },
-      [],
-      day,
-      'player-1',
-    )
+    const expectedMissions = completedMissionStates(day)
     const expectedMissionXp = expectedMissions.reduce((sum, mission) => sum + mission.rewardXp, 0)
-    const result = await saveSession('player-1', perfectSessionPayload)
+    const result = await saveSession('player-1', perfectSessionPayload, 'Europe/Paris', {
+      dailyMissionContext: completedSoloSprintContext,
+    })
 
     expect(tx.gameSession.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -137,6 +157,12 @@ describe('saveSession', () => {
         scorePoints: 480,
         correctAnswers: 30,
         totalQuestions: 30,
+        validAnswers: 30,
+        missionDay: day,
+        missionEligible: true,
+        playContext: 'solo',
+        challengeMode: 'sprint',
+        configuredDurationSeconds: 60,
       }),
     })
     expect(tx.player.update).toHaveBeenCalledWith({
@@ -221,20 +247,14 @@ describe('saveSession', () => {
 
   it('does not award the same daily missions twice', async () => {
     const day = getDailyScopeKey(undefined, 'Europe/Paris')
-    const selectedMissions = buildMissionStates(
-      { todaySessions: 3, todayCorrectAnswers: 30, todayQuestionsAnswered: 30 },
-      [],
-      day,
-      'player-1',
-    )
-    tx.missionCompletion.findMany.mockResolvedValueOnce(selectedMissions.map((mission) => ({
-      missionKey: mission.key,
-      scopeKey: day,
-      completedAt: new Date('2026-07-01T11:00:00.000Z'),
-      xpAwarded: mission.rewardXp,
+    loadDailyMissionStatesMock.mockResolvedValueOnce(completedMissionStates(day).map((mission) => ({
+      ...mission,
+      claimed: true,
     })))
 
-    const result = await saveSession('player-1', perfectSessionPayload)
+    const result = await saveSession('player-1', perfectSessionPayload, 'Europe/Paris', {
+      dailyMissionContext: completedSoloSprintContext,
+    })
 
     expect(tx.missionCompletion.createMany).not.toHaveBeenCalled()
     expect(tx.dailyStat.update).not.toHaveBeenCalled()
@@ -244,6 +264,64 @@ describe('saveSession', () => {
       select: { totalXp: true },
     })
     expect(result).toMatchObject({ missionXpEarned: 0, completedMissions: [] })
+  })
+
+  it('does not progress or award daily missions for an unfinished game', async () => {
+    const result = await saveSession('player-1', perfectSessionPayload, 'Europe/Paris', {
+      dailyMissionContext: {
+        ...completedSoloSprintContext,
+        completedWithoutAbandonment: false,
+      },
+    })
+
+    expect(tx.gameSession.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ missionDay: '2026-07-01', missionEligible: false, validAnswers: 30 }),
+    })
+    expect(loadDailyMissionStatesMock).not.toHaveBeenCalled()
+    expect(tx.missionCompletion.createMany).not.toHaveBeenCalled()
+    expect(result).toMatchObject({ missionXpEarned: 0, completedMissions: [] })
+  })
+
+  it('requires a submitted answer and excludes unanswered timeouts from mission progress', async () => {
+    const unansweredPayload: SessionPayload = {
+      ...perfectSessionPayload,
+      totalQuestions: 2,
+      bestStreak: 0,
+      answers: perfectSessionPayload.answers.slice(0, 2).map((answer) => ({ ...answer, userAnswer: null })),
+    }
+
+    const result = await saveSession('player-1', unansweredPayload, 'Europe/Paris', {
+      dailyMissionContext: completedSoloSprintContext,
+    })
+
+    expect(tx.gameSession.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ missionEligible: false, validAnswers: 0 }),
+    })
+    expect(loadDailyMissionStatesMock).not.toHaveBeenCalled()
+    expect(tx.missionCompletion.createMany).not.toHaveBeenCalled()
+    expect(result).toMatchObject({ missionXpEarned: 0, completedMissions: [] })
+  })
+
+  it('stores a valid answer but not a timeout in the auditable mission facts', async () => {
+    const partlyAnsweredPayload: SessionPayload = {
+      ...perfectSessionPayload,
+      totalQuestions: 2,
+      bestStreak: 1,
+      answers: [
+        perfectSessionPayload.answers[0],
+        { ...perfectSessionPayload.answers[1], userAnswer: null },
+      ],
+    }
+
+    loadDailyMissionStatesMock.mockResolvedValueOnce([])
+    await saveSession('player-1', partlyAnsweredPayload, 'Europe/Paris', {
+      dailyMissionContext: completedSoloSprintContext,
+    })
+
+    expect(tx.gameSession.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ missionEligible: true, validAnswers: 1 }),
+    })
+    expect(loadDailyMissionStatesMock).toHaveBeenCalledWith(tx, 'player-1', '2026-07-01')
   })
 
   it('returns the canonical stored result on retry without crediting rewards again', async () => {

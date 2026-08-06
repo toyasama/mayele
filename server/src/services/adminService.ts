@@ -197,6 +197,7 @@ export async function resetPlayerProgress(actorClerkUserId: string, playerId: st
     await Promise.all([
       tx.achievement.deleteMany({ where: { playerId } }),
       tx.dailyStat.deleteMany({ where: { playerId } }),
+      tx.dailyMissionAssignment.deleteMany({ where: { playerId } }),
       tx.missionCompletion.deleteMany({ where: { playerId } }),
       tx.xpLedgerEntry.deleteMany({ where: { playerId } }),
     ])

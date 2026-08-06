@@ -66,6 +66,52 @@ export type FriendRequestData = {
 }
 
 export type ChallengeMode = 'sprint' | 'tempo'
+export type MissionTier = 'easy' | 'medium' | 'hard'
+export type MissionFamily = 'sessions' | 'valid_answers' | 'correct_answers' | 'accuracy' | 'streak' | 'diversity'
+export type MissionPlayContext = 'solo' | 'multiplayer'
+
+export type MissionLaunchConfig = {
+  playContext: MissionPlayContext
+  challengeMode: ChallengeMode
+  game: AnswerResult['game']
+  level: AnswerResult['level']
+  sprintDurationSeconds: number | null
+  tempoQuestionCount: number | null
+  tempoQuestionSeconds: number | null
+}
+
+export type DailyMission = {
+  version: number
+  key: string
+  family: MissionFamily
+  familyLabel: string
+  tier: MissionTier
+  tierLabel: string
+  title: string
+  description: string
+  rewardXp: number
+  scope: 'daily'
+  scopeKey: string
+  target: number
+  minimumValidAnswers: number
+  requirements: {
+    playContext: MissionPlayContext
+    challengeMode: ChallengeMode
+    game: AnswerResult['game'] | null
+    level: AnswerResult['level']
+    minSprintDurationSeconds: number | null
+    minTempoQuestionCount: number | null
+    maxTempoQuestionSeconds: number | null
+    diversityKind: 'games' | 'configurations' | null
+    recognizedConfigurationKeys: string[]
+  }
+  launchConfig: MissionLaunchConfig
+  current: number
+  progress: number
+  completed: boolean
+  claimed: boolean
+  completedAt: string | null
+}
 
 export type MatchParticipantData = {
   id: string
@@ -245,20 +291,7 @@ export type DashboardData = {
     correctAnswers: number
     accuracy: number
   }>
-  missions: Array<{
-    key: string
-    title: string
-    description: string
-    rewardXp: number
-    scope: 'daily' | 'lifetime'
-    scopeKey: string
-    current: number
-    target: number
-    progress: number
-    completed: boolean
-    claimed: boolean
-    completedAt: string | null
-  }>
+  missions: DailyMission[]
   badges: Array<{
     key: string
     title: string

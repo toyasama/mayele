@@ -57,6 +57,14 @@ prismaMock.$transaction.mockImplementation(async (queries: Promise<unknown>[]) =
 
 vi.mock('../lib/prisma.js', () => ({ prisma: prismaMock }))
 
+const getDailyMissionStatesMock = vi.fn(async (_playerId: string, day: string) => ([
+  { key: `easy-${day}`, tier: 'easy', scope: 'daily', scopeKey: day, completed: false, claimed: false, current: 1, target: 1, rewardXp: 40 },
+  { key: `medium-${day}`, tier: 'medium', scope: 'daily', scopeKey: day, completed: false, claimed: false, current: 12, target: 30, rewardXp: 80 },
+  { key: `hard-${day}`, tier: 'hard', scope: 'daily', scopeKey: day, completed: false, claimed: false, current: 15, target: 50, rewardXp: 140 },
+]))
+
+vi.mock('./dailyMissionService.js', () => ({ getDailyMissionStates: getDailyMissionStatesMock }))
+
 const { clearDashboardCacheForTests, getDailyObjectives, getDashboard, getOperationHistory, getPracticePlan, invalidateDashboardCache } = await import('./dashboardService.js')
 
 // --- Tests ---
@@ -76,10 +84,16 @@ describe('getDashboard', () => {
 
     expect(objectives).toHaveLength(3)
     expect(objectives.every((objective) => objective.scope === 'daily')).toBe(true)
-    expect(prismaMock.dailyStat.findUnique).toHaveBeenCalledOnce()
-    expect(prismaMock.missionCompletion.findMany).toHaveBeenCalledOnce()
+    expect(getDailyMissionStatesMock).toHaveBeenCalledWith('player_1', expect.any(String))
+    expect(prismaMock.dailyStat.findUnique).not.toHaveBeenCalled()
     expect(prismaMock.gameSession.aggregate).not.toHaveBeenCalled()
     expect(prismaMock.answer.groupBy).not.toHaveBeenCalled()
+  })
+
+  it('returns the three persisted V2 mission tiers', async () => {
+    const objectives = await getDailyObjectives('player_1', 'Europe/Paris')
+    expect(objectives.map((mission) => mission.tier)).toEqual(['easy', 'medium', 'hard'])
+    expect(objectives.map((mission) => mission.rewardXp)).toEqual([40, 80, 140])
   })
 
   it('retourne une structure complète avec toutes les sections attendues', async () => {

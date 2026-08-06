@@ -396,6 +396,38 @@
   font-weight: 950;
 }
 
+.solo-daily-objective .mission-tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.solo-daily-objective .mission-tag-row em {
+  padding: 2px 5px;
+  border-radius: 999px;
+  background: rgba(10, 159, 143, 0.09);
+  color: var(--challenge-muted);
+  font-size: 0.55rem;
+  font-style: normal;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.solo-daily-objective .mission-tag-row em[data-tier='easy'] {
+  background: rgba(72, 192, 96, 0.12);
+  color: #237d36;
+}
+
+.solo-daily-objective .mission-tag-row em[data-tier='medium'] {
+  background: rgba(245, 183, 64, 0.16);
+  color: #80600f;
+}
+
+.solo-daily-objective .mission-tag-row em[data-tier='hard'] {
+  background: rgba(229, 83, 83, 0.12);
+  color: #a33333;
+}
+
 .solo-daily-objective-meta {
   justify-content: space-between;
   gap: 8px;
@@ -439,7 +471,7 @@
 
 .solo-daily-objective-detail {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
   padding: 10px 12px;
@@ -467,6 +499,29 @@
 .solo-daily-objective-detail strong {
   margin-right: 6px;
   color: var(--challenge-ink);
+}
+
+.solo-daily-objective-prepare {
+  min-height: 36px;
+  padding: 7px 12px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--challenge-primary);
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.solo-daily-objective-prepare:hover {
+  filter: brightness(0.95);
+}
+
+.solo-daily-objective-prepare:focus-visible {
+  outline: 3px solid rgba(10, 159, 143, 0.25);
+  outline-offset: 2px;
 }
 
 @media (max-width: 767px) {
@@ -497,6 +552,15 @@
   .solo-daily-objective {
     padding: 7px 9px;
     scroll-snap-align: start;
+  }
+
+  .solo-daily-objective-detail {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .solo-daily-objective-prepare {
+    grid-column: 1 / -1;
+    justify-self: stretch;
   }
 
   .solo-daily-objectives-list::-webkit-scrollbar {

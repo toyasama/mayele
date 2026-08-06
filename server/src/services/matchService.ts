@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { Prisma } from '../generated/prisma/client.js'
+import { completedMatchForDailyMissions } from '../domain/dailyMissionEligibility.js'
 import { canonicalPairIds, buildChallengeConfig, determineMatchWinner } from '../domain/matchRules.js'
 import { calculateSessionScorePoints } from '../domain/scoring.js'
 import { prisma } from '../lib/prisma.js'
@@ -796,11 +797,25 @@ export async function completeChallengeResult(playerId: string, matchId: string,
   }
 
   let sessionResult: Awaited<ReturnType<typeof saveSession>> | null = null
+  const now = new Date()
 
   if (totalQuestions > 0) {
     try {
       sessionResult = await saveSession(playerId, sessionPayload, timeZone, {
         submissionKey: `match:${match.id}:participant:${participant.id}`,
+        dailyMissionContext: {
+          playContext: 'multiplayer',
+          challengeMode: match.challengeMode as 'sprint' | 'tempo',
+          completedWithoutAbandonment: completedMatchForDailyMissions(
+            match,
+            totalQuestions,
+            now,
+            participant.forfeitedAt,
+          ),
+          configuredDurationSeconds: match.challengeMode === 'sprint' ? match.durationSeconds : null,
+          configuredQuestionCount: match.challengeMode === 'tempo' ? match.questionCount : null,
+          configuredQuestionSeconds: match.challengeMode === 'tempo' ? match.perQuestionTimeLimitSeconds : null,
+        },
       })
     } catch (error) {
       await prisma.matchParticipant.update({
@@ -810,8 +825,6 @@ export async function completeChallengeResult(playerId: string, matchId: string,
       throw error
     }
   }
-
-  const now = new Date()
 
   const updatedMatch = await prisma.$transaction(async (tx) => {
     await tx.matchParticipant.update({

@@ -107,9 +107,9 @@ function completedRun(run: SoloRunData): SoloRunData {
   }
 }
 
-function renderGamePage() {
+function renderGamePage(initialEntry = '/jeu/solo') {
   return render(
-    <MemoryRouter initialEntries={['/jeu/solo']}>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <GamePage />
     </MemoryRouter>,
   )
@@ -131,6 +131,14 @@ describe('GamePage solo completion', () => {
   })
 
   afterEach(cleanup)
+
+  it('préremplit exactement la configuration Solo indiquée par une mission', async () => {
+    renderGamePage('/jeu/solo?mission=daily-v2&playContext=solo&mode=sprint&game=multiplication&level=avance&duration=90')
+
+    expect(await screen.findByText('Sprint - 90s')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Multiplication' })).toHaveClass('active')
+    expect(screen.getByRole('button', { name: 'Avancé' })).toHaveClass('active')
+  })
 
   it('conserve le snapshot termine si la derniere reponse arrive apres la finalisation', async () => {
     const run = activeRun()

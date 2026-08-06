@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Prisma, SoloRun } from '../generated/prisma/client.js'
 import type { GameLevel, GameType, SkillTag } from '../domain/constants.js'
+import { completedSoloRunForDailyMissions } from '../domain/dailyMissionEligibility.js'
 import { generateMatchQuestion } from '../domain/matchQuestions.js'
 import { calculateSessionXp, getPlayerProgress } from '../domain/progression.js'
 import { calculateAnswerScorePoints } from '../domain/scoring.js'
@@ -279,6 +280,7 @@ export async function finishSoloRun(playerId: string, runId: string) {
     where: { id: playerId },
     select: { totalXp: true, timeZone: true },
   })
+  const canonicalFinishedAt = run.finishedAt ?? finishedAt
   const result = run.answers.length === 0
     ? emptyRunResult(player.totalXp)
     : await saveSession(
@@ -290,7 +292,7 @@ export async function finishSoloRun(playerId: string, runId: string) {
           totalQuestions: run.answers.length,
           durationSeconds: Math.min(
             run.durationSeconds,
-            Math.max(1, Math.round(((run.finishedAt ?? finishedAt).getTime() - run.startedAt.getTime()) / 1000)),
+            Math.max(1, Math.round((canonicalFinishedAt.getTime() - run.startedAt.getTime()) / 1000)),
           ),
           bestStreak: run.bestStreak,
           answers: run.answers.map((answer) => ({
@@ -305,14 +307,24 @@ export async function finishSoloRun(playerId: string, runId: string) {
           })),
         },
         player.timeZone,
-        { submissionKey: `${RUN_RECEIPT_PREFIX}${run.id}` },
+        {
+          submissionKey: `${RUN_RECEIPT_PREFIX}${run.id}`,
+          dailyMissionContext: {
+            playContext: 'solo',
+            challengeMode: run.mode as 'sprint' | 'tempo',
+            completedWithoutAbandonment: completedSoloRunForDailyMissions(run, canonicalFinishedAt),
+            configuredDurationSeconds: run.mode === 'sprint' ? run.durationSeconds : null,
+            configuredQuestionCount: run.mode === 'tempo' ? run.questionCount : null,
+            configuredQuestionSeconds: run.mode === 'tempo' ? run.perQuestionTimeLimitSeconds : null,
+          },
+        },
       )
 
   await prisma.soloRun.update({
     where: { id: run.id },
     data: {
       status: 'completed',
-      finishedAt: run.finishedAt ?? finishedAt,
+      finishedAt: canonicalFinishedAt,
       sessionId: result.sessionId,
       result: result as Prisma.InputJsonValue,
     },

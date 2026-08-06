@@ -13,6 +13,7 @@ import { useDailyScopeKey } from '../hooks/useDailyScopeKey'
 import { DASHBOARD_CACHE_PREFIX, readCache, userCacheKey, writeCache } from '../lib/appCache'
 import { api, type DashboardData } from '../lib/api'
 import { GAME_LABELS, LEVEL_LABELS, SKILL_LABELS, getPlayerProgress, type GameLevel, type GameType, type SkillTag } from '../lib/game'
+import { isDailyMissionV2 } from '../lib/missionNavigation'
 import { formatDisplayName } from '../lib/profile'
 import '../styles/routes/dashboard.css'
 
@@ -42,11 +43,18 @@ type CachedDashboard = {
 
 function readCachedDashboard(key: string, dailyScopeKey: string) {
   const cached = readCache<CachedDashboard>(key)
-  return cached?.dailyScopeKey === dailyScopeKey ? cached.payload : null
+  return cached?.dailyScopeKey === dailyScopeKey && cached.payload
+    ? sanitizeDashboardMissions(cached.payload)
+    : null
 }
 
 function writeCachedDashboard(key: string, dailyScopeKey: string, payload: DashboardData) {
   writeCache(key, { dailyScopeKey, payload })
+}
+
+function sanitizeDashboardMissions(payload: DashboardData): DashboardData {
+  const missions = Array.isArray(payload.missions) ? payload.missions.filter(isDailyMissionV2) : []
+  return missions.length === payload.missions?.length ? payload : { ...payload, missions }
 }
 
 function profileInitials(profile: DashboardProfileSource | null | undefined) {
@@ -371,9 +379,10 @@ export function DashboardPage() {
       .getDashboard(getToken)
       .then((payload) => {
         if (active) {
-          setLiveDashboard({ cacheKey, dailyScopeKey: currentDailyScope, payload })
+          const sanitizedPayload = sanitizeDashboardMissions(payload)
+          setLiveDashboard({ cacheKey, dailyScopeKey: currentDailyScope, payload: sanitizedPayload })
           setError('')
-          writeCachedDashboard(cacheKey, currentDailyScope, payload)
+          writeCachedDashboard(cacheKey, currentDailyScope, sanitizedPayload)
         }
       })
       .catch((err) => {
