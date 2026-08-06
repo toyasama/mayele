@@ -104,6 +104,76 @@ describe('buildMissionStates', () => {
 })
 
 describe('buildBadgeStates', () => {
+  it.each([
+    ['debutant', 'Confirmé Débutant · cadence 12/min', 'Maître Débutant · cadence 18/min'],
+    ['intermediaire', 'Confirmé Intermédiaire · cadence 10/min', 'Maître Intermédiaire · cadence 15/min'],
+    ['avance', 'Confirmé Avancé · cadence 8/min', 'Maître Avancé · cadence 12/min'],
+    ['expert', 'Confirmé Expert · cadence 6/min', 'Maître Expert · cadence 9/min'],
+  ] as const)('affiche les seuils de cadence dans les titres %s', (level, confirmedTitle, masterTitle) => {
+    const badges = buildBadgeStates(badgeProgress(level))
+
+    expect(badges.find((badge) => badge.key === `discovery_${level}`)?.title).not.toContain('cadence')
+    expect(badges.find((badge) => badge.key === `confirmed_${level}`)?.title).toBe(confirmedTitle)
+    expect(badges.find((badge) => badge.key === `master_${level}`)?.title).toBe(masterTitle)
+  })
+
+  it('exige les cinq modes du niveau pour débloquer un badge', () => {
+    const progress = badgeProgress()
+    progress.find((item) => item.game === 'division')!.attempts = 0
+
+    const discovery = buildBadgeStates(progress)
+      .find((badge) => badge.key === 'discovery_debutant')
+
+    expect(discovery).toMatchObject({
+      completed: false,
+      completedObjectives: 4,
+      totalObjectives: 5,
+      progress: 80,
+    })
+  })
+
+  it.each([
+    ['sprinter_apprentice_debutant', 'fastCorrectAnswers2500', 25],
+    ['sprinter_sharp_debutant', 'fastCorrectAnswers1800', 75],
+    ['sprinter_flash_debutant', 'fastCorrectAnswers1200', 150],
+  ] as const)('valide %s exactement à son seuil sur chaque mode', (badgeKey, field, target) => {
+    const exactProgress = badgeProgress().map((item) => ({ ...item, [field]: target }))
+    const belowOnOneMode = exactProgress.map((item) => (
+      item.game === 'division' ? { ...item, [field]: target - 1 } : item
+    ))
+
+    expect(buildBadgeStates(exactProgress).find((badge) => badge.key === badgeKey)?.completed).toBe(true)
+    expect(buildBadgeStates(belowOnOneMode).find((badge) => badge.key === badgeKey)?.completed).toBe(false)
+  })
+
+  it.each([
+    ['streak_stable_debutant', 5],
+    ['streak_solid_debutant', 10],
+    ['streak_long_debutant', 20],
+  ] as const)('valide %s exactement à son seuil de série sur chaque mode', (badgeKey, target) => {
+    const exactProgress = badgeProgress().map((item) => ({ ...item, bestStreak: target }))
+    const belowOnOneMode = exactProgress.map((item) => (
+      item.game === 'division' ? { ...item, bestStreak: target - 1 } : item
+    ))
+
+    expect(buildBadgeStates(exactProgress).find((badge) => badge.key === badgeKey)?.completed).toBe(true)
+    expect(buildBadgeStates(belowOnOneMode).find((badge) => badge.key === badgeKey)?.completed).toBe(false)
+  })
+
+  it.each([
+    ['volume_regular_debutant', 5],
+    ['volume_pillar_debutant', 20],
+    ['volume_marathon_debutant', 50],
+  ] as const)('valide %s exactement à son nombre de Sprints sur chaque mode', (badgeKey, target) => {
+    const exactProgress = badgeProgress().map((item) => ({ ...item, attempts: target }))
+    const belowOnOneMode = exactProgress.map((item) => (
+      item.game === 'division' ? { ...item, attempts: target - 1 } : item
+    ))
+
+    expect(buildBadgeStates(exactProgress).find((badge) => badge.key === badgeKey)?.completed).toBe(true)
+    expect(buildBadgeStates(belowOnOneMode).find((badge) => badge.key === badgeKey)?.completed).toBe(false)
+  })
+
   for (const level of ['debutant', 'intermediaire', 'avance', 'expert'] as const) {
     for (const durationSeconds of [60, 90, 120]) {
       it(`normalise la cadence par la durée pour ${level} en ${durationSeconds}s`, () => {

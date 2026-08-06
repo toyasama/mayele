@@ -342,6 +342,18 @@ const BADGE_TIERS: Array<{
   },
 ]
 
+function masteryBadgeTitle(
+  tier: (typeof BADGE_TIERS)[number],
+  level: GameLevel,
+  levelLabel: string,
+) {
+  if (tier.requirement === 'played') {
+    return `${tier.titlePrefix} ${levelLabel}`
+  }
+
+  return `${tier.titlePrefix} ${levelLabel} · cadence ${MASTERY_CADENCE_TARGETS[tier.requirement][level]}/min`
+}
+
 const SPEED_BADGE_TIERS: Array<{
   tier: BadgeTier
   titlePrefix: string
@@ -531,7 +543,7 @@ export function buildBadgeStates(progressByMode: BadgeProgressItem[], masterySpr
           detail: objectiveDetail(item, tier.requirement, performance, level),
         }
       })
-      const title = `${tier.titlePrefix} ${levelLabel}`
+      const title = masteryBadgeTitle(tier, level, levelLabel)
 
       return buildBadgeState({
         key: `${tier.tier}_${level}`,
