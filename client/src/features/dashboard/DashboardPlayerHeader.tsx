@@ -1,16 +1,53 @@
 import type { ReactNode } from 'react'
-import type { PlayerProgress } from '../../lib/api'
+import type { DashboardData, PlayerProgress } from '../../lib/api'
+import { isDailyMissionV2 } from '../../lib/missionNavigation'
+
+type Mission = DashboardData['missions'][number]
 
 type DashboardPlayerHeaderProps = {
   avatar: ReactNode
   name: string
   handle: string
   progress: PlayerProgress
-  bestStreak: number
-  todaySessions: number
-  dailyGoal: number
-  lastPlayedAt: string | null
-  formatDate: (value: string | null) => string
+  missions: Mission[]
+}
+
+function boundedProgress(value: number) {
+  return Math.max(0, Math.min(100, Math.round(value)))
+}
+
+function DashboardDailyMissions({ missions }: { missions: Mission[] }) {
+  const dailyMissions = missions.filter(isDailyMissionV2)
+
+  return (
+    <ul className="dashboard-daily-missions" aria-label="Missions du jour">
+      {dailyMissions.length ? dailyMissions.map((mission) => {
+        const progress = boundedProgress(mission.progress)
+        const completed = mission.completed || mission.claimed
+
+        return (
+          <li className={completed ? 'is-complete' : ''} key={`${mission.key}-${mission.scopeKey}`}>
+            <div>
+              <span title={mission.title}>{mission.title}</span>
+              <strong>{completed ? 'Terminée' : `${mission.current}/${mission.target}`}</strong>
+            </div>
+            <span
+              className="dashboard-daily-mission-progress"
+              role="progressbar"
+              aria-label={`Progression de la mission ${mission.title}`}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={progress}
+            >
+              <b style={{ width: `${progress}%` }} />
+            </span>
+          </li>
+        )
+      }) : (
+        <li className="dashboard-daily-missions-empty">Aucune mission active aujourd’hui.</li>
+      )}
+    </ul>
+  )
 }
 
 export function DashboardPlayerHeader({
@@ -18,14 +55,8 @@ export function DashboardPlayerHeader({
   name,
   handle,
   progress,
-  bestStreak,
-  todaySessions,
-  dailyGoal,
-  lastPlayedAt,
-  formatDate,
+  missions,
 }: DashboardPlayerHeaderProps) {
-  const dailyProgress = dailyGoal ? Math.min(100, Math.round((todaySessions / dailyGoal) * 100)) : 0
-
   return (
     <header className="dashboard-player-header" id="overview">
       <div className="dashboard-player-identity">
@@ -55,28 +86,7 @@ export function DashboardPlayerHeader({
       </div>
 
       <div className="dashboard-player-pulse">
-        <div>
-          <span>Aujourd’hui</span>
-          <strong>{todaySessions}/{dailyGoal} partie{dailyGoal > 1 ? 's' : ''}</strong>
-          <i
-            role="progressbar"
-            aria-label="Objectif quotidien"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={dailyProgress}
-          >
-            <b style={{ width: `${dailyProgress}%` }} />
-          </i>
-        </div>
-        <div>
-          <span>Meilleure série</span>
-          <strong>{bestStreak}</strong>
-          <small>réponses justes</small>
-        </div>
-        <div>
-          <span>Dernière partie</span>
-          <strong>{formatDate(lastPlayedAt)}</strong>
-        </div>
+        <DashboardDailyMissions missions={missions} />
       </div>
     </header>
   )

@@ -41,7 +41,7 @@ function lastActivityLabel(value: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return 'Activité inconnue'
 
-  return `Vu le ${new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(date)}`
+  return new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(date)
 }
 
 function PlayerFace({ player, size = 'normal' }: { player: PublicPlayer; size?: 'normal' | 'large' }) {
@@ -117,32 +117,27 @@ export function SocialRoster({ entries, renderActions }: SocialRosterProps) {
             </button>
             <div className="social-profile-identity">
               <PlayerFace player={selectedEntry.player} size="large" />
-              <div>
+              <div className="social-profile-identity-copy">
                 <span className={`profile-presence presence-${selectedEntry.player.presenceStatus}`}>
                   <span aria-hidden="true" />
                   {presenceLabel(selectedEntry.player.presenceStatus)}
                 </span>
                 <h3>{selectedEntry.player.name}</h3>
-                <p>{selectedEntry.player.username ? `@${selectedEntry.player.username}` : 'Profil Mayele'}</p>
+                <div className="social-profile-handle-row">
+                  <p>{selectedEntry.player.username ? `@${selectedEntry.player.username}` : 'Profil Mayele'}</p>
+                  <span className={`social-profile-relation status-${selectedEntry.status}`}>
+                    {relationLabel(selectedEntry.status)}
+                  </span>
+                </div>
               </div>
             </div>
 
-            <div className="social-profile-metrics">
-              <div><span>Niveau</span><strong>{getPlayerProgress(selectedEntry.player.totalXp).level}</strong></div>
-              <div><span>XP</span><strong>{new Intl.NumberFormat('fr-FR').format(selectedEntry.player.totalXp)}</strong></div>
-              <div><span>Relation</span><strong>{relationLabel(selectedEntry.status)}</strong></div>
-            </div>
-
             {selectedProgress ? (
-              <div className="social-profile-progress">
-                <div>
-                  <span>Niveau {selectedProgress.level}</span>
-                  <strong>{selectedProgress.isMaxLevel ? 'Niveau maximum' : `${selectedProgress.xpRemaining} XP avant le niveau ${selectedProgress.nextLevel}`}</strong>
+              <div className="social-profile-summary">
+                <div className="social-profile-metrics" aria-label="Progression du joueur">
+                  <div><span>Niveau</span><strong>{selectedProgress.level}</strong></div>
+                  <div><span>XP</span><strong>{new Intl.NumberFormat('fr-FR').format(selectedEntry.player.totalXp)}</strong></div>
                 </div>
-                <div className="social-profile-progress-bar" aria-label={`${selectedProgress.progress}% du niveau`}>
-                  <i style={{ width: `${selectedProgress.progress}%` }} />
-                </div>
-                <small>{selectedEntry.player.presenceStatus === 'online' ? 'Disponible maintenant' : lastActivityLabel(selectedEntry.player.presenceUpdatedAt)}</small>
               </div>
             ) : null}
 

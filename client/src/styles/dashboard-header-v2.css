@@ -115,20 +115,6 @@
   border-top: 1px solid var(--border);
 }
 
-.dashboard-player-pulse > div {
-  min-width: 0;
-  display: grid;
-  align-content: center;
-  gap: 5px;
-  min-height: 74px;
-  padding: 16px 20px 0;
-  border-right: 1px solid var(--border);
-}
-
-.dashboard-player-pulse > div:last-child {
-  border-right: 0;
-}
-
 .dashboard-player-pulse span,
 .dashboard-player-pulse small {
   color: var(--muted);
@@ -144,19 +130,77 @@
   white-space: nowrap;
 }
 
-.dashboard-player-pulse i {
-  overflow: hidden;
-  height: 5px;
-  margin-top: 3px;
-  border-radius: 999px;
-  background: #dcebed;
-}
-
 .dashboard-player-pulse b {
   display: block;
   height: 100%;
   border-radius: inherit;
   background: var(--primary);
+}
+
+.dashboard-player-pulse > .dashboard-daily-missions {
+  grid-column: 1 / -1;
+  min-width: 0;
+  min-height: 74px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dashboard-daily-missions li {
+  min-width: 0;
+  display: grid;
+  align-content: center;
+  gap: 5px;
+  padding: 16px 20px 0;
+  border-right: 1px solid var(--border);
+}
+
+.dashboard-daily-missions li:last-child {
+  border-right: 0;
+}
+
+.dashboard-daily-missions li > div {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.dashboard-player-pulse .dashboard-daily-missions li span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 0.7rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-player-pulse .dashboard-daily-missions li strong {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 0.65rem;
+}
+
+.dashboard-player-pulse .dashboard-daily-mission-progress {
+  display: block;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #dcebed;
+}
+
+.dashboard-daily-missions li.is-complete b {
+  background: var(--mint);
+}
+
+.dashboard-player-pulse .dashboard-daily-missions-empty {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
 }
 
 /* The recent-badge rail belongs to the dashboard route. Keeping these rules
@@ -306,11 +350,31 @@
     border-top: 0;
   }
 
-  .dashboard-player-pulse > div {
-    min-height: 62px;
+  .dashboard-player-pulse > .dashboard-daily-missions {
+    grid-column: auto;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    min-height: 76px;
     padding: 12px 0;
-    border-right: 0;
     border-top: 1px solid var(--border);
+  }
+
+  .dashboard-daily-missions li {
+    padding: 0 6px;
+  }
+
+  .dashboard-player-pulse .dashboard-daily-missions li span {
+    display: -webkit-box;
+    min-height: 2.3em;
+    font-size: 0.64rem;
+    line-height: 1.15;
+    white-space: normal;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .dashboard-player-pulse .dashboard-daily-missions li strong {
+    display: none;
   }
 }
 

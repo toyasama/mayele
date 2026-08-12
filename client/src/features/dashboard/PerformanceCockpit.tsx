@@ -23,6 +23,11 @@ type PerformanceCockpitProps = PerformanceCockpitBaseProps & {
   playHref?: (level: GameLevel, game?: GameType) => string
 }
 
+type PerformanceLevelCardsProps = Pick<PerformanceCockpitBaseProps, 'stats' | 'levelLabel'> & {
+  selectedLevel?: GameLevel
+  onSelectLevel?: (level: GameLevel) => void
+}
+
 const LEVELS: GameLevel[] = ['debutant', 'intermediaire', 'avance', 'expert']
 const GAMES: GameType[] = ['addition', 'soustraction', 'multiplication', 'division', 'mixte']
 const EMPTY_RECENT_SESSIONS: DashboardData['recentSessions'] = []
@@ -125,6 +130,92 @@ function defaultSelectedLevel(stats: PerformanceStats) {
     .find((level) => levelStatFor(stats, level).attempts > 0) ?? LEVELS[0]
 }
 
+type PerformanceLevelCardProps = {
+  active: boolean
+  item: LevelStat
+  label: string
+  level: GameLevel
+  onSelectLevel?: (level: GameLevel) => void
+}
+
+function PerformanceLevelCard({
+  active,
+  item,
+  label,
+  level,
+  onSelectLevel,
+}: PerformanceLevelCardProps) {
+  const accuracy = boundedPercent(item.averageAccuracy)
+  const className = `performance-level-tab ${active ? 'active' : ''} ${item.attempts ? 'played' : 'unplayed'}`
+  const content = (
+    <>
+      <span className="performance-level-tab-heading">
+        <strong>{label}</strong>
+      </span>
+      <span
+        className="performance-level-ring"
+        style={{ '--level-accuracy': `${accuracy}%` } as CSSProperties}
+        aria-label={item.attempts ? `${accuracy}% de précision au niveau ${label}` : `Niveau ${label} pas encore joué`}
+      >
+        <strong>{item.attempts ? `${accuracy}%` : '—'}</strong>
+      </span>
+      <span className="performance-level-sample">
+        <strong>{item.attempts} sprint{item.attempts > 1 ? 's' : ''}</strong>
+        <small>{sampleLabel(item.attempts)}</small>
+      </span>
+    </>
+  )
+
+  if (!onSelectLevel) {
+    return (
+      <article className={className} role="listitem">
+        {content}
+      </article>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      id={`performance-tab-${level}`}
+      aria-controls={`performance-panel-${level}`}
+      aria-pressed={active}
+      className={className}
+      onClick={() => onSelectLevel(level)}
+    >
+      {content}
+    </button>
+  )
+}
+
+export function PerformanceLevelCards({
+  stats,
+  levelLabel,
+  selectedLevel,
+  onSelectLevel,
+}: PerformanceLevelCardsProps) {
+  const interactive = Boolean(onSelectLevel)
+
+  return (
+    <div
+      className={`performance-level-tabs ${interactive ? '' : 'is-static'}`}
+      role={interactive ? 'group' : 'list'}
+      aria-label={interactive ? 'Choisir un niveau de difficulté' : 'Résultats par niveau de difficulté'}
+    >
+      {LEVELS.map((level) => (
+        <PerformanceLevelCard
+          active={interactive && selectedLevel === level}
+          item={levelStatFor(stats, level)}
+          key={level}
+          label={levelLabel(level)}
+          level={level}
+          onSelectLevel={onSelectLevel}
+        />
+      ))}
+    </div>
+  )
+}
+
 function dashboardSessionToHistory(session: DashboardData['recentSessions'][number]): OperationHistorySession {
   const responseTimes = session.answers.map((answer) => answer.responseTimeMs)
 
@@ -183,6 +274,10 @@ export function PerformanceCockpit({
     return left.averageAccuracy - right.averageAccuracy
   })[0]
   const closeOperationDetail = useCallback(() => setSelectedGame(null), [])
+  const selectLevel = useCallback((level: GameLevel) => {
+    setSelectedLevel(level)
+    setSelectedGame(null)
+  }, [])
   const retryOperationHistory = useCallback(() => {
     if (!historyKey || !loadOperationHistory) {
       return
@@ -236,43 +331,12 @@ export function PerformanceCockpit({
   return (
     <section className="performance-v2" aria-labelledby="performance-v2-title">
 
-      <div className="performance-level-tabs" role="group" aria-label="Choisir un niveau de difficulté">
-        {LEVELS.map((level) => {
-          const item = levelStatFor(stats, level)
-          const active = selectedLevel === level
-          const accuracy = boundedPercent(item.averageAccuracy)
-
-          return (
-            <button
-              type="button"
-              id={`performance-tab-${level}`}
-              aria-controls={`performance-panel-${level}`}
-              aria-pressed={active}
-              className={`performance-level-tab ${active ? 'active' : ''} ${item.attempts ? 'played' : 'unplayed'}`}
-              key={level}
-              onClick={() => {
-                setSelectedLevel(level)
-                setSelectedGame(null)
-              }}
-            >
-              <span className="performance-level-tab-heading">
-                <strong>{levelLabel(level)}</strong>
-              </span>
-              <span
-                className="performance-level-ring"
-                style={{ '--level-accuracy': `${accuracy}%` } as CSSProperties}
-                aria-label={item.attempts ? `${accuracy}% de précision au niveau ${levelLabel(level)}` : `Niveau ${levelLabel(level)} pas encore joué`}
-              >
-                <strong>{item.attempts ? `${accuracy}%` : '—'}</strong>
-              </span>
-              <span className="performance-level-sample">
-                <strong>{item.attempts} sprint{item.attempts > 1 ? 's' : ''}</strong>
-                <small>{sampleLabel(item.attempts)}</small>
-              </span>
-            </button>
-          )
-        })}
-      </div>
+      <PerformanceLevelCards
+        stats={stats}
+        levelLabel={levelLabel}
+        selectedLevel={selectedLevel}
+        onSelectLevel={selectLevel}
+      />
 
       <article
         className={`performance-level-detail ${selectedGame && selectedProgress ? 'is-operation-selected' : ''}`}

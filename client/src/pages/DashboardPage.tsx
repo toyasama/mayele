@@ -5,7 +5,7 @@ import { ResponsiveTabs } from '../components/layout/ResponsiveTabs'
 import { useAuth } from '../context/auth'
 import { useProfile } from '../context/profile-context'
 import { DashboardPlayerHeader } from '../features/dashboard/DashboardPlayerHeader'
-import { PerformanceCockpit } from '../features/dashboard/PerformanceCockpit'
+import { PerformanceCockpit, PerformanceLevelCards } from '../features/dashboard/PerformanceCockpit'
 import { QuestPath } from '../features/dashboard/QuestPath'
 import { SessionTimeline } from '../features/dashboard/SessionTimeline'
 import { TrophyShelf } from '../features/dashboard/TrophyShelf'
@@ -488,13 +488,6 @@ export function DashboardPage() {
       fastestAverageResponseTimeMs: null,
     },
   }
-  const stats = [
-    { label: 'Sessions', value: data.summary.totalSessions, tone: 'coral', mark: 'S' },
-    { label: 'XP totale', value: totalXp, tone: 'mint', mark: 'XP' },
-    { label: 'Record', value: `${data.summary.bestScore}%`, tone: 'blue', mark: 'R' },
-    { label: 'Meilleure série', value: data.summary.bestStreak, tone: 'rose', mark: 'x' },
-  ]
-
   const mobileTabs: Array<{ key: DashboardMobileTab; label: string }> = [
     { key: 'overview', label: 'Aperçu' },
     { key: 'stats', label: 'Stats' },
@@ -518,11 +511,7 @@ export function DashboardPage() {
           name={profileName}
           handle={profileHandle(data.player)}
           progress={playerLevel}
-          bestStreak={data.summary.bestStreak}
-          todaySessions={data.summary.todaySessions}
-          dailyGoal={data.summary.dailyGoal}
-          lastPlayedAt={data.summary.lastPlayedAt}
-          formatDate={formatDate}
+          missions={dashboardMissions}
         />
       ) : null}
 
@@ -561,17 +550,7 @@ export function DashboardPage() {
           <h2>Vos résultats</h2>
         </div>
 
-        <div className="stats-grid dashboard-stats-grid">
-          {stats.map((stat) => (
-            <article className={`card stat-card tone-${stat.tone}`} key={stat.label}>
-              <div>
-                <span>{stat.label}</span>
-                <strong>{stat.value}</strong>
-              </div>
-              <span className="stat-mark" aria-hidden="true">{stat.mark}</span>
-            </article>
-          ))}
-        </div>
+        <PerformanceLevelCards stats={dashboardStats} levelLabel={levelLabel} />
 
       </section>
 

@@ -57,6 +57,17 @@
   transform: translateY(-2px);
 }
 
+.performance-level-tabs.is-static .performance-level-tab {
+  cursor: default;
+  transition: none;
+}
+
+.performance-level-tabs.is-static .performance-level-tab:hover {
+  border-color: var(--border);
+  box-shadow: 0 14px 34px rgba(16, 24, 40, 0.06);
+  transform: none;
+}
+
 .performance-level-tab:focus-visible {
   outline: 3px solid rgba(14, 165, 148, 0.28);
   outline-offset: 3px;
