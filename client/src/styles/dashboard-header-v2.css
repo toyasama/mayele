@@ -193,7 +193,7 @@
   background: transparent;
 }
 
-.dashboard-profile-badge-card.friend-badge-card {
+.dashboard-profile-badge-card {
   width: 108px;
   min-width: 108px;
   min-height: 112px;
@@ -210,28 +210,46 @@
   text-align: center;
 }
 
-.dashboard-profile-badge-card.friend-badge-card .badge-art {
+.dashboard-badge-art-viewport {
+  --dashboard-badge-art-scale: 1;
+  position: relative;
+  display: block;
+  flex: 0 0 auto;
+  overflow: hidden;
+  contain: layout paint;
+}
+
+.dashboard-badge-art-viewport > .badge-art {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 104px;
+  height: 122px;
+  transform: translate(-50%, -50%) scale(var(--dashboard-badge-art-scale));
+  transform-origin: center;
+}
+
+.dashboard-profile-badge-card .dashboard-badge-art-viewport {
   width: 46px;
   height: 46px;
+  --dashboard-badge-art-scale: 0.38;
 }
 
-.dashboard-profile-badge-card.friend-badge-card .badge-core {
-  width: 33px;
-  height: 33px;
+.dashboard-profile-badge-card .dashboard-badge-art-viewport.rank-two {
+  --dashboard-badge-art-scale: 0.35;
 }
 
-.dashboard-profile-badge-card.friend-badge-card .badge-family-icon {
-  width: 24px;
-  height: 24px;
+.dashboard-profile-badge-card .dashboard-badge-art-viewport.rank-three {
+  --dashboard-badge-art-scale: 0.29;
 }
 
-.dashboard-profile-badge-card.friend-badge-card div {
+.dashboard-profile-badge-card div {
   min-width: 0;
   display: grid;
   justify-items: center;
 }
 
-.dashboard-profile-badge-card.friend-badge-card strong {
+.dashboard-profile-badge-card strong {
   max-width: 100%;
   font-size: 0.74rem;
   font-weight: 900;
@@ -239,7 +257,7 @@
   overflow-wrap: anywhere;
 }
 
-.dashboard-profile-badges-section .friend-badge-placeholder {
+.dashboard-profile-badge-placeholder {
   width: 108px;
   min-width: 108px;
 }
@@ -307,11 +325,39 @@
     display: none;
   }
 
-  .dashboard-profile-badge-card.friend-badge-card {
+  .dashboard-profile-badge-card {
     width: 96px;
     min-width: 96px;
     min-height: 104px;
   }
+
+  .dashboard-profile-badge-card .dashboard-badge-art-viewport {
+    width: 40px;
+    height: 42px;
+    --dashboard-badge-art-scale: 0.34;
+  }
+
+  .dashboard-profile-badge-card .dashboard-badge-art-viewport.rank-two {
+    --dashboard-badge-art-scale: 0.31;
+  }
+
+  .dashboard-profile-badge-card .dashboard-badge-art-viewport.rank-three {
+    --dashboard-badge-art-scale: 0.25;
+  }
+}
+
+.dashboard-badge-sheet-header .dashboard-badge-art-viewport {
+  width: 74px;
+  height: 84px;
+  --dashboard-badge-art-scale: 0.68;
+}
+
+.dashboard-badge-sheet-header .dashboard-badge-art-viewport.rank-two {
+  --dashboard-badge-art-scale: 0.6;
+}
+
+.dashboard-badge-sheet-header .dashboard-badge-art-viewport.rank-three {
+  --dashboard-badge-art-scale: 0.48;
 }
 
 @media (max-width: 767px) {

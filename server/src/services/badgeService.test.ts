@@ -17,6 +17,7 @@ const {
   BADGE_SPRINT_DURATION_SECONDS,
   LEGACY_SOLO_RUN_CUTOVER_AT,
   getPlayerBadgeStates,
+  loadPlayerBadgeStates,
 } = await import('./badgeService.js')
 
 describe('getPlayerBadgeStates', () => {
@@ -112,5 +113,31 @@ describe('getPlayerBadgeStates', () => {
 
     expect(addition).toMatchObject({ completed: true })
     expect(addition?.detail).toContain('12/12 rép./min')
+  })
+})
+
+describe('loadPlayerBadgeStates', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    prismaMock.answer.groupBy.mockResolvedValue([])
+    prismaMock.gameSession.groupBy.mockResolvedValue([])
+    prismaMock.gameSession.findMany.mockResolvedValue([])
+  })
+
+  it('includes the current session before its SoloRun becomes completed', async () => {
+    await loadPlayerBadgeStates(prismaMock as never, 'player_1', { includeSessionId: 'session-current' })
+
+    expect(prismaMock.gameSession.groupBy).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        playerId: 'player_1',
+        OR: [...BADGE_SOLO_SPRINT_SCOPE.OR, { id: 'session-current' }],
+      },
+    }))
+    for (const [call] of prismaMock.answer.groupBy.mock.calls) {
+      expect(call.where.OR).toEqual([
+        { session: { is: BADGE_SOLO_SPRINT_SCOPE } },
+        { sessionId: 'session-current' },
+      ])
+    }
   })
 })

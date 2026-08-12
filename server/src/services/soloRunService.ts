@@ -265,6 +265,7 @@ function emptyRunResult(totalXp: number): SoloRunFinalResult {
     xpEarned: 0,
     missionXpEarned: 0,
     completedMissions: [],
+    completedBadges: [],
     playerProgress: getPlayerProgress(totalXp),
     earnedAchievements: [],
   }

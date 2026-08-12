@@ -4,6 +4,59 @@ export type SerializedPublicPlayer = ReturnType<typeof serializePublicPlayer>
 type SerializedMatchBase = ReturnType<typeof serializeMatchBase>
 export type SerializedMatch = SerializedMatchBase
 
+type SerializedSessionRewards = {
+  missionXpEarned: number
+  completedMissions: Array<{ key: string; title: string; rewardXp: number }>
+  completedBadges: Array<{ key: string; title: string; familyLabel: string }>
+  earnedAchievements: Array<{ key: string; label: string }>
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function stringValue(value: unknown) {
+  return typeof value === 'string' ? value : null
+}
+
+export function serializeSessionRewards(value: unknown): SerializedSessionRewards | null {
+  if (!isRecord(value)) return null
+
+  const completedMissions = Array.isArray(value.completedMissions)
+    ? value.completedMissions.flatMap((mission) => {
+        if (!isRecord(mission)) return []
+        const key = stringValue(mission.key)
+        const title = stringValue(mission.title)
+        const rewardXp = typeof mission.rewardXp === 'number' ? mission.rewardXp : null
+        return key && title && rewardXp !== null ? [{ key, title, rewardXp }] : []
+      })
+    : []
+  const completedBadges = Array.isArray(value.completedBadges)
+    ? value.completedBadges.flatMap((badge) => {
+        if (!isRecord(badge)) return []
+        const key = stringValue(badge.key)
+        const title = stringValue(badge.title)
+        const familyLabel = stringValue(badge.familyLabel)
+        return key && title && familyLabel ? [{ key, title, familyLabel }] : []
+      })
+    : []
+  const earnedAchievements = Array.isArray(value.earnedAchievements)
+    ? value.earnedAchievements.flatMap((achievement) => {
+        if (!isRecord(achievement)) return []
+        const key = stringValue(achievement.key)
+        const label = stringValue(achievement.label)
+        return key && label ? [{ key, label }] : []
+      })
+    : []
+
+  return {
+    missionXpEarned: typeof value.missionXpEarned === 'number' ? value.missionXpEarned : 0,
+    completedMissions,
+    completedBadges,
+    earnedAchievements,
+  }
+}
+
 export function serializePublicPlayer(player: MatchView['participants'][number]['player']) {
   return {
     id: player.id,
@@ -63,6 +116,7 @@ function serializeMatchBase(match: MatchView) {
       forfeitedAt: participant.forfeitedAt?.toISOString() ?? null,
       rematchRequestedAt: participant.rematchRequestedAt?.toISOString() ?? null,
       resultDismissedAt: participant.resultDismissedAt?.toISOString() ?? null,
+      rewards: serializeSessionRewards(participant.session?.submissionResult),
       challengeStats: participant.challengeStats,
       player: serializePublicPlayer(participant.player),
     })),

@@ -131,6 +131,7 @@ export type MatchParticipantData = {
   forfeitedAt: string | null
   rematchRequestedAt: string | null
   resultDismissedAt: string | null
+  rewards?: SessionRewardData | null
   challengeStats: {
     room: {
       wins: number
@@ -197,15 +198,22 @@ export type PlayerProgress = {
   isMaxLevel: boolean
 }
 
-export type SoloRunResult = {
+export type CompletedMissionReward = { key: string; title: string; rewardXp: number }
+export type CompletedBadgeReward = { key: string; title: string; familyLabel: string }
+
+export type SessionRewardData = {
+  missionXpEarned: number
+  completedMissions: CompletedMissionReward[]
+  completedBadges: CompletedBadgeReward[]
+  earnedAchievements: Array<{ key: string; label: string }>
+}
+
+export type SoloRunResult = SessionRewardData & {
   sessionId: string | null
   message: string
   scorePoints: number
   xpEarned: number
-  missionXpEarned: number
-  completedMissions: Array<{ key: string; title: string; rewardXp: number }>
   playerProgress: PlayerProgress
-  earnedAchievements: Array<{ key: string; label: string }>
 }
 
 export type SoloRunQuestion = {

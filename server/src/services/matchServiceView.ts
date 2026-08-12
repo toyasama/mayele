@@ -17,6 +17,7 @@ export const MATCH_INCLUDE = {
   participants: {
     include: {
       player: { select: PUBLIC_PLAYER_SELECT },
+      session: { select: { submissionResult: true } },
     },
     orderBy: { joinedAt: 'asc' as const },
   },
@@ -41,6 +42,7 @@ export type MatchParticipantView = {
   forfeitedAt: Date | null
   rematchRequestedAt: Date | null
   resultDismissedAt: Date | null
+  session?: { submissionResult: unknown } | null
   challengeStats: ParticipantChallengeStats
   player: PublicPlayer
 }

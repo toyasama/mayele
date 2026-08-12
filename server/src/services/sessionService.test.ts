@@ -70,6 +70,10 @@ const tx = {
 const gameSessionFindUnique = vi.fn()
 const transactionMock = vi.fn(async (callback: (txArg: typeof tx) => Promise<unknown>) => callback(tx))
 const loadDailyMissionStatesMock = vi.fn()
+const loadPlayerBadgeStatesMock = vi.fn()
+const createNotificationMock = vi.fn(async (input: Record<string, unknown>) => input)
+const serializeNotificationMock = vi.fn((notification: Record<string, unknown>) => notification)
+const enqueueOutboxEventMock = vi.fn(async () => ({ id: 'outbox-1' }))
 
 vi.mock('../lib/prisma.js', () => ({
   prisma: {
@@ -80,6 +84,25 @@ vi.mock('../lib/prisma.js', () => ({
 
 vi.mock('./dailyMissionService.js', () => ({
   loadDailyMissionStates: loadDailyMissionStatesMock,
+}))
+
+vi.mock('./badgeService.js', () => ({
+  BADGE_SPRINT_DURATION_SECONDS: [60, 90, 120],
+  loadPlayerBadgeStates: loadPlayerBadgeStatesMock,
+}))
+
+vi.mock('./notificationService.js', () => ({
+  badgeEarnedNotificationKey: (badgeKey: string) => `reward:badge:${badgeKey}`,
+  createNotification: createNotificationMock,
+  missionCompletedNotificationKey: (scopeKey: string, missionKey: string) => `reward:mission:${scopeKey}:${missionKey}`,
+}))
+
+vi.mock('./notificationPresenter.js', () => ({
+  serializeNotification: serializeNotificationMock,
+}))
+
+vi.mock('./outboxService.js', () => ({
+  enqueueOutboxEvent: enqueueOutboxEventMock,
 }))
 
 const { saveSession } = await import('./sessionService.js')
@@ -139,6 +162,7 @@ describe('saveSession', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-07-01T12:00:00.000Z'))
     loadDailyMissionStatesMock.mockResolvedValue(completedMissionStates('2026-07-01'))
+    loadPlayerBadgeStatesMock.mockResolvedValue([])
   })
 
   afterEach(() => {
@@ -251,6 +275,50 @@ describe('saveSession', () => {
         { key: 'daily_goal', label: 'Objectif du jour' },
       ],
     })
+    expect(createNotificationMock).toHaveBeenCalledTimes(3)
+    expect(createNotificationMock).toHaveBeenCalledWith(expect.objectContaining({
+      playerId: 'player-1',
+      type: 'mission_completed',
+      title: 'Mission terminée : Mission facile',
+      body: 'Vous gagnez 40 XP.',
+      dedupeKey: `reward:mission:${day}:daily-v2_easy`,
+    }), tx)
+    expect(enqueueOutboxEventMock).toHaveBeenCalledTimes(3)
+  })
+
+  it('returns and notifies a badge completed by the current Solo Sprint', async () => {
+    const day = getDailyScopeKey(undefined, 'Europe/Paris')
+    const badge = {
+      key: 'streak_stable_expert',
+      title: 'Série stable Expert',
+      familyLabel: 'Séries',
+    }
+    loadDailyMissionStatesMock.mockResolvedValueOnce(
+      completedMissionStates(day).map((mission) => ({ ...mission, claimed: true })),
+    )
+    loadPlayerBadgeStatesMock
+      .mockResolvedValueOnce([{ ...badge, completed: false }])
+      .mockResolvedValueOnce([{ ...badge, completed: true }])
+
+    const result = await saveSession('player-1', perfectSessionPayload, 'Europe/Paris', {
+      dailyMissionContext: completedSoloSprintContext,
+    })
+
+    expect(loadPlayerBadgeStatesMock).toHaveBeenNthCalledWith(1, tx, 'player-1')
+    expect(loadPlayerBadgeStatesMock).toHaveBeenNthCalledWith(2, tx, 'player-1', { includeSessionId: 'session-1' })
+    expect(result.completedBadges).toEqual([badge])
+    expect(createNotificationMock).toHaveBeenCalledTimes(1)
+    expect(createNotificationMock).toHaveBeenCalledWith(expect.objectContaining({
+      playerId: 'player-1',
+      type: 'badge_earned',
+      title: 'Badge débloqué : Série stable Expert',
+      body: 'Nouveau badge Séries.',
+      dedupeKey: 'reward:badge:streak_stable_expert',
+    }), tx)
+    expect(enqueueOutboxEventMock).toHaveBeenCalledWith(tx, expect.objectContaining({
+      dedupeKey: 'session:session-1:badge:streak_stable_expert:notification',
+      topic: 'notification.created',
+    }))
   })
 
   it('does not award the same daily missions twice', async () => {

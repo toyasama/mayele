@@ -175,3 +175,11 @@ export function matchAcceptedNotificationKey(matchId: string) {
 export function matchDeclinedNotificationKey(matchId: string) {
   return `match:${matchId}:declined`
 }
+
+export function missionCompletedNotificationKey(scopeKey: string, missionKey: string) {
+  return `reward:mission:${scopeKey}:${missionKey}`
+}
+
+export function badgeEarnedNotificationKey(badgeKey: string) {
+  return `reward:badge:${badgeKey}`
+}

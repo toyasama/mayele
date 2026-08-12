@@ -1136,6 +1136,7 @@ export function GamePage() {
           sessionLabel={sessionLabel}
           skillLabel={(skill) => SKILL_LABELS[skill]}
           stats={stats}
+          result={runRef.current.result}
           onReplay={startSession}
           onReturn={() => goToModeHome('/jeu/solo')}
         />

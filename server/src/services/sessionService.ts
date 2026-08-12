@@ -9,8 +9,16 @@ import { ApiError } from '../errors.js'
 import type { Prisma } from '../generated/prisma/client.js'
 import { prisma } from '../lib/prisma.js'
 import type { SessionPayload } from '../schemas/sessionSchema.js'
+import { BADGE_SPRINT_DURATION_SECONDS, loadPlayerBadgeStates } from './badgeService.js'
 import { loadDailyMissionStates } from './dailyMissionService.js'
 import { invalidateDashboardCache } from './dashboardService.js'
+import { serializeNotification } from './notificationPresenter.js'
+import {
+  badgeEarnedNotificationKey,
+  createNotification,
+  missionCompletedNotificationKey,
+} from './notificationService.js'
+import { enqueueOutboxEvent } from './outboxService.js'
 import { appendXpLedgerEntries } from './xpLedgerService.js'
 
 function calculateAccuracy(correctAnswers: number, totalQuestions: number) {
@@ -28,6 +36,7 @@ export type SessionSaveResult = {
   xpEarned: number
   missionXpEarned: number
   completedMissions: Array<{ key: string; title: string; rewardXp: number }>
+  completedBadges: Array<{ key: string; title: string; familyLabel: string }>
   playerProgress: ReturnType<typeof getPlayerProgress>
   earnedAchievements: Array<{ key: string; label: string }>
 }
@@ -112,6 +121,75 @@ async function lockSessionSubmission(tx: Prisma.TransactionClient, playerId: str
   `
 }
 
+async function lockPlayerRewards(tx: Prisma.TransactionClient, playerId: string) {
+  const lockKey = `session-rewards:${playerId}`
+  await tx.$queryRaw`
+    SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))::text AS acquired
+  `
+}
+
+function canCompleteSoloSprintBadge(options: SaveSessionOptions) {
+  const context = options.dailyMissionContext
+  return context?.playContext === 'solo'
+    && context.challengeMode === 'sprint'
+    && context.completedWithoutAbandonment
+    && BADGE_SPRINT_DURATION_SECONDS.includes(
+      context.configuredDurationSeconds as (typeof BADGE_SPRINT_DURATION_SECONDS)[number],
+    )
+}
+
+async function createRewardNotifications(
+  tx: Prisma.TransactionClient,
+  playerId: string,
+  sessionId: string,
+  missions: Array<{ key: string; title: string; rewardXp: number; scopeKey: string }>,
+  badges: Array<{ key: string; title: string; familyLabel: string }>,
+) {
+  for (const mission of missions) {
+    const notification = await createNotification({
+      playerId,
+      type: 'mission_completed',
+      title: `Mission terminée : ${mission.title}`,
+      body: `Vous gagnez ${mission.rewardXp} XP.`,
+      href: '/dashboard?view=missions',
+      dedupeKey: missionCompletedNotificationKey(mission.scopeKey, mission.key),
+    }, tx)
+    await enqueueOutboxEvent(tx, {
+      dedupeKey: `session:${sessionId}:mission:${mission.key}:notification`,
+      topic: 'notification.created',
+      aggregateType: 'game_session',
+      aggregateId: sessionId,
+      payload: {
+        playerId,
+        reason: 'notification_created',
+        notification: serializeNotification(notification),
+      },
+    })
+  }
+
+  for (const badge of badges) {
+    const notification = await createNotification({
+      playerId,
+      type: 'badge_earned',
+      title: `Badge débloqué : ${badge.title}`,
+      body: `Nouveau badge ${badge.familyLabel}.`,
+      href: '/dashboard?view=missions',
+      dedupeKey: badgeEarnedNotificationKey(badge.key),
+    }, tx)
+    await enqueueOutboxEvent(tx, {
+      dedupeKey: `session:${sessionId}:badge:${badge.key}:notification`,
+      topic: 'notification.created',
+      aggregateType: 'game_session',
+      aggregateId: sessionId,
+      payload: {
+        playerId,
+        reason: 'notification_created',
+        notification: serializeNotification(notification),
+      },
+    })
+  }
+}
+
 export async function settleSession(
   tx: Prisma.TransactionClient,
   playerId: string,
@@ -132,6 +210,8 @@ export async function settleSession(
       }
     }
   }
+
+  await lockPlayerRewards(tx, playerId)
 
   const parsedAnswers = payload.answers.map((answer) => ({
     ...answer,
@@ -155,6 +235,9 @@ export async function settleSession(
     bestStreak: payload.bestStreak,
   })
   const day = getDailyScopeKey(undefined, timeZone)
+  const badgesBeforeSession = canCompleteSoloSprintBadge(options)
+    ? await loadPlayerBadgeStates(tx, playerId)
+    : []
   const session = await tx.gameSession.create({
     data: {
       playerId,
@@ -314,6 +397,22 @@ export async function settleSession(
     key,
     label: ACHIEVEMENTS[key].label,
   }))
+  const completedBadgeKeysBeforeSession = new Set(
+    badgesBeforeSession.filter((badge) => badge.completed).map((badge) => badge.key),
+  )
+  const badgesAfterSession = canCompleteSoloSprintBadge(options)
+    ? await loadPlayerBadgeStates(tx, playerId, { includeSessionId: session.id })
+    : []
+  const completedBadges = badgesAfterSession
+    .filter((badge) => badge.completed && !completedBadgeKeysBeforeSession.has(badge.key))
+    .map((badge) => ({
+      key: badge.key,
+      title: badge.title,
+      familyLabel: badge.familyLabel,
+    }))
+
+  await createRewardNotifications(tx, playerId, session.id, awardedMissions, completedBadges)
+
   const canonicalResult: SessionSaveResult = {
     sessionId: session.id,
     scorePoints,
@@ -325,6 +424,7 @@ export async function settleSession(
       title: mission.title,
       rewardXp: mission.rewardXp,
     })),
+    completedBadges,
     playerProgress: getPlayerProgress(xpProjection.totalXp),
     earnedAchievements,
   }
