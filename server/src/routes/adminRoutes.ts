@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { getMatchExpirationWorkerHealth } from '../services/matchExpirationWorker.js'
 import { getOutboxDispatcherHealth } from '../services/outboxDispatcher.js'
+import { getSoloRunExpirationWorkerHealth } from '../services/soloRunExpirationWorker.js'
 import { getRequiredAuth } from '../middleware/auth.js'
 import { isAdminClerkUser, requireAdmin, requireRecentVerification } from '../middleware/admin.js'
 import { adminDestructiveActionSchema, adminPlayerParamsSchema, adminUsersQuerySchema } from '../schemas/adminSchema.js'
@@ -26,6 +27,7 @@ export function adminRoutes() {
         workers: {
           outbox: getOutboxDispatcherHealth(),
           matchExpiration: getMatchExpirationWorkerHealth(),
+          soloRunExpiration: getSoloRunExpirationWorkerHealth(),
         },
       })
     } catch (error) {

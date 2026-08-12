@@ -1,17 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const prismaMock = {
-  soloRun: {
-    findFirst: vi.fn(),
-    updateMany: vi.fn(async () => ({ count: 1 })),
-    update: vi.fn(async () => ({})),
-  },
-  player: {
-    findUniqueOrThrow: vi.fn(async () => ({ totalXp: 100, timeZone: 'Europe/Paris' })),
-  },
-}
-
-const saveSessionMock = vi.fn(async () => ({
+const sessionResult = {
   sessionId: 'session-1',
   scorePoints: 8,
   message: 'Session enregistrée.',
@@ -20,10 +9,43 @@ const saveSessionMock = vi.fn(async () => ({
   completedMissions: [],
   playerProgress: { totalXp: 112 },
   earnedAchievements: [],
+}
+
+const txMock = {
+  $queryRaw: vi.fn(async () => [{ id: 'run-1' }]),
+  soloRun: {
+    findUnique: vi.fn(),
+    update: vi.fn(),
+  },
+  player: {
+    findUniqueOrThrow: vi.fn(async () => ({
+      totalXp: 100,
+      timeZone: 'Europe/Paris',
+    })),
+  },
+}
+
+const prismaMock = {
+  $transaction: vi.fn(async (callback: (tx: typeof txMock) => Promise<unknown>) => callback(txMock)),
+  soloRun: {
+    findFirst: vi.fn(),
+    findUnique: vi.fn(),
+    updateMany: vi.fn(async () => ({ count: 1 })),
+    update: vi.fn(async () => ({})),
+  },
+}
+
+const settleSessionMock = vi.fn(async () => ({
+  result: sessionResult,
+  created: true,
 }))
+const invalidateDashboardCacheMock = vi.fn()
 
 vi.mock('../lib/prisma.js', () => ({ prisma: prismaMock }))
-vi.mock('./sessionService.js', () => ({ saveSession: saveSessionMock }))
+vi.mock('./sessionService.js', () => ({ settleSession: settleSessionMock }))
+vi.mock('./dashboardService.js', () => ({
+  invalidateDashboardCache: invalidateDashboardCacheMock,
+}))
 
 const { finishSoloRun } = await import('./soloRunService.js')
 
@@ -33,7 +55,7 @@ function makeRun(options: {
   currentQuestionIndex?: number
   questionCount?: number
   finishedAt?: Date | null
-  result?: Awaited<ReturnType<typeof saveSessionMock>> | null
+  result?: typeof sessionResult | null
 }) {
   const startedAt = new Date('2026-08-06T10:00:00.000Z')
   const questionCount = options.questionCount ?? (options.mode === 'tempo' ? 10 : 120)
@@ -65,20 +87,22 @@ function makeRun(options: {
     finishedAt: options.finishedAt ?? null,
     sessionId: options.status === 'completed' ? 'session-1' : null,
     result: options.result ?? null,
-    answers: [{
-      id: 'answer-1',
-      runId: 'run-1',
-      questionIndex: 0,
-      prompt: '1 + 1',
-      correctAnswer: 2,
-      userAnswer: 2,
-      responseTimeMs: 500,
-      isCorrect: true,
-      game: 'addition',
-      level: 'debutant',
-      skill: 'addition',
-      answeredAt: new Date(startedAt.getTime() + 500),
-    }],
+    answers: [
+      {
+        id: 'answer-1',
+        runId: 'run-1',
+        questionIndex: 0,
+        prompt: '1 + 1',
+        correctAnswer: 2,
+        userAnswer: 2,
+        responseTimeMs: 500,
+        isCorrect: true,
+        game: 'addition',
+        level: 'debutant',
+        skill: 'addition',
+        answeredAt: new Date(startedAt.getTime() + 500),
+      },
+    ],
   }
 }
 
@@ -88,26 +112,27 @@ function arrangeFinish(run: ReturnType<typeof makeRun>, finishedAt: Date) {
     ...finalizing,
     status: 'completed',
     sessionId: 'session-1',
-    result: {
-      sessionId: 'session-1',
-      scorePoints: 8,
-      message: 'Session enregistrée.',
-      xpEarned: 12,
-      missionXpEarned: 0,
-      completedMissions: [],
-      playerProgress: { totalXp: 112 },
-      earnedAchievements: [],
-    },
+    result: sessionResult,
   }
-  prismaMock.soloRun.findFirst
-    .mockResolvedValueOnce(run)
-    .mockResolvedValueOnce(finalizing)
-    .mockResolvedValueOnce(completed)
+  txMock.soloRun.findUnique.mockResolvedValueOnce(run)
+  txMock.soloRun.update.mockResolvedValueOnce(finalizing).mockResolvedValueOnce(completed)
 }
 
 describe('finishSoloRun daily mission eligibility', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    prismaMock.$transaction.mockImplementation(async (callback: (tx: typeof txMock) => Promise<unknown>) =>
+      callback(txMock),
+    )
+    txMock.$queryRaw.mockResolvedValue([{ id: 'run-1' }])
+    txMock.player.findUniqueOrThrow.mockResolvedValue({
+      totalXp: 100,
+      timeZone: 'Europe/Paris',
+    })
+    settleSessionMock.mockResolvedValue({
+      result: sessionResult,
+      created: true,
+    })
     vi.useFakeTimers()
   })
 
@@ -122,7 +147,8 @@ describe('finishSoloRun daily mission eligibility', () => {
 
     await finishSoloRun('player-1', 'run-1')
 
-    expect(saveSessionMock).toHaveBeenCalledWith(
+    expect(settleSessionMock).toHaveBeenCalledWith(
+      txMock,
       'player-1',
       expect.any(Object),
       'Europe/Paris',
@@ -144,7 +170,8 @@ describe('finishSoloRun daily mission eligibility', () => {
 
     await finishSoloRun('player-1', 'run-1')
 
-    expect(saveSessionMock).toHaveBeenCalledWith(
+    expect(settleSessionMock).toHaveBeenCalledWith(
+      txMock,
       'player-1',
       expect.any(Object),
       'Europe/Paris',
@@ -166,7 +193,8 @@ describe('finishSoloRun daily mission eligibility', () => {
 
     await finishSoloRun('player-1', 'run-1')
 
-    expect(saveSessionMock).toHaveBeenCalledWith(
+    expect(settleSessionMock).toHaveBeenCalledWith(
+      txMock,
       'player-1',
       expect.any(Object),
       'Europe/Paris',
@@ -180,5 +208,50 @@ describe('finishSoloRun daily mission eligibility', () => {
         }),
       }),
     )
+  })
+
+  it('settles concurrent finalizations once and returns the canonical completed run to both callers', async () => {
+    const finishedAt = new Date('2026-08-06T10:01:00.000Z')
+    vi.setSystemTime(finishedAt)
+    let persistedRun = makeRun({ mode: 'sprint' })
+    let transactionTail = Promise.resolve()
+
+    prismaMock.$transaction.mockImplementation((callback: (tx: typeof txMock) => Promise<unknown>) => {
+      const current = transactionTail.then(() => callback(txMock))
+      transactionTail = current.then(
+        () => undefined,
+        () => undefined,
+      )
+      return current
+    })
+    txMock.soloRun.findUnique.mockImplementation(async () => persistedRun)
+    txMock.soloRun.update.mockImplementation(
+      async (input: {
+        data: {
+          status: 'active' | 'finalizing' | 'completed'
+          finishedAt: Date
+          sessionId?: string | null
+          result?: unknown
+        }
+      }) => {
+        persistedRun = {
+          ...persistedRun,
+          ...input.data,
+          result: input.data.result === undefined ? persistedRun.result : (input.data.result as typeof sessionResult),
+          sessionId: input.data.sessionId === undefined ? persistedRun.sessionId : input.data.sessionId,
+        }
+        return persistedRun
+      },
+    )
+
+    const [first, second] = await Promise.all([finishSoloRun('player-1', 'run-1'), finishSoloRun('player-1', 'run-1')])
+
+    expect(first.status).toBe('completed')
+    expect(second).toEqual(first)
+    expect(first.result).toEqual(sessionResult)
+    expect(settleSessionMock).toHaveBeenCalledTimes(1)
+    expect(txMock.$queryRaw).toHaveBeenCalledTimes(2)
+    expect(txMock.soloRun.update).toHaveBeenCalledTimes(2)
+    expect(invalidateDashboardCacheMock).toHaveBeenCalledTimes(1)
   })
 })

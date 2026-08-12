@@ -566,6 +566,10 @@ describe('matchService', () => {
       data: {
         status: 'in_progress',
         startedAt: now,
+        tempoQuestionIndex: null,
+        tempoQuestionAnswerCount: 0,
+        tempoQuestionStartedAt: null,
+        tempoQuestionDeadlineAt: null,
         expiresAt: new Date(now.getTime() + 60 * 1000 + 2 * 60 * 1000),
       },
     })
@@ -604,6 +608,10 @@ describe('matchService', () => {
       data: {
         status: 'in_progress',
         startedAt: now,
+        tempoQuestionIndex: 0,
+        tempoQuestionAnswerCount: 0,
+        tempoQuestionStartedAt: now,
+        tempoQuestionDeadlineAt: new Date(now.getTime() + 10 * 1000),
         expiresAt: new Date(now.getTime() + 30 * 10 * 1000 + 2 * 60 * 1000),
       },
     })
@@ -648,6 +656,10 @@ describe('matchService', () => {
         ...realtimeConfig,
         status: 'in_progress',
         startedAt,
+        tempoQuestionIndex: 0,
+        tempoQuestionAnswerCount: 0,
+        tempoQuestionStartedAt: startedAt,
+        tempoQuestionDeadlineAt: new Date(startedAt.getTime() + 10 * 1000),
         expiresAt: new Date(startedAt.getTime() + 30 * 10 * 1000 + 2 * 60 * 1000),
       },
     })
@@ -674,6 +686,10 @@ describe('matchService', () => {
       data: {
         status: 'in_progress',
         startedAt: now,
+        tempoQuestionIndex: null,
+        tempoQuestionAnswerCount: 0,
+        tempoQuestionStartedAt: null,
+        tempoQuestionDeadlineAt: null,
         expiresAt: new Date(now.getTime() + 60 * 1000 + 2 * 60 * 1000),
       },
     })

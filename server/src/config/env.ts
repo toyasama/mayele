@@ -53,6 +53,7 @@ export const env = {
   adminClerkUserIds: parseClerkUserIds(process.env.ADMIN_CLERK_USER_IDS),
   corsOrigins,
   e2eAuthBypass: process.env.E2E_AUTH_BYPASS === 'true',
+  realtimePostgresAdapterEnabled: nodeEnv === 'production' || process.env.REALTIME_POSTGRES_ADAPTER_ENABLED === 'true',
   sentryDsn: process.env.SENTRY_DSN ?? '',
 }
 

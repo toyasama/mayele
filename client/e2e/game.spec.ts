@@ -153,6 +153,169 @@ test('capture le mode solo lance avec la mise en page epuree', async ({ browser 
   }
 })
 
+test('solo sprint joue et finalise une partie complete de bout en bout', async ({ browser, request }, testInfo) => {
+  const baselineResponse = await request.get(`${API_URL}/api/dashboard`, {
+    headers: { Authorization: 'Bearer e2e:e2e-host' },
+  })
+  expect(baselineResponse.ok()).toBe(true)
+  const baseline = await baselineResponse.json() as { summary: { totalSessions: number } }
+  const { context, page } = await e2ePage(browser)
+  const browserErrors: string[] = []
+  const requestStartedAt = new Map<string, number>()
+  const commandResponses: Array<{ path: string; status: number; durationMs: number }> = []
+
+  page.on('pageerror', (error) => browserErrors.push(error.message))
+  page.on('request', (outgoingRequest) => {
+    const url = new URL(outgoingRequest.url())
+    if (outgoingRequest.method() === 'POST' && /\/api\/solo-runs\/[^/]+\/(answers|finish)$/.test(url.pathname)) {
+      requestStartedAt.set(`${outgoingRequest.method()}:${url.pathname}`, performance.now())
+    }
+  })
+  page.on('response', (response) => {
+    const outgoingRequest = response.request()
+    const url = new URL(response.url())
+    const key = `${outgoingRequest.method()}:${url.pathname}`
+    const startedAt = requestStartedAt.get(key)
+    if (startedAt !== undefined) {
+      commandResponses.push({
+        path: url.pathname,
+        status: response.status(),
+        durationMs: performance.now() - startedAt,
+      })
+      requestStartedAt.delete(key)
+    }
+  })
+
+  try {
+    await startSoloSprint(page)
+
+    for (let answerIndex = 0; answerIndex < 3; answerIndex += 1) {
+      const question = page.locator('.question-line')
+      const questionIndex = await question.getAttribute('data-question-index')
+      const prompt = await question.innerText()
+      const submittedAnswer = solvePrompt(prompt) + (answerIndex === 2 ? 1 : 0)
+      const input = page.getByRole('textbox', { name: /Votre reponse/i })
+
+      await input.fill(String(submittedAnswer))
+      await page.getByRole('button', { name: /Valider/i }).click()
+      await expect(page.locator('.challenge-run-answer-summary b').first()).toHaveText(String(answerIndex + 1))
+      await expect(page.locator('.question-line')).not.toHaveAttribute('data-question-index', questionIndex ?? '')
+      await expect(page.getByRole('button', { name: /Valider/i })).toBeEnabled()
+    }
+
+    await page.getByRole('button', { name: /Quitter/i }).click()
+    await expect(page.getByRole('heading', { name: /Tu progresses/i })).toBeVisible()
+    await expect(
+      page.locator('.solo-result-metrics > div').filter({ hasText: 'Bonnes réponses' }).locator('dd'),
+    ).toHaveText('2/3')
+    await expect(page.getByText('Erreur serveur.')).toHaveCount(0)
+    await page.screenshot({ path: 'test-results/solo-complete-e2e.png', fullPage: true })
+
+    const dashboardResponse = await request.get(`${API_URL}/api/dashboard`, {
+      headers: { Authorization: 'Bearer e2e:e2e-host' },
+    })
+    expect(dashboardResponse.ok()).toBe(true)
+    const dashboard = await dashboardResponse.json() as { summary: { totalSessions: number } }
+    expect(dashboard.summary.totalSessions).toBe(baseline.summary.totalSessions + 1)
+
+    const answerResponses = commandResponses.filter((response) => response.path.endsWith('/answers'))
+    const finishResponses = commandResponses.filter((response) => response.path.endsWith('/finish'))
+    expect(answerResponses).toHaveLength(3)
+    expect(answerResponses.every((response) => response.status === 200)).toBe(true)
+    expect(finishResponses).toHaveLength(1)
+    expect(finishResponses[0]?.status).toBe(200)
+    expect(browserErrors).toEqual([])
+
+    console.info(`[performance] solo-browser-commands=${JSON.stringify(commandResponses)}`)
+    await testInfo.attach('solo-browser-commands.json', {
+      body: JSON.stringify(commandResponses, null, 2),
+      contentType: 'application/json',
+    })
+  } finally {
+    await context.close()
+  }
+})
+
+test('solo tempo finalise sur la derniere reponse sans commande finish concurrente', async ({ browser, request }, testInfo) => {
+  const baselineResponse = await request.get(`${API_URL}/api/dashboard`, {
+    headers: { Authorization: 'Bearer e2e:e2e-host' },
+  })
+  expect(baselineResponse.ok()).toBe(true)
+  const baseline = await baselineResponse.json() as { summary: { totalSessions: number } }
+  const { context, page } = await e2ePage(browser)
+  const browserErrors: string[] = []
+  const answerDurationsMs: number[] = []
+  const answerStartedAt = new Map<string, number>()
+  let answerPostCount = 0
+  let finishPostCount = 0
+
+  page.on('pageerror', (error) => browserErrors.push(error.message))
+  page.on('request', (outgoingRequest) => {
+    const url = new URL(outgoingRequest.url())
+    if (outgoingRequest.method() !== 'POST') return
+    if (/\/api\/solo-runs\/[^/]+\/answers$/.test(url.pathname)) {
+      answerPostCount += 1
+      answerStartedAt.set(url.pathname, performance.now())
+    }
+    if (/\/api\/solo-runs\/[^/]+\/finish$/.test(url.pathname)) {
+      finishPostCount += 1
+    }
+  })
+  page.on('response', (response) => {
+    const url = new URL(response.url())
+    const startedAt = answerStartedAt.get(url.pathname)
+    if (startedAt !== undefined) {
+      answerDurationsMs.push(performance.now() - startedAt)
+      answerStartedAt.delete(url.pathname)
+    }
+  })
+
+  try {
+    await page.goto(`${APP_URL}/jeu/solo`)
+    await selectSoloMode(page, 'Tempo')
+    await page.getByLabel(/Questions Tempo/i).fill('10')
+    await page.getByLabel(/Temps par question Tempo/i).fill('30')
+    await page.getByRole('button', { name: /Commencer le tempo|Rejouer le tempo/i }).click()
+    await expect(page.getByText(/Question 1\/10/i)).toBeVisible()
+
+    for (let answerIndex = 0; answerIndex < 10; answerIndex += 1) {
+      const prompt = await page.locator('.question-line').innerText()
+      const input = page.getByRole('textbox', { name: /Votre reponse/i })
+      await input.fill(String(solvePrompt(prompt)))
+      await page.getByRole('button', { name: /Valider/i }).click()
+
+      if (answerIndex < 9) {
+        await expect(page.getByText(new RegExp(`Question ${answerIndex + 2}/10`, 'i'))).toBeVisible()
+        await expect(page.getByRole('button', { name: /Valider/i })).toBeEnabled()
+      }
+    }
+
+    await expect(page.getByRole('heading', { name: /Excellent résultat/i })).toBeVisible({ timeout: 15_000 })
+    await expect(
+      page.locator('.solo-result-metrics > div').filter({ hasText: 'Bonnes réponses' }).locator('dd'),
+    ).toHaveText('10/10')
+    await page.screenshot({ path: 'test-results/solo-tempo-complete-e2e.png', fullPage: true })
+
+    const dashboardResponse = await request.get(`${API_URL}/api/dashboard`, {
+      headers: { Authorization: 'Bearer e2e:e2e-host' },
+    })
+    expect(dashboardResponse.ok()).toBe(true)
+    const dashboard = await dashboardResponse.json() as { summary: { totalSessions: number } }
+    expect(dashboard.summary.totalSessions).toBe(baseline.summary.totalSessions + 1)
+    expect(answerPostCount).toBe(10)
+    expect(finishPostCount).toBe(0)
+    expect(browserErrors).toEqual([])
+
+    console.info(`[performance] solo-tempo-answer-acks=${JSON.stringify(answerDurationsMs)}`)
+    await testInfo.attach('solo-tempo-answer-acks.json', {
+      body: JSON.stringify({ answerDurationsMs, answerPostCount, finishPostCount }, null, 2),
+      contentType: 'application/json',
+    })
+  } finally {
+    await context.close()
+  }
+})
+
 test('solo sprint valide une reponse en quelques millisecondes et conserve le focus', async ({ browser }, testInfo) => {
   const { context, page } = await e2ePage(browser)
 

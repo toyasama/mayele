@@ -7,6 +7,8 @@ import { closeRealtime, initRealtime } from './realtime/notifications.js'
 import { markAllPlayersOffline } from './services/playerService.js'
 import { startOutboxDispatcher } from './services/outboxDispatcher.js'
 import { startMatchExpirationWorker } from './services/matchExpirationWorker.js'
+import { startSoloRunExpirationWorker } from './services/soloRunExpirationWorker.js'
+import { startTempoMatchWorker } from './services/tempoMatchWorker.js'
 import { createServer } from 'node:http'
 
 assertProductionEnv()
@@ -31,6 +33,8 @@ try {
 initRealtime(httpServer)
 const stopOutboxDispatcher = startOutboxDispatcher()
 const stopMatchExpirationWorker = startMatchExpirationWorker()
+const stopSoloRunExpirationWorker = startSoloRunExpirationWorker()
+const stopTempoMatchWorker = startTempoMatchWorker()
 
 const server = httpServer.listen(env.port, () => {
   logger.info(`Mayele API disponible sur http://localhost:${env.port}`)
@@ -44,7 +48,12 @@ function shutdown(signal: string) {
   }
 
   shuttingDown = true
-  const backgroundStops = Promise.allSettled([stopOutboxDispatcher(), stopMatchExpirationWorker()])
+  const backgroundStops = Promise.allSettled([
+    stopOutboxDispatcher(),
+    stopMatchExpirationWorker(),
+    stopSoloRunExpirationWorker(),
+    stopTempoMatchWorker(),
+  ])
   closeRealtime()
   logger.info(`Signal ${signal} reçu, arrêt gracieux...`)
 

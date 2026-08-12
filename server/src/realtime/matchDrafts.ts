@@ -120,6 +120,9 @@ export function optimisticInvitationSnapshot(options: {
     serverNow: nowIso,
     hostActiveAt: nowIso,
     startedAt: null,
+    tempoQuestionIndex: null,
+    tempoQuestionStartedAt: null,
+    tempoQuestionDeadlineAt: null,
     finishedAt: null,
     createdBy: options.creator,
     participants: [

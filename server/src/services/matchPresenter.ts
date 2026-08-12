@@ -2,10 +2,7 @@ import type { MatchView } from './matchService.js'
 
 export type SerializedPublicPlayer = ReturnType<typeof serializePublicPlayer>
 type SerializedMatchBase = ReturnType<typeof serializeMatchBase>
-export type SerializedMatch = SerializedMatchBase & {
-  tempoQuestionIndex?: number | null
-  tempoQuestionStartedAt?: string | null
-}
+export type SerializedMatch = SerializedMatchBase
 
 export function serializePublicPlayer(player: MatchView['participants'][number]['player']) {
   return {
@@ -43,6 +40,9 @@ function serializeMatchBase(match: MatchView) {
     serverNow: serverNow.toISOString(),
     hostActiveAt: match.hostActiveAt?.toISOString() ?? null,
     startedAt: match.startedAt?.toISOString() ?? null,
+    tempoQuestionIndex: match.tempoQuestionIndex ?? null,
+    tempoQuestionStartedAt: match.tempoQuestionStartedAt?.toISOString() ?? null,
+    tempoQuestionDeadlineAt: match.tempoQuestionDeadlineAt?.toISOString() ?? null,
     finishedAt: match.finishedAt?.toISOString() ?? null,
     createdBy: serializePublicPlayer(match.createdBy),
     participants: match.participants.map((participant) => ({

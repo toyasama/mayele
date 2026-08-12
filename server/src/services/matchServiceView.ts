@@ -75,6 +75,9 @@ export type MatchView = {
   expiresAt: Date
   hostActiveAt: Date | null
   startedAt: Date | null
+  tempoQuestionIndex?: number | null
+  tempoQuestionStartedAt?: Date | null
+  tempoQuestionDeadlineAt?: Date | null
   endsAt: Date | null
   finishedAt: Date | null
   createdBy: PublicPlayer
@@ -198,6 +201,9 @@ export function toMatchView(match: {
   expiresAt: Date
   hostActiveAt: Date | null
   startedAt: Date | null
+  tempoQuestionIndex?: number | null
+  tempoQuestionStartedAt?: Date | null
+  tempoQuestionDeadlineAt?: Date | null
   finishedAt: Date | null
   createdBy: PublicPlayer
   participants: Array<Omit<MatchParticipantView, 'challengeStats'>>

@@ -161,6 +161,7 @@ export type MatchData = {
   questionSeed: string | null
   tempoQuestionIndex?: number | null
   tempoQuestionStartedAt?: string | null
+  tempoQuestionDeadlineAt?: string | null
   configVersion: number
   winnerPlayerId: string | null
   createdAt: string

@@ -33,6 +33,7 @@ export type {
 const ACTIVE_MATCH_STATUSES = ['pending', 'accepted', 'ready', 'in_progress'] as const
 const PENDING_MATCH_TTL_MS = 20 * 60 * 1000
 const ACCEPTED_MATCH_TTL_MS = 10 * 60 * 1000
+const TEMPO_FINALIZATION_LEASE_MS = 2 * 60 * 1000
 const COMPLETED_ROOM_TTL_MS = 2 * 60 * 1000
 const HOST_ROOM_GRACE_MS = 2 * 60 * 1000
 
@@ -83,6 +84,27 @@ function expiresIn(ms: number) {
 
 function inProgressExpiresAt(config: Parameters<typeof challengeRunDurationSeconds>[0], startedAt: Date) {
   return new Date(startedAt.getTime() + challengeRunDurationSeconds(config) * 1000 + MATCH_IN_PROGRESS_GRACE_MS)
+}
+
+function tempoStartData(config: {
+  challengeMode: string | null
+  perQuestionTimeLimitSeconds: number | null
+}, startedAt: Date) {
+  if (config.challengeMode !== 'tempo' || !config.perQuestionTimeLimitSeconds) {
+    return {
+      tempoQuestionIndex: null,
+      tempoQuestionAnswerCount: 0,
+      tempoQuestionStartedAt: null,
+      tempoQuestionDeadlineAt: null,
+    }
+  }
+
+  return {
+    tempoQuestionIndex: 0,
+    tempoQuestionAnswerCount: 0,
+    tempoQuestionStartedAt: startedAt,
+    tempoQuestionDeadlineAt: new Date(startedAt.getTime() + config.perQuestionTimeLimitSeconds * 1_000),
+  }
 }
 
 function isRecentHostHeartbeat(hostActiveAt: Date | null) {
@@ -640,6 +662,7 @@ export async function startChallengeProposal(
         ...persistedChallengeConfigData(config),
         status: 'in_progress',
         startedAt,
+        ...tempoStartData(config, startedAt),
         expiresAt: inProgressExpiresAt(config, startedAt),
       },
     })
@@ -706,7 +729,12 @@ export async function acceptChallengeProposal(playerId: string, matchId: string)
   await prisma.$transaction([
     prisma.match.update({
       where: { id: match.id },
-      data: { status: 'in_progress', startedAt, expiresAt: inProgressExpiresAt(match, startedAt) },
+      data: {
+        status: 'in_progress',
+        startedAt,
+        ...tempoStartData(match, startedAt),
+        expiresAt: inProgressExpiresAt(match, startedAt),
+      },
     }),
     prisma.matchParticipant.updateMany({
       where: { matchId: match.id },
@@ -877,6 +905,178 @@ export async function completeChallengeResult(playerId: string, matchId: string,
   const finalizedMatch = updatedMatch ?? await finalizeMatchIfDone(match.id)
 
   return finalizedMatch ? enrichMatchView(finalizedMatch) : getMatch(playerId, matchId)
+}
+
+export async function completePersistedTempoMatch(matchId: string) {
+  const ownerToken = randomUUID()
+  const claimed = await prisma.$queryRaw<Array<{ id: string }>>`
+    UPDATE "matches"
+    SET
+      "tempo_finalization_owner" = ${ownerToken},
+      "tempo_finalization_locked_until" = CURRENT_TIMESTAMP + INTERVAL '2 minutes'
+    WHERE "id" = ${matchId}
+      AND "status" = 'in_progress'
+      AND "challenge_mode" = 'tempo'
+      AND "tempo_question_index" >= "question_count"
+      AND (
+        "tempo_finalization_locked_until" IS NULL
+        OR "tempo_finalization_locked_until" <= CURRENT_TIMESTAMP
+      )
+    RETURNING "id"
+  `
+
+  if (!claimed.length) {
+    const current = await prisma.match.findUnique({
+      where: { id: matchId },
+      include: { participants: true },
+    })
+    if (!current) throw new MatchServiceError('match_not_found')
+    if (current.status === 'completed' && current.participants[0]) {
+      return getMatch(current.participants[0].playerId, matchId)
+    }
+    return null
+  }
+
+  // Recovery after a crashed owner whose lease expired.
+  await prisma.matchParticipant.updateMany({
+    where: { matchId, status: 'submitting', sessionId: null },
+    data: { status: 'playing' },
+  })
+
+  const match = await prisma.match.findUnique({
+    where: { id: matchId },
+    include: { participants: true },
+  })
+
+  if (!match) throw new MatchServiceError('match_not_found')
+  if (match.challengeMode !== 'tempo' || !match.questionCount) {
+    throw new MatchServiceError('match_config_incomplete')
+  }
+
+  try {
+    for (const participant of match.participants) {
+      if (participant.status === 'completed' || participant.sessionId) {
+        continue
+      }
+
+      const answers = await prisma.matchQuestionAnswer.findMany({
+        where: { matchId, playerId: participant.playerId },
+        orderBy: { questionIndex: 'asc' },
+      })
+
+      if (answers.length !== match.questionCount) {
+        throw new MatchServiceError('match_result_invalid')
+      }
+
+      const evaluatedAnswers = answers.map((answer) => ({
+        responseTimeMs: answer.responseTimeMs,
+        isCorrect: answer.userAnswer === answer.correctAnswer,
+      }))
+      const resultPayload: MatchResultPayload = {
+        durationSeconds: challengeRunDurationSeconds(match),
+        bestStreak: recomputeBestStreak(evaluatedAnswers),
+        answers: answers.map((answer) => ({
+          prompt: answer.prompt,
+          correctAnswer: answer.correctAnswer,
+          userAnswer: answer.userAnswer,
+          responseTimeMs: answer.responseTimeMs,
+          skill: answer.skill as MatchResultPayload['answers'][number]['skill'],
+        })),
+      }
+      const { sessionPayload, correctAnswers, totalQuestions, totalResponseTimeMs } = buildValidatedSessionPayload(match, resultPayload)
+      const claimedParticipant = await prisma.matchParticipant.updateMany({
+        where: { id: participant.id, status: 'playing', sessionId: null },
+        data: { status: 'submitting' },
+      })
+      if (claimedParticipant.count === 0) {
+        continue
+      }
+
+      let sessionResult: Awaited<ReturnType<typeof saveSession>> | null = null
+      const now = new Date()
+      try {
+        sessionResult = await saveSession(participant.playerId, sessionPayload, undefined, {
+          submissionKey: `match:${match.id}:participant:${participant.id}`,
+          dailyMissionContext: {
+            playContext: 'multiplayer',
+            challengeMode: 'tempo',
+            completedWithoutAbandonment: completedMatchForDailyMissions(
+              match,
+              totalQuestions,
+              now,
+              participant.forfeitedAt,
+            ),
+            configuredDurationSeconds: null,
+            configuredQuestionCount: match.questionCount,
+            configuredQuestionSeconds: match.perQuestionTimeLimitSeconds,
+          },
+        })
+      } catch (error) {
+        await prisma.matchParticipant.updateMany({
+          where: { id: participant.id, status: 'submitting', sessionId: null },
+          data: { status: 'playing' },
+        })
+        throw error
+      }
+
+      await prisma.matchParticipant.update({
+        where: { id: participant.id },
+        data: {
+          status: 'completed',
+          score: calculateAccuracy(correctAnswers, totalQuestions),
+          scorePoints: sessionResult.scorePoints,
+          xp: sessionResult.xpEarned + sessionResult.missionXpEarned,
+          correctAnswers,
+          totalQuestions,
+          totalResponseTimeMs,
+          bestStreak: sessionPayload.bestStreak,
+          sessionId: sessionResult.sessionId,
+          finishedAt: now,
+        },
+      })
+    }
+
+    const finalized = await prisma.$transaction(async (tx) => {
+      const participants = await tx.matchParticipant.findMany({
+        where: { matchId },
+        select: {
+          playerId: true,
+          status: true,
+          scorePoints: true,
+          correctAnswers: true,
+          totalResponseTimeMs: true,
+          finishedAt: true,
+        },
+      })
+      const allDone = participants.every((participant) =>
+        participant.status === 'completed' || participant.status === 'disconnected' || participant.status === 'declined',
+      )
+      if (!allDone) throw new MatchServiceError('match_not_in_progress')
+
+      return tx.match.update({
+        where: { id: matchId },
+        data: {
+          status: 'completed',
+          winnerPlayerId: determineMatchWinner(participants),
+          finishedAt: new Date(),
+          expiresAt: expiresIn(COMPLETED_ROOM_TTL_MS),
+          tempoFinalizationOwner: null,
+          tempoFinalizationLockedUntil: null,
+        },
+        include: MATCH_INCLUDE,
+      })
+    })
+    return enrichMatchView(finalized)
+  } catch (error) {
+    await prisma.match.updateMany({
+      where: { id: matchId, status: 'in_progress', tempoFinalizationOwner: ownerToken },
+      data: {
+        tempoFinalizationOwner: null,
+        tempoFinalizationLockedUntil: new Date(Date.now() - TEMPO_FINALIZATION_LEASE_MS),
+      },
+    })
+    throw error
+  }
 }
 
 export async function submitTempoQuestionAnswer(playerId: string, matchId: string, payload: TempoAnswerPayload) {

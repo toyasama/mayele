@@ -1,6 +1,7 @@
 import { DAILY_GOAL, VALID_GAMES, VALID_LEVELS, type GameLevel, type GameType, type SkillTag } from '../domain/constants.js'
 import { getDailyScopeKey } from '../domain/daily.js'
 import { getPlayerProgress } from '../domain/progression.js'
+import { env } from '../config/env.js'
 import { prisma } from '../lib/prisma.js'
 import { getPlayerBadgeStates } from './badgeService.js'
 import { getDailyMissionStates } from './dailyMissionService.js'
@@ -168,6 +169,14 @@ export async function getDashboard(playerId: string, timeZone?: string | null, k
   // in the cache key prevents a dashboard cached before midnight from leaking
   // into the new local day.
   const day = getDailyScopeKey(undefined, timeZone)
+
+  // A process-local cache cannot be invalidated by a session written on
+  // another replica. Until this projection has a distributed cache, bypass it
+  // whenever the application is configured for multi-instance realtime.
+  if (env.realtimePostgresAdapterEnabled) {
+    return loadDashboard(playerId, day, knownTotalXp)
+  }
+
   const key = dashboardCacheKey(playerId, timeZone, day)
   const now = Date.now()
   const cached = dashboardCache.get(key)

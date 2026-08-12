@@ -8,10 +8,8 @@ import { useAuth } from '../context/auth'
 import { useProfile } from '../context/profile-context'
 import { SoloResultStage } from '../features/solo/SoloResultStage'
 import { useDailyScopeKey } from '../hooks/useDailyScopeKey'
-import { useRealtimeEvents } from '../hooks/useRealtimeEvents'
 import { clearCachePrefix, DASHBOARD_CACHE_PREFIX } from '../lib/appCache'
 import {
-  ApiRequestError,
   api,
   type DailyObjective,
   type SoloRunData,
@@ -128,14 +126,6 @@ function stateFromRun(run: SoloRunData): SoloSessionState {
   }
 }
 
-function canFallbackToSoloAnswerHttp(error: unknown) {
-  return error instanceof ApiRequestError && (
-    error.code === 'realtime_unavailable'
-    || error.code === 'realtime_timeout'
-    || error.code === 'realtime_invalid_response'
-  )
-}
-
 function isSameQuestionPreview(question: SoloRunQuestion | null, preview: SoloRunQuestionPreview | null) {
   return Boolean(question && preview
     && question.index === preview.index
@@ -148,10 +138,6 @@ export function GamePage() {
   const { getToken, isAuthenticated, user } = useAuth()
   const { profile } = useProfile()
   const currentDailyScope = useDailyScopeKey(profile?.timeZone ?? user?.timeZone)
-  const { isRealtimeReady, submitSoloAnswer: submitSoloAnswerRealtime } = useRealtimeEvents({
-    isAuthenticated,
-    getToken,
-  })
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const initialFocusSkill = parseFocusSkill(searchParams.get('focus'))
@@ -199,6 +185,9 @@ export function GamePage() {
   const expireActiveTimerRef = useRef<() => void>(() => undefined)
   const finishedRef = useRef(true)
   const answerSubmittingRef = useRef(false)
+  const answerSettlementRef = useRef<Promise<void> | null>(null)
+  const finishRequestedRef = useRef(false)
+  const finishPromiseRef = useRef<Promise<void> | null>(null)
   const startCommandIdRef = useRef<string | null>(null)
   const restoredOwnerRef = useRef<string | null>(null)
   const getTokenRef = useRef(getToken)
@@ -265,6 +254,14 @@ export function GamePage() {
   }, [currentDailyScope, refreshDailyObjectives])
 
   const applyServerRun = useCallback((run: SoloRunData, options: { preserveAnswer?: boolean } = {}) => {
+    const currentRun = runRef.current
+
+    // A completed run is terminal. A late answer acknowledgement or recovery
+    // request must never put the UI back into an active state.
+    if (currentRun?.id === run.id && currentRun.status === 'completed' && run.status !== 'completed') {
+      return false
+    }
+
     const nextConfig = configFromRun(run)
     const nextState = stateFromRun(run)
     runRef.current = run
@@ -275,6 +272,7 @@ export function GamePage() {
     setSessionState(nextState)
     setQuestion(run.question)
     setQuestionPreview(null)
+    setSaveError('')
 
     if (!options.preserveAnswer) {
       answerRef.current = ''
@@ -291,11 +289,12 @@ export function GamePage() {
           : `${SOLO_MODE_LABELS[run.mode]} terminé sans réponse validée.`,
       )
       clearCachePrefix(DASHBOARD_CACHE_PREFIX)
-      return
+      return true
     }
 
     setStatus('running')
     setFeedback('')
+    return true
   }, [clearTimers])
 
   const armCountdownUntil = useCallback(
@@ -341,29 +340,74 @@ export function GamePage() {
   }, [armCountdownUntil])
 
   const finishSession = useCallback(async () => {
-    const run = runRef.current
-    if (!run || finishedRef.current || saving) return
+    if (finishPromiseRef.current) {
+      return finishPromiseRef.current
+    }
 
-    finishedRef.current = true
+    const requestedRun = runRef.current
+    if (!requestedRun || requestedRun.status === 'completed' || finishRequestedRef.current) return
+
+    finishRequestedRef.current = true
     clearTimers()
     inputRef.current?.blur()
     setSaving(true)
     setSaveError('')
 
+    const finishPromise = (async () => {
+      const pendingAnswer = answerSettlementRef.current
+      if (pendingAnswer) {
+        await pendingAnswer
+      }
+
+      const run = runRef.current
+      if (!run || run.id !== requestedRun.id || run.status !== 'active') {
+        return
+      }
+
+      finishedRef.current = true
+
+      try {
+        const response = await api.finishSoloRun(getToken, run.id)
+        applyServerRun(response.run)
+        void refreshDailyObjectives()
+        setFeedbackTone('info')
+      } catch (error) {
+        try {
+          const { run: latestRun } = await api.getSoloRun(getToken, run.id)
+          applyServerRun(latestRun)
+
+          if (latestRun.status === 'completed') {
+            void refreshDailyObjectives()
+            setFeedbackTone('info')
+            return
+          }
+        } catch {
+          // Preserve the finalization error when reconciliation is unavailable.
+        }
+
+        if (runRef.current?.status === 'completed') {
+          return
+        }
+
+        finishedRef.current = false
+        setStatus('finished')
+        setRemainingSeconds(0)
+        setSaveError(error instanceof Error ? error.message : 'Finalisation impossible.')
+      }
+    })()
+
+    finishPromiseRef.current = finishPromise
+
     try {
-      const response = await api.finishSoloRun(getToken, run.id)
-      applyServerRun(response.run)
-      void refreshDailyObjectives()
-      setFeedbackTone('info')
-    } catch (error) {
-      finishedRef.current = false
-      setStatus('finished')
-      setRemainingSeconds(0)
-      setSaveError(error instanceof Error ? error.message : 'Finalisation impossible.')
+      await finishPromise
     } finally {
+      if (finishPromiseRef.current === finishPromise) {
+        finishPromiseRef.current = null
+      }
+      finishRequestedRef.current = false
       setSaving(false)
     }
-  }, [applyServerRun, clearTimers, getToken, refreshDailyObjectives, saving])
+  }, [applyServerRun, clearTimers, getToken, refreshDailyObjectives])
 
   useEffect(() => {
     const ownerId = user?.clerkUserId
@@ -375,8 +419,9 @@ export function GamePage() {
         if (cancelled) return
         restoredOwnerRef.current = ownerId
         if (!run) return
-        applyServerRun(run)
-        armRunTimer(run)
+        if (applyServerRun(run)) {
+          armRunTimer(run)
+        }
       })
       .catch((error) => {
         if (!cancelled) setSaveError(error instanceof Error ? error.message : 'Reprise de la partie impossible.')
@@ -431,6 +476,9 @@ export function GamePage() {
     clearTimers()
     finishedRef.current = true
     answerSubmittingRef.current = false
+    answerSettlementRef.current = null
+    finishRequestedRef.current = false
+    finishPromiseRef.current = null
     setAnswerPending(false)
     runRef.current = null
     startCommandIdRef.current = null
@@ -506,8 +554,9 @@ export function GamePage() {
       startCommandIdRef.current = null
       setAnswerFeedback(null)
       setFeedbackTone('info')
-      applyServerRun(run)
-      armRunTimer(run)
+      if (applyServerRun(run)) {
+        armRunTimer(run)
+      }
       window.scrollTo({ top: 0 })
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : 'Démarrage de la partie impossible.')
@@ -554,6 +603,7 @@ export function GamePage() {
       || !run
       || !currentQuestion
       || finishedRef.current
+      || finishRequestedRef.current
       || answerSubmittingRef.current
     ) return
 
@@ -613,84 +663,91 @@ export function GamePage() {
       })
     }
 
-    try {
-      const payload = {
-        questionIndex: currentQuestion.index,
-        userAnswer: numericAnswer,
-      }
-      let response: Awaited<ReturnType<typeof api.submitSoloAnswer>>
-
-      if (isRealtimeReady) {
-        try {
-          response = await submitSoloAnswerRealtime(run.id, payload)
-        } catch (error) {
-          if (!canFallbackToSoloAnswerHttp(error)) throw error
-          response = await api.submitSoloAnswer(getToken, run.id, payload)
-        }
-      } else {
-        response = await api.submitSoloAnswer(getToken, run.id, payload)
-      }
-
-      const preserveNextAnswer = response.run.status === 'active'
-        && isSameQuestionPreview(response.run.question, optimisticNextQuestion)
-      applyServerRun(response.run, { preserveAnswer: preserveNextAnswer })
-      if (response.run.status === 'completed') void refreshDailyObjectives()
-
-      if (response.correction) {
-        setFeedbackTone(response.correction.isCorrect ? 'success' : 'error')
-        setAnswerFeedback({
-          prompt: response.correction.prompt,
-          userAnswer: response.correction.userAnswer,
-          correctAnswer: response.correction.correctAnswer,
-          isCorrect: response.correction.isCorrect,
-          streak: response.run.progress.currentStreak,
-          source,
-        })
-      }
-
-      if (response.run.status === 'active') armRunTimer(response.run)
-    } catch (error) {
+    const submission = (async () => {
       try {
-        const { run: latestRun } = await api.getSoloRun(getToken, run.id)
-        const storedCorrection = latestRun.answers.find(
-          (storedAnswer) => storedAnswer.questionIndex === currentQuestion.index,
-        )
+        const payload = {
+          questionIndex: currentQuestion.index,
+          userAnswer: numericAnswer,
+        }
+        const response = await api.submitSoloAnswer(getToken, run.id, payload)
 
-        // The timer can finalize the run while its last answer is still in flight.
-        // A completed snapshot is authoritative even when that late answer was not
-        // accepted, so never restore the stale active snapshot in that case.
-        if (storedCorrection || latestRun.status === 'completed') {
-          const preserveNextAnswer = latestRun.status === 'active'
-            && isSameQuestionPreview(latestRun.question, optimisticNextQuestion)
-          applyServerRun(latestRun, { preserveAnswer: preserveNextAnswer })
-          if (latestRun.status === 'completed') void refreshDailyObjectives()
-          if (storedCorrection) {
-            setFeedbackTone(storedCorrection.isCorrect ? 'success' : 'error')
-            setAnswerFeedback({
-              prompt: storedCorrection.prompt,
-              userAnswer: storedCorrection.userAnswer,
-              correctAnswer: storedCorrection.correctAnswer,
-              isCorrect: storedCorrection.isCorrect,
-              streak: latestRun.progress.currentStreak,
-              source,
-            })
-          }
-          if (latestRun.status === 'active') armRunTimer(latestRun)
+        const preserveNextAnswer = response.run.status === 'active'
+          && isSameQuestionPreview(response.run.question, optimisticNextQuestion)
+        if (!applyServerRun(response.run, { preserveAnswer: preserveNextAnswer })) {
           return
         }
-      } catch {
-        // Le message initial est plus utile si la lecture de réconciliation échoue aussi.
-      }
+        if (response.run.status === 'completed') void refreshDailyObjectives()
 
-      applyServerRun(run)
-      answerRef.current = source === 'manual' ? submittedAnswer : ''
-      setAnswer(answerRef.current)
-      setAnswerFeedback(null)
-      setFeedbackTone('error')
-      setSaveError(error instanceof Error ? error.message : 'Réponse non enregistrée.')
+        if (response.correction) {
+          setFeedbackTone(response.correction.isCorrect ? 'success' : 'error')
+          setAnswerFeedback({
+            prompt: response.correction.prompt,
+            userAnswer: response.correction.userAnswer,
+            correctAnswer: response.correction.correctAnswer,
+            isCorrect: response.correction.isCorrect,
+            streak: response.run.progress.currentStreak,
+            source,
+          })
+        }
+
+        if (response.run.status === 'active') armRunTimer(response.run)
+      } catch (error) {
+        try {
+          const { run: latestRun } = await api.getSoloRun(getToken, run.id)
+          const storedCorrection = latestRun.answers.find(
+            (storedAnswer) => storedAnswer.questionIndex === currentQuestion.index,
+          )
+
+          // The timer can finalize the run while its last answer is still in flight.
+          // A completed snapshot is authoritative even when that late answer was not
+          // accepted, so never restore the stale active snapshot in that case.
+          if (storedCorrection || latestRun.status === 'completed') {
+            const preserveNextAnswer = latestRun.status === 'active'
+              && isSameQuestionPreview(latestRun.question, optimisticNextQuestion)
+            if (!applyServerRun(latestRun, { preserveAnswer: preserveNextAnswer })) {
+              return
+            }
+            if (latestRun.status === 'completed') void refreshDailyObjectives()
+            if (storedCorrection) {
+              setFeedbackTone(storedCorrection.isCorrect ? 'success' : 'error')
+              setAnswerFeedback({
+                prompt: storedCorrection.prompt,
+                userAnswer: storedCorrection.userAnswer,
+                correctAnswer: storedCorrection.correctAnswer,
+                isCorrect: storedCorrection.isCorrect,
+                streak: latestRun.progress.currentStreak,
+                source,
+              })
+            }
+            if (latestRun.status === 'active') armRunTimer(latestRun)
+            return
+          }
+        } catch {
+          // Le message initial est plus utile si la lecture de réconciliation échoue aussi.
+        }
+
+        if (!applyServerRun(run) && runRef.current?.status === 'completed') {
+          return
+        }
+        answerRef.current = source === 'manual' ? submittedAnswer : ''
+        setAnswer(answerRef.current)
+        setAnswerFeedback(null)
+        setFeedbackTone('error')
+        setSaveError(error instanceof Error ? error.message : 'Réponse non enregistrée.')
+      } finally {
+        answerSubmittingRef.current = false
+        setAnswerPending(false)
+      }
+    })()
+
+    answerSettlementRef.current = submission
+
+    try {
+      await submission
     } finally {
-      answerSubmittingRef.current = false
-      setAnswerPending(false)
+      if (answerSettlementRef.current === submission) {
+        answerSettlementRef.current = null
+      }
     }
   }
 

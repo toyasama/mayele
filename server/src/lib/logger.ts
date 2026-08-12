@@ -6,6 +6,9 @@ function log(level: LogLevel, message: string, context?: Record<string, unknown>
     level,
     message,
     ...context,
+    // Keep a stable, queryable event name even when an error context carries
+    // its own human-readable `message` field.
+    event: message,
   }
   // eslint-disable-next-line no-console
   console.error(JSON.stringify(entry))

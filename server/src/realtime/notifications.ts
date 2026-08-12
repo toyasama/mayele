@@ -1,5 +1,7 @@
 import { verifyToken } from '@clerk/backend'
+import { createAdapter as createPostgresAdapter } from '@socket.io/postgres-adapter'
 import type { Server as HttpServer } from 'node:http'
+import { Pool } from 'pg'
 import { Server, type Socket } from 'socket.io'
 import { env } from '../config/env.js'
 import { isAllowedCorsOrigin } from '../config/origin.js'
@@ -11,10 +13,8 @@ import { listFriends } from '../services/friendService.js'
 import {
   parseRealtimeSprintAnswerCommand,
   parseRealtimeTempoAnswerCommand,
-  type TempoAnswerPayload,
 } from '../schemas/matchSchema.js'
 import { parsePresenceVisibilityCommand } from '../schemas/presenceSchema.js'
-import { submitSoloAnswerCommandSchema } from '../schemas/soloRunSchema.js'
 import type { SerializedNotification } from '../services/notificationPresenter.js'
 import {
   broadcastRoomEvent,
@@ -27,27 +27,25 @@ import {
 } from './roomRuntime.js'
 import {
   assertMatchRoomMembership,
-  completeChallengeResult,
+  completePersistedTempoMatch,
+  getMatch,
   MatchServiceError,
-  persistTempoQuestionAnswer,
   submitSprintQuestionAnswer,
   type MatchView,
 } from '../services/matchService.js'
 import { serializeMatch, type SerializedMatch } from '../services/matchPresenter.js'
 import { updatePlayerPresenceById } from '../services/playerService.js'
-import { submitSoloAnswer } from '../services/soloRunService.js'
 import {
-  applyTempoAnswerProgressDraft,
-  applyTempoFinalDraft,
-  assertExpectedTempoAnswer,
-  tempoExpectedPlayerIds,
-  tempoProgressFromAnswers,
-  tempoResultPayload,
-  tempoTimeoutAnswer,
-  type RealtimePublicPlayer,
-} from './matchDrafts.js'
+  claimRealtimeCommand,
+  completeRealtimeCommand,
+  releaseRealtimeCommand,
+  type RealtimeCommandClaim,
+  type StoredRealtimeCommandResponse,
+} from '../services/realtimeCommandReceiptService.js'
+import { type RealtimePublicPlayer } from './matchDrafts.js'
 import { registerMatchCommandHandlers } from './matchCommandHandlers.js'
 import { PresenceRuntime, type PresenceTransition } from './presenceRuntime.js'
+import { submitAtomicTempoAnswer } from '../services/tempoMatchCoordinator.js'
 
 type RealtimeIdentity = {
   clerkUserId: string
@@ -114,22 +112,6 @@ type TempoAnswerProgress = {
   complete: boolean
   nextQuestionIndex: number
 }
-type TempoQuestionRuntime = {
-  questionIndex: number
-  startedAtMs: number
-  deadlineMs: number
-  answers: Map<string, TempoAnswerPayload>
-  resolved: boolean
-  timeoutId: ReturnType<typeof setTimeout> | null
-}
-type TempoMatchRuntime = {
-  matchId: string
-  currentQuestionIndex: number
-  questionCount: number
-  perQuestionMs: number
-  expectedPlayerIds: string[]
-  questions: Map<number, TempoQuestionRuntime>
-}
 type MatchTempoAnswerCommandAck = RealtimeCommandAck<{
   match: SerializedMatch
   progress: TempoAnswerProgress
@@ -137,17 +119,19 @@ type MatchTempoAnswerCommandAck = RealtimeCommandAck<{
 type MatchSprintAnswerCommandAck = RealtimeCommandAck<{
   match: SerializedMatch
 }>
-type SoloAnswerCommandAck = RealtimeCommandAck<Awaited<ReturnType<typeof submitSoloAnswer>>>
 type RealtimeCommandErrorPayload = Extract<RealtimeCommandAck<unknown>, { ok: false }>['error']
 
 type InitRealtimeOptions = {
   authenticateToken?: (token: string) => Promise<RealtimeIdentity | null>
+  durableCommandReceipts?: boolean
+  postgresAdapter?: boolean
 }
 
 let io: Server | null = null
+let postgresAdapterPool: Pool | null = null
+let postgresAdapterEnabled = false
 const matchSnapshotCache = new Map<string, SerializedMatch>()
 const matchPersistenceQueue = new Map<string, Promise<unknown>>()
-const tempoMatchRuntimes = new Map<string, TempoMatchRuntime>()
 const presenceRuntime = new PresenceRuntime()
 const presencePersistenceQueues = new Map<string, Promise<void>>()
 const presenceBroadcastVersions = new Map<string, number>()
@@ -161,7 +145,6 @@ const MATCH_STATUS_ORDER: Record<string, number> = {
   expired: 50,
 }
 const ACTIVE_REALTIME_HEARTBEAT_STATUSES = new Set(['pending', 'accepted', 'ready', 'in_progress'])
-const TEMPO_TIMEOUT_GRACE_MS = 250
 const REALTIME_RATE_WINDOW_MS = 60 * 1000
 const REALTIME_DEFAULT_COMMAND_LIMIT = 180
 const REALTIME_COMMAND_ACK_WARN_MS = 5_000
@@ -183,7 +166,6 @@ const REALTIME_COMMAND_EVENTS = new Set([
   'match:submit-result',
   'match:submit-tempo-answer',
   'match:submit-sprint-answer',
-  'solo:submit-answer',
 ])
 const REALTIME_COMMAND_LIMITS: Record<string, number> = {
   'presence:activity': 240,
@@ -203,13 +185,13 @@ const REALTIME_COMMAND_LIMITS: Record<string, number> = {
   'match:submit-result': 60,
   'match:submit-tempo-answer': 240,
   'match:submit-sprint-answer': 240,
-  'solo:submit-answer': 240,
 }
 const realtimeRateBuckets = new Map<string, { startedAtMs: number; count: number }>()
 
 export function getRealtimeHealth() {
   return {
     initialized: Boolean(io),
+    postgresAdapterEnabled,
     connectedSockets: io?.sockets.sockets.size ?? 0,
     onlinePlayers: presenceRuntime.onlinePlayerCount,
   }
@@ -340,6 +322,60 @@ function commandIdFromValue(value: unknown) {
 
   const clientCommandId = (value as { clientCommandId?: unknown }).clientCommandId
   return typeof clientCommandId === 'string' && clientCommandId.trim() ? clientCommandId : null
+}
+
+function matchIdFromValue(value: unknown) {
+  if (!value || typeof value !== 'object' || !('matchId' in value)) {
+    return null
+  }
+
+  const matchId = (value as { matchId?: unknown }).matchId
+  return typeof matchId === 'string' && matchId.trim() ? matchId : null
+}
+
+function usesDurableMatchReceipt(eventName: string, commandId: string | null) {
+  // Answer rows are already durable domain receipts, uniquely keyed by
+  // match/player/question. Claiming an additional generic receipt first would
+  // add a full database roundtrip to the latency-sensitive answer path.
+  const hasDomainReceipt = eventName === 'match:submit-tempo-answer' || eventName === 'match:submit-sprint-answer'
+  return Boolean(commandId && eventName.startsWith('match:') && !hasDomainReceipt)
+}
+
+function commandAckFromPacket(packet: unknown[]) {
+  const candidate = packet.at(-1)
+  return typeof candidate === 'function'
+    ? candidate as (response: RealtimeCommandAck<unknown>) => void
+    : null
+}
+
+function wrapDurableCommandAck(packet: unknown[], claim: Extract<RealtimeCommandClaim, { kind: 'execute' }>) {
+  const ackIndex = packet.length - 1
+  const originalAck = commandAckFromPacket(packet)
+
+  if (!originalAck) {
+    void releaseRealtimeCommand(claim)
+    return
+  }
+
+  let settled = false
+  packet[ackIndex] = (response: RealtimeCommandAck<unknown>) => {
+    if (settled) return
+    settled = true
+
+    const shouldRemember = response?.ok || Boolean(response?.error && response.error.status < 500)
+    const settleReceipt = shouldRemember
+      ? completeRealtimeCommand(claim, response as unknown as StoredRealtimeCommandResponse)
+      : releaseRealtimeCommand(claim).then(() => true)
+
+    void settleReceipt
+      .catch((error) => {
+        logger.error('realtime_command_receipt_settlement_failed', {
+          receiptId: claim.receiptId,
+          message: error instanceof Error ? error.message : String(error),
+        })
+      })
+      .finally(() => originalAck(response))
+  }
 }
 
 function realtimeCommandError<T = never>(message: string, status: number, code: string): RealtimeCommandAck<T> {
@@ -508,12 +544,6 @@ function cacheMatchSnapshot(snapshot: unknown) {
   matchSnapshotCache.set(snapshot.id, snapshot)
   observeRoomSnapshot(snapshot)
 
-  if (snapshot.status === 'in_progress' && snapshot.challengeMode === 'tempo') {
-    ensureTempoRuntime(snapshot)
-  } else {
-    clearTempoAnswerState(snapshot.id)
-  }
-
   return true
 }
 
@@ -552,7 +582,11 @@ function publishMatchRuntimeEvent(snapshot: SerializedMatch, reason: string, com
   }
 
   const event = recordRoomEvent(realtimeSnapshot, reason, commandId)
-  emitMatchChanged(event.match, event.reason, event.match, event)
+  // Room revisions are deliberately process-local replay hints. With several
+  // Socket.IO nodes, two processes can produce the same revision, so clients
+  // must use the canonical PostgreSQL snapshot instead of treating that
+  // revision as a cross-node ordering authority.
+  emitMatchChanged(event.match, event.reason, event.match, postgresAdapterEnabled ? undefined : event)
   return event
 }
 
@@ -561,259 +595,7 @@ function snapshotWithFreshServerNow(snapshot: SerializedMatch): SerializedMatch 
 }
 
 function snapshotWithTempoRuntime(snapshot: SerializedMatch): SerializedMatch {
-  const runtime = tempoMatchRuntimes.get(snapshot.id)
-
-  if (!runtime || snapshot.status !== 'in_progress' || snapshot.challengeMode !== 'tempo') {
-    return snapshot
-  }
-
-  const question = runtime.questions.get(runtime.currentQuestionIndex)
-
-  return {
-    ...snapshot,
-    tempoQuestionIndex: runtime.currentQuestionIndex,
-    tempoQuestionStartedAt: question ? new Date(question.startedAtMs).toISOString() : null,
-  }
-}
-
-function clearTempoAnswerState(matchId: string) {
-  const runtime = tempoMatchRuntimes.get(matchId)
-
-  if (!runtime) {
-    return
-  }
-
-  for (const question of runtime.questions.values()) {
-    if (question.timeoutId) {
-      clearTimeout(question.timeoutId)
-    }
-  }
-
-  tempoMatchRuntimes.delete(matchId)
-}
-
-function ensureTempoRuntime(snapshot: SerializedMatch) {
-  const existing = tempoMatchRuntimes.get(snapshot.id)
-
-  if (existing) {
-    return existing
-  }
-
-  if (
-    snapshot.status !== 'in_progress' ||
-    snapshot.challengeMode !== 'tempo' ||
-    !snapshot.questionSeed ||
-    !snapshot.questionCount ||
-    !snapshot.perQuestionTimeLimitSeconds ||
-    !snapshot.startedAt
-  ) {
-    throw new MatchServiceError('match_not_in_progress')
-  }
-
-  const runtime: TempoMatchRuntime = {
-    matchId: snapshot.id,
-    currentQuestionIndex: 0,
-    questionCount: snapshot.questionCount,
-    perQuestionMs: snapshot.perQuestionTimeLimitSeconds * 1000,
-    expectedPlayerIds: tempoExpectedPlayerIds(snapshot),
-    questions: new Map(),
-  }
-
-  tempoMatchRuntimes.set(snapshot.id, runtime)
-  ensureTempoQuestionRuntime(runtime, 0, new Date(snapshot.startedAt).getTime(), snapshot)
-  return runtime
-}
-
-function ensureTempoQuestionRuntime(
-  runtime: TempoMatchRuntime,
-  questionIndex: number,
-  startedAtMs: number,
-  snapshot: SerializedMatch,
-) {
-  const existing = runtime.questions.get(questionIndex)
-
-  if (existing) {
-    return existing
-  }
-
-  const question: TempoQuestionRuntime = {
-    questionIndex,
-    startedAtMs,
-    deadlineMs: startedAtMs + runtime.perQuestionMs,
-    answers: new Map(),
-    resolved: false,
-    timeoutId: null,
-  }
-
-  runtime.questions.set(questionIndex, question)
-  scheduleTempoTimeout(runtime, question, snapshot)
-  return question
-}
-
-function tempoQuestionProgress(runtime: TempoMatchRuntime, question: TempoQuestionRuntime): TempoAnswerProgress {
-  const answeredCount = question.answers.size
-  const expectedAnswerCount = runtime.expectedPlayerIds.length
-
-  return {
-    questionIndex: question.questionIndex,
-    answeredCount,
-    expectedAnswerCount,
-    complete: expectedAnswerCount > 0 && answeredCount >= expectedAnswerCount,
-    nextQuestionIndex: question.questionIndex + 1,
-  }
-}
-
-function persistTempoQuestionAnswerCommitted(matchId: string, playerId: string, answer: TempoAnswerPayload) {
-  return enqueueMatchPersistence(matchId, () => persistTempoQuestionAnswer(playerId, matchId, answer))
-}
-
-async function persistTempoFinalResults(snapshot: SerializedMatch, runtime: TempoMatchRuntime) {
-  const match = await enqueueMatchPersistence(snapshot.id, async () => {
-    let latest: MatchView | null = null
-
-    for (const playerId of runtime.expectedPlayerIds) {
-      latest = await completeChallengeResult(playerId, snapshot.id, tempoResultPayload(snapshot, runtime, playerId))
-    }
-
-    if (!latest) {
-      throw new MatchServiceError('match_not_found')
-    }
-
-    return latest
-  })
-
-  return serializeMatch(match as MatchView)
-}
-
-async function resolveTempoQuestion(runtime: TempoMatchRuntime, snapshot: SerializedMatch, question: TempoQuestionRuntime, reason: string) {
-  if (question.resolved) {
-    return snapshot
-  }
-
-  question.resolved = true
-
-  if (question.timeoutId) {
-    clearTimeout(question.timeoutId)
-    question.timeoutId = null
-  }
-
-  const progress = tempoQuestionProgress(runtime, question)
-  emitMatchTempoProgress(snapshot, progress, reason)
-
-  if (question.questionIndex + 1 >= runtime.questionCount) {
-    const finalSnapshot = applyTempoFinalDraft(snapshot, runtime)
-    let persistedSnapshot: SerializedMatch
-
-    try {
-      persistedSnapshot = await persistTempoFinalResults(finalSnapshot, runtime)
-    } catch (error) {
-      question.resolved = false
-      throw error
-    }
-
-    publishMatchRuntimeEvent(persistedSnapshot, 'match_completed')
-    clearTempoAnswerState(runtime.matchId)
-    return persistedSnapshot
-  }
-
-  runtime.currentQuestionIndex = question.questionIndex + 1
-  ensureTempoQuestionRuntime(runtime, runtime.currentQuestionIndex, Date.now(), snapshot)
-  return snapshotWithFreshServerNow(snapshot)
-}
-
-function scheduleTempoTimeout(runtime: TempoMatchRuntime, question: TempoQuestionRuntime, snapshot: SerializedMatch) {
-  if (question.timeoutId || question.resolved) {
-    return
-  }
-
-  const delayMs = Math.max(0, question.deadlineMs + TEMPO_TIMEOUT_GRACE_MS - Date.now())
-
-  question.timeoutId = setTimeout(async () => {
-    const latestSnapshot = matchSnapshotCache.get(runtime.matchId)
-
-    if (!latestSnapshot || latestSnapshot.status !== 'in_progress' || latestSnapshot.challengeMode !== 'tempo') {
-      return
-    }
-
-    const latestRuntime = tempoMatchRuntimes.get(runtime.matchId)
-    const latestQuestion = latestRuntime?.questions.get(question.questionIndex)
-
-    if (!latestRuntime || !latestQuestion || latestQuestion.resolved) {
-      return
-    }
-
-    let draftSnapshot = latestSnapshot
-    const timeoutResponseTimeMs = Math.min(latestRuntime.perQuestionMs, Math.max(0, Date.now() - latestQuestion.startedAtMs))
-
-    for (const playerId of latestRuntime.expectedPlayerIds) {
-      if (latestQuestion.answers.has(playerId)) {
-        continue
-      }
-
-      const answer = tempoTimeoutAnswer(latestSnapshot, latestQuestion.questionIndex, timeoutResponseTimeMs)
-      try {
-        await persistTempoQuestionAnswerCommitted(latestSnapshot.id, playerId, answer)
-      } catch (error) {
-        logger.error('Persistance reponse tempo expiree impossible.', {
-          matchId: latestSnapshot.id,
-          playerId,
-          questionIndex: answer.questionIndex,
-          message: error instanceof Error ? error.message : String(error),
-        })
-        return
-      }
-
-      latestQuestion.answers.set(playerId, answer)
-      draftSnapshot = applyTempoAnswerProgressDraft(draftSnapshot, latestRuntime, playerId)
-      emitMatchTempoAnswerRecorded(draftSnapshot, latestQuestion.questionIndex, playerId, 'match_tempo_timeout_recorded')
-    }
-
-    publishMatchRuntimeEvent(draftSnapshot, 'match_tempo_timeout_recorded')
-    try {
-      await resolveTempoQuestion(latestRuntime, draftSnapshot, latestQuestion, 'match_tempo_question_timeout')
-    } catch (error) {
-      logger.error('Finalisation tempo apres expiration impossible.', {
-        matchId: latestSnapshot.id,
-        message: error instanceof Error ? error.message : String(error),
-      })
-    }
-  }, delayMs)
-}
-
-function recordRealtimeTempoAnswer(snapshot: SerializedMatch, playerId: string, answer: TempoAnswerPayload) {
-  assertExpectedTempoAnswer(snapshot, playerId, answer)
-  const runtime = ensureTempoRuntime(snapshot)
-  const currentQuestion = runtime.questions.get(runtime.currentQuestionIndex)
-  const requestedQuestion = runtime.questions.get(answer.questionIndex)
-  const existingAnswer = requestedQuestion?.answers.get(playerId)
-
-  if (existingAnswer && requestedQuestion) {
-    return {
-      snapshot: snapshotWithFreshServerNow(snapshot),
-      answer: existingAnswer,
-      progress: tempoQuestionProgress(runtime, requestedQuestion),
-      isDuplicate: true,
-      shouldResolve: false,
-      question: requestedQuestion,
-    }
-  }
-
-  if (!currentQuestion || answer.questionIndex !== runtime.currentQuestionIndex) {
-    throw new MatchServiceError('match_result_invalid')
-  }
-
-  currentQuestion.answers.set(playerId, answer)
-  const draftSnapshot = applyTempoAnswerProgressDraft(snapshot, runtime, playerId)
-  const progress = tempoQuestionProgress(runtime, currentQuestion)
-
-  return {
-    snapshot: draftSnapshot,
-    answer,
-    progress,
-    isDuplicate: false,
-    shouldResolve: progress.complete,
-    question: currentQuestion,
-  }
+  return snapshot
 }
 
 function enqueueMatchPersistence<T>(matchId: string, persist: () => Promise<T>): Promise<T> {
@@ -912,14 +694,6 @@ export async function resetRealtimeStateForTests() {
   await waitForRealtimePersistenceIdle()
   matchSnapshotCache.clear()
   clearRoomRuntimeState()
-  for (const runtime of tempoMatchRuntimes.values()) {
-    for (const question of runtime.questions.values()) {
-      if (question.timeoutId) {
-        clearTimeout(question.timeoutId)
-      }
-    }
-  }
-  tempoMatchRuntimes.clear()
   presenceRuntime.clear()
   presencePersistenceQueues.clear()
   presenceBroadcastVersions.clear()
@@ -1037,17 +811,14 @@ function ackError<T>(ack: ((response: RealtimeCommandAck<T>) => void) | undefine
 
 export function initRealtime(httpServer: HttpServer, options: InitRealtimeOptions = {}) {
   io?.close()
+  if (postgresAdapterPool) {
+    void postgresAdapterPool.end().catch(() => undefined)
+    postgresAdapterPool = null
+  }
+  postgresAdapterEnabled = false
   matchSnapshotCache.clear()
   matchPersistenceQueue.clear()
   realtimeRateBuckets.clear()
-  for (const runtime of tempoMatchRuntimes.values()) {
-    for (const question of runtime.questions.values()) {
-      if (question.timeoutId) {
-        clearTimeout(question.timeoutId)
-      }
-    }
-  }
-  tempoMatchRuntimes.clear()
   presenceRuntime.clear()
   presencePersistenceQueues.clear()
 
@@ -1079,7 +850,30 @@ export function initRealtime(httpServer: HttpServer, options: InitRealtimeOption
     },
   })
 
+  const shouldUsePostgresAdapter = options.postgresAdapter ?? env.realtimePostgresAdapterEnabled
+  if (shouldUsePostgresAdapter) {
+    const connectionString = env.directUrl || env.databaseUrl
+    if (!connectionString) {
+      throw new Error('DIRECT_URL ou DATABASE_URL est requise pour adapter Socket.IO PostgreSQL.')
+    }
+
+    const adapterPool = new Pool({
+      connectionString,
+      max: 4,
+      application_name: 'mayele-socket-io',
+    })
+    adapterPool.on('error', (error) => {
+      logger.error('realtime_postgres_adapter_error', { message: error.message })
+    })
+    socketServer.adapter(createPostgresAdapter(adapterPool, {
+      tableName: 'socket_io_attachments',
+    }))
+    postgresAdapterPool = adapterPool
+    postgresAdapterEnabled = true
+  }
+
   const resolveIdentity = options.authenticateToken ?? authenticateToken
+  const durableCommandReceipts = options.durableCommandReceipts ?? !options.authenticateToken
 
   socketServer.use(async (socket, next) => {
     try {
@@ -1144,7 +938,7 @@ export function initRealtime(httpServer: HttpServer, options: InitRealtimeOption
     socket.emit('realtime:ready', { playerId, at: new Date().toISOString() })
     socket.emit('presence:visibility', { hidden: presenceRuntime.isManuallyOffline(playerId) } satisfies PresenceVisibilityPayload)
     void syncPresenceToSocket(socket, playerId)
-    socket.use((packet, next) => {
+    socket.use(async (packet, next) => {
       const eventName = packet[0]
 
       if (typeof eventName !== 'string' || !REALTIME_COMMAND_EVENTS.has(eventName)) {
@@ -1160,15 +954,66 @@ export function initRealtime(httpServer: HttpServer, options: InitRealtimeOption
         commandId,
       })
 
-      if (isRealtimeCommandAllowed(playerId, eventName, startedAtMs)) {
-        wrapRealtimeCommandAck(packet, { playerId, eventName, commandId, startedAtMs })
-        next()
+      if (!isRealtimeCommandAllowed(playerId, eventName, startedAtMs)) {
+        logger.warn('realtime_rate_limited', { playerId, eventName, commandId })
+        ackFromPacket(packet)?.(realtimeCommandError('Trop de commandes temps reel. Reessayez dans un instant.', 429, 'realtime_rate_limited'))
+        next(new Error('rate_limit_exceeded'))
         return
       }
 
-      logger.warn('realtime_rate_limited', { playerId, eventName, commandId })
-      ackFromPacket(packet)?.(realtimeCommandError('Trop de commandes temps reel. Reessayez dans un instant.', 429, 'realtime_rate_limited'))
-      next(new Error('rate_limit_exceeded'))
+      if (durableCommandReceipts && usesDurableMatchReceipt(eventName, commandId)) {
+        try {
+          const claim = await claimRealtimeCommand({
+            playerId,
+            eventName,
+            commandId: commandId!,
+            matchId: matchIdFromValue(packet[1]),
+          })
+
+          if (claim.kind === 'completed') {
+            ackFromPacket(packet)?.(claim.response as unknown as RealtimeCommandAck<unknown>)
+            return
+          }
+
+          if (claim.kind === 'busy') {
+            ackFromPacket(packet)?.(realtimeCommandError(
+              'Commande encore en cours. Synchronisation necessaire.',
+              503,
+              'realtime_command_processing',
+            ))
+            return
+          }
+
+          if (claim.kind === 'conflict') {
+            ackFromPacket(packet)?.(realtimeCommandError(
+              'Identifiant de commande deja utilise pour une autre operation.',
+              409,
+              'realtime_command_conflict',
+            ))
+            return
+          }
+
+          wrapDurableCommandAck(packet, claim)
+        } catch (error) {
+          logger.error('realtime_command_receipt_claim_failed', {
+            playerId,
+            eventName,
+            commandId,
+            message: error instanceof Error ? error.message : String(error),
+          })
+          ackFromPacket(packet)?.(realtimeCommandError(
+            env.isProduction
+              ? 'Commande temps reel temporairement indisponible.'
+              : `Recu temps reel indisponible: ${error instanceof Error ? error.message : String(error)}`,
+            503,
+            'realtime_command_receipt_unavailable',
+          ))
+          return
+        }
+      }
+
+      wrapRealtimeCommandAck(packet, { playerId, eventName, commandId, startedAtMs })
+      next()
     })
     socket.on('disconnect', (reason) => {
       queuePresenceTransition(presenceRuntime.disconnect(playerId, socket.id))
@@ -1216,19 +1061,16 @@ export function initRealtime(httpServer: HttpServer, options: InitRealtimeOption
           throw new MatchServiceError('match_not_found')
         }
 
-        await assertMatchRoomMembership(playerId, roomId)
-        joinSocketToRoom(socket, roomId, typeof lastSeenEventId === 'string' ? lastSeenEventId : null)
-        ack?.({ ok: true, data: { joined: true } })
-      } catch (error) {
-        ackError(ack, error)
-      }
-    })
+        const membership = await assertMatchRoomMembership(playerId, roomId)
+        let room = joinSocketToRoom(socket, roomId, typeof lastSeenEventId === 'string' ? lastSeenEventId : null)
 
-    socket.on('solo:submit-answer', async (value: unknown, ack?: (response: SoloAnswerCommandAck) => void) => {
-      try {
-        const command = submitSoloAnswerCommandSchema.parse(value)
-        const response = await submitSoloAnswer(playerId, command.runId, command.answer)
-        ack?.({ ok: true, data: response })
+        if (!room) {
+          const persistedMatch = await getMatch(playerId, membership.id)
+          observeRoomSnapshot(serializeMatch(persistedMatch))
+          room = joinSocketToRoom(socket, roomId, null)
+        }
+
+        ack?.({ ok: true, data: { joined: true } })
       } catch (error) {
         ackError(ack, error)
       }
@@ -1238,7 +1080,7 @@ export function initRealtime(httpServer: HttpServer, options: InitRealtimeOption
       playerId,
       getCachedMatch: (matchId) => matchSnapshotCache.get(matchId) ?? null,
       commandIdFromValue,
-      ackDuplicateMatchCommand,
+      ackDuplicateMatchCommand: durableCommandReceipts ? () => false : ackDuplicateMatchCommand,
       ackError,
       publishMatchRuntimeEvent,
       emitNotificationsChanged,
@@ -1265,32 +1107,36 @@ export function initRealtime(httpServer: HttpServer, options: InitRealtimeOption
       try {
         const command = parseRealtimeTempoAnswerCommand(value)
         const commandId = commandIdFromValue(value)
-        const cachedMatch = matchSnapshotCache.get(command.matchId)
+        const knownSnapshot = matchSnapshotCache.get(command.matchId) ?? serializeMatch(await getMatch(playerId, command.matchId))
+        const result = await submitAtomicTempoAnswer(playerId, command.matchId, command.answer, knownSnapshot)
+        let snapshot = result.snapshot
 
-        if (!cachedMatch) {
-          throw new MatchServiceError('match_not_found')
+        // The progress event must be observed while clients still point at the
+        // resolved question. Sending the already-advanced snapshot first would
+        // make their monotonic guard ignore the progress and keep the input locked.
+        if (result.advanced) {
+          emitMatchTempoProgress(snapshot, result.progress, 'match_tempo_question_completed')
         }
-
-        const result = recordRealtimeTempoAnswer(cachedMatch, playerId, command.answer)
-        let ackSnapshot = result.snapshot
 
         if (!result.isDuplicate) {
-          try {
-            await persistTempoQuestionAnswerCommitted(command.matchId, playerId, result.answer)
-          } catch (error) {
-            result.question?.answers.delete(playerId)
-            throw error
-          }
-
-          publishMatchRuntimeEvent(result.snapshot, 'match_tempo_answer_recorded', commandId)
-          emitMatchTempoAnswerRecorded(result.snapshot, result.answer.questionIndex, playerId, 'match_tempo_answer_recorded')
-
-          if (result.shouldResolve && result.question) {
-            ackSnapshot = await resolveTempoQuestion(ensureTempoRuntime(result.snapshot), result.snapshot, result.question, 'match_tempo_question_completed')
-          }
+          emitMatchTempoAnswerRecorded(snapshot, command.answer.questionIndex, playerId, 'match_tempo_answer_recorded')
         }
 
-        ack?.({ ok: true, data: { match: snapshotWithTempoRuntime(snapshotWithFreshServerNow(ackSnapshot)), progress: result.progress } })
+        if (result.terminal) {
+          const completed = await completePersistedTempoMatch(command.matchId)
+          if (completed) {
+            snapshot = serializeMatch(completed)
+            publishMatchRuntimeEvent(snapshot, 'match_completed', commandId)
+          } else {
+            snapshot = serializeMatch(await getMatch(playerId, command.matchId))
+            publishMatchRuntimeEvent(snapshot, 'match_tempo_finalizing', commandId)
+          }
+        } else {
+          const reason = result.advanced ? 'match_tempo_question_completed' : 'match_tempo_answer_recorded'
+          publishMatchRuntimeEvent(snapshot, reason, commandId)
+        }
+
+        ack?.({ ok: true, data: { match: snapshotWithFreshServerNow(snapshot), progress: result.progress } })
       } catch (error) {
         ackError(ack, error)
       }
@@ -1458,16 +1304,17 @@ export function emitMatchTempoAnswerRecorded(
 export function closeRealtime() {
   io?.close()
   io = null
+  if (postgresAdapterPool) {
+    void postgresAdapterPool.end().catch((error) => {
+      logger.error('realtime_postgres_adapter_close_failed', {
+        message: error instanceof Error ? error.message : String(error),
+      })
+    })
+    postgresAdapterPool = null
+  }
+  postgresAdapterEnabled = false
   matchSnapshotCache.clear()
   matchPersistenceQueue.clear()
-  for (const runtime of tempoMatchRuntimes.values()) {
-    for (const question of runtime.questions.values()) {
-      if (question.timeoutId) {
-        clearTimeout(question.timeoutId)
-      }
-    }
-  }
-  tempoMatchRuntimes.clear()
   presenceRuntime.clear()
   presencePersistenceQueues.clear()
   realtimeRateBuckets.clear()

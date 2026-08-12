@@ -13,6 +13,7 @@ function validProductionEnv() {
     adminClerkUserIds: ['user_admin123'],
     corsOrigins: ['https://mayele-learning.com'],
     e2eAuthBypass: false,
+    realtimePostgresAdapterEnabled: true,
     sentryDsn: 'https://public@example.ingest.sentry.io/1',
   }
 }

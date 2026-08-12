@@ -36,6 +36,7 @@ model Player {
   createdMatches Match[] @relation("CreatedMatches")
   matchParticipants MatchParticipant[]
   matchQuestionAnswers MatchQuestionAnswer[]
+  realtimeCommandReceipts RealtimeCommandReceipt[]
   soloRuns    SoloRun[]
   xpLedgerEntries XpLedgerEntry[]
   notifications Notification[] @relation("PlayerNotifications")
@@ -114,15 +115,24 @@ model Match {
   expiresAt       DateTime @default(dbgenerated("CURRENT_TIMESTAMP + interval '30 minutes'")) @map("expires_at")
   hostActiveAt    DateTime? @map("host_active_at")
   startedAt       DateTime? @map("started_at")
+  tempoQuestionIndex Int? @map("tempo_question_index")
+  tempoQuestionAnswerCount Int @default(0) @map("tempo_question_answer_count")
+  tempoQuestionStartedAt DateTime? @map("tempo_question_started_at")
+  tempoQuestionDeadlineAt DateTime? @map("tempo_question_deadline_at")
+  tempoFinalizationOwner String? @map("tempo_finalization_owner")
+  tempoFinalizationLockedUntil DateTime? @map("tempo_finalization_locked_until")
   finishedAt      DateTime? @map("finished_at")
   createdBy       Player   @relation("CreatedMatches", fields: [createdById], references: [id], onDelete: Cascade)
   participants    MatchParticipant[]
   questionAnswers MatchQuestionAnswer[]
+  realtimeCommandReceipts RealtimeCommandReceipt[]
 
   @@index([roomId, createdAt(sort: Desc)])
   @@index([createdById, createdAt(sort: Desc)])
   @@index([status, createdAt(sort: Desc)])
   @@index([status, expiresAt])
+  @@index([status, challengeMode, tempoQuestionDeadlineAt])
+  @@index([status, challengeMode, tempoFinalizationLockedUntil])
   @@map("matches")
 }
 
@@ -173,6 +183,27 @@ model MatchQuestionAnswer {
   @@unique([matchId, playerId, questionIndex])
   @@index([matchId, questionIndex])
   @@map("match_question_answers")
+}
+
+model RealtimeCommandReceipt {
+  id          String   @id @default(cuid())
+  playerId    String   @map("player_id")
+  matchId     String?  @map("match_id")
+  eventName   String   @map("event_name")
+  commandId   String   @map("command_id")
+  status      String   @default("processing")
+  ownerToken  String   @map("owner_token")
+  lockedUntil DateTime @map("locked_until")
+  response    Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  player      Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  match       Match?   @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@unique([playerId, eventName, commandId])
+  @@index([status, lockedUntil])
+  @@index([matchId, createdAt(sort: Desc)])
+  @@map("realtime_command_receipts")
 }
 
 model GameSession {
@@ -245,6 +276,7 @@ model SoloRun {
 
   @@unique([playerId, clientRunId])
   @@index([playerId, status, startedAt(sort: Desc)])
+  @@index([status, endsAt])
   @@index([status, expiresAt])
   @@map("solo_runs")
 }
