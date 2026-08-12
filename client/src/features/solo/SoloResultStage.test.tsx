@@ -56,4 +56,45 @@ describe('SoloResultStage', () => {
     expect(onReplay).toHaveBeenCalledOnce()
     expect(onReturn).toHaveBeenCalledOnce()
   })
+
+  it('inclut les récompenses et les XP de mission dans le résultat', () => {
+    render(
+      <SoloResultStage
+        accuracy={100}
+        answers={[]}
+        modeLabel="Sprint"
+        sessionLabel="Sprint · Mixte · Débutant"
+        skillLabel={(skill) => skill}
+        stats={{ correctAnswers: 0, totalQuestions: 0, scorePoints: 0, xp: 20, currentStreak: 0, bestStreak: 0 }}
+        result={{
+          sessionId: 'session-1',
+          message: 'Session enregistrée.',
+          scorePoints: 0,
+          xpEarned: 20,
+          missionXpEarned: 40,
+          completedMissions: [{ key: 'mission-1', title: 'Première mission', rewardXp: 40 }],
+          completedBadges: [],
+          earnedAchievements: [],
+          playerProgress: {
+            level: 1,
+            maxLevel: 50,
+            totalXp: 60,
+            currentLevelXp: 0,
+            nextLevel: 2,
+            nextLevelXp: 100,
+            xpIntoLevel: 60,
+            xpForNextLevel: 100,
+            xpRemaining: 40,
+            progress: 60,
+            isMaxLevel: false,
+          },
+        }}
+        onReplay={() => undefined}
+        onReturn={() => undefined}
+      />,
+    )
+
+    expect(screen.getByText('+60 XP')).toBeVisible()
+    expect(screen.getByText('Première mission')).toBeVisible()
+  })
 })

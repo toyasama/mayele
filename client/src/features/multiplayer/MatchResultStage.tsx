@@ -1,4 +1,5 @@
 import type { MatchParticipantData } from '../../lib/api'
+import { EarnedRewards } from '../../components/EarnedRewards'
 
 type ResultOutcome = 'winner' | 'loser' | 'neutral'
 
@@ -88,6 +89,8 @@ export function MatchResultStage({
         <span className="multiplayer-result-versus" aria-hidden="true">VS</span>
         <ResultPlayer participant={opponent} name={opponent?.player.name ?? opponentName} outcome={opponentOutcome} forfeited={opponentForfeited} playerKey="opponent" />
       </div>
+
+      <EarnedRewards rewards={self?.rewards} />
 
       <div className="multiplayer-result-actions">
         {opponentDismissed ? (

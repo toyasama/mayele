@@ -4,6 +4,11 @@
     "builder": "DOCKERFILE"
   },
   "deploy": {
+    "multiRegionConfig": {
+      "europe-west4-drams3a": {
+        "numReplicas": 1
+      }
+    },
     "preDeployCommand": "npm run prisma:migrate:deploy && npm run db:check-domain",
     "healthcheckPath": "/api/ready",
     "healthcheckTimeout": 300,

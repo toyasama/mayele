@@ -182,6 +182,67 @@ test('le run Solo est corrigé et finalisé par le serveur sans double récompen
   expect(afterRetry.summary.totalXp).toBe(afterFirst.summary.totalXp)
 })
 
+test('deux finalisations Solo simultanées retournent un seul résultat canonique', async ({ request }, testInfo) => {
+  const reset = await request.post(`${API_URL}/api/e2e/reset-multiplayer`)
+  expect(reset.ok()).toBe(true)
+
+  const baselineResponse = await request.get(`${API_URL}/api/dashboard`, { headers })
+  expect(baselineResponse.ok()).toBe(true)
+  const baseline = await baselineResponse.json() as DashboardSummary
+
+  const startResponse = await request.post(`${API_URL}/api/solo-runs`, {
+    headers,
+    data: {
+      clientRunId: randomUUID(),
+      mode: 'tempo',
+      game: 'addition',
+      level: 'debutant',
+      practiceSkill: null,
+      sprintDurationSeconds: 60,
+      tempoQuestionCount: 10,
+      tempoQuestionSeconds: 10,
+    },
+  })
+  expect(startResponse.status()).toBe(201)
+  const started = await startResponse.json() as SoloRunResponse
+  if (!started.run.question) throw new Error('Question Solo absente.')
+
+  const answerResponse = await request.post(`${API_URL}/api/solo-runs/${started.run.id}/answers`, {
+    headers,
+    data: {
+      questionIndex: started.run.question.index,
+      userAnswer: solve(started.run.question.prompt),
+    },
+  })
+  expect(answerResponse.ok()).toBe(true)
+
+  const startedAt = performance.now()
+  const [firstFinish, secondFinish] = await Promise.all([
+    request.post(`${API_URL}/api/solo-runs/${started.run.id}/finish`, { headers }),
+    request.post(`${API_URL}/api/solo-runs/${started.run.id}/finish`, { headers }),
+  ])
+  const durationMs = performance.now() - startedAt
+
+  expect(firstFinish.status()).toBe(200)
+  expect(secondFinish.status()).toBe(200)
+  const firstReceipt = await firstFinish.json() as SoloRunResponse
+  const secondReceipt = await secondFinish.json() as SoloRunResponse
+  expect(firstReceipt.run.status).toBe('completed')
+  expect(secondReceipt.run.status).toBe('completed')
+  expect(secondReceipt.run.result).toEqual(firstReceipt.run.result)
+
+  const dashboardResponse = await request.get(`${API_URL}/api/dashboard`, { headers })
+  expect(dashboardResponse.ok()).toBe(true)
+  const dashboard = await dashboardResponse.json() as DashboardSummary
+  expect(dashboard.summary.totalSessions).toBe(baseline.summary.totalSessions + 1)
+
+  console.info(`[performance] solo-concurrent-finish=${durationMs.toFixed(2)}ms`)
+  await testInfo.attach('solo-concurrent-finish.json', {
+    body: JSON.stringify({ durationMs, statuses: [firstFinish.status(), secondFinish.status()] }, null, 2),
+    contentType: 'application/json',
+  })
+})
+
 test('le serveur transforme en absence de réponse une réponse Tempo arrivée hors délai', async ({ request }) => {
   const reset = await request.post(`${API_URL}/api/e2e/reset-multiplayer`)
   expect(reset.ok()).toBe(true)
@@ -266,4 +327,53 @@ test('deux démarrages concurrents ne laissent qu’un seul run actif', async ({
   expect(finalStatuses.filter((status) => status === 'abandoned')).toHaveLength(1)
 
   await request.post(`${API_URL}/api/solo-runs/${active.run.id}/finish`, { headers })
+})
+
+test('le worker finalise un run Solo expire sans nouvelle ouverture du jeu', async ({ request }) => {
+  const reset = await request.post(`${API_URL}/api/e2e/reset-multiplayer`)
+  expect(reset.ok()).toBe(true)
+
+  const start = await request.post(`${API_URL}/api/solo-runs`, {
+    headers,
+    data: {
+      clientRunId: randomUUID(),
+      mode: 'sprint',
+      game: 'addition',
+      level: 'debutant',
+      practiceSkill: null,
+      sprintDurationSeconds: 60,
+      tempoQuestionCount: 10,
+      tempoQuestionSeconds: 10,
+    },
+  })
+  expect(start.status()).toBe(201)
+  const started = await start.json() as SoloRunResponse
+  if (!started.run.question) throw new Error('Question Solo absente.')
+
+  const answer = await request.post(`${API_URL}/api/solo-runs/${started.run.id}/answers`, {
+    headers,
+    data: {
+      questionIndex: started.run.question.index,
+      userAnswer: solve(started.run.question.prompt),
+    },
+  })
+  expect(answer.ok()).toBe(true)
+
+  const forcedExpiration = await request.post(`${API_URL}/api/e2e/solo-runs/${started.run.id}/expire`)
+  expect(forcedExpiration.ok()).toBe(true)
+
+  await expect.poll(async () => {
+    const response = await request.get(`${API_URL}/api/e2e/solo-runs/${started.run.id}/status`)
+    expect(response.ok()).toBe(true)
+    return response.json() as Promise<{ run: { status: string; sessionId: string | null; result: unknown } | null }>
+  }, {
+    timeout: 25_000,
+    intervals: [500, 1_000, 2_000],
+  }).toMatchObject({
+    run: {
+      status: 'completed',
+      sessionId: expect.any(String),
+      result: expect.objectContaining({ sessionId: expect.any(String) }),
+    },
+  })
 })

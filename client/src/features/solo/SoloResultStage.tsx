@@ -1,4 +1,6 @@
 import type { CSSProperties } from 'react'
+import { EarnedRewards } from '../../components/EarnedRewards'
+import type { SoloRunResult } from '../../lib/api'
 import type { AnswerResult, SkillTag } from '../../lib/game'
 import type { SoloSessionStats } from '../../lib/soloChallenge'
 
@@ -8,6 +10,7 @@ type SoloResultStageProps = {
   modeLabel: string
   sessionLabel: string
   stats: SoloSessionStats
+  result?: SoloRunResult | null
   skillLabel: (skill: SkillTag) => string
   onReplay: () => void
   onReturn: () => void
@@ -57,6 +60,7 @@ export function SoloResultStage({
   modeLabel,
   sessionLabel,
   stats,
+  result,
   skillLabel,
   onReplay,
   onReturn,
@@ -65,6 +69,7 @@ export function SoloResultStage({
   const averageTime = averageResponseTime(answers)
   const tone = resultTone(accuracy)
   const hasAnswers = answers.length > 0
+  const totalXpEarned = result ? result.xpEarned + result.missionXpEarned : stats.xp
 
   return (
     <article className={`solo-result-stage result-${tone}`} aria-labelledby="solo-result-title">
@@ -73,7 +78,7 @@ export function SoloResultStage({
           <span className="eyebrow">{sessionLabel}</span>
           <h1 id="solo-result-title">{resultTitle(accuracy, hasAnswers)}</h1>
         </div>
-        <span className="solo-result-xp">+{stats.xp} XP</span>
+        <span className="solo-result-xp">+{totalXpEarned} XP</span>
       </header>
 
       <div className="solo-result-summary">
@@ -121,6 +126,8 @@ export function SoloResultStage({
           </p>
         </aside>
       </div>
+
+      <EarnedRewards rewards={result} />
 
       <div className="solo-result-actions">
         <button className="primary-button" type="button" onClick={onReplay}>

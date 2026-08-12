@@ -433,11 +433,6 @@ body,
   align-items: start;
 }
 
-.dashboard-badge-sheet-header .badge-art {
-  width: 70px;
-  height: 84px;
-}
-
 .dashboard-badge-sheet-header h2 {
   margin: 5px 0 0;
   color: var(--text);
@@ -615,7 +610,7 @@ body,
     display: none;
   }
 
-  .dashboard-profile-badge-card.friend-badge-card {
+  .dashboard-profile-badge-card {
     width: 76px;
     min-width: 76px;
     min-height: 84px;
@@ -623,23 +618,21 @@ body,
     padding: 8px 6px;
   }
 
-  .dashboard-profile-badge-card.friend-badge-card .badge-art {
+  .dashboard-profile-badge-card .dashboard-badge-art-viewport {
     width: 36px;
     height: 40px;
+    --dashboard-badge-art-scale: 0.31;
   }
 
-  .dashboard-profile-badge-card.friend-badge-card .badge-core {
-    width: 26px;
-    height: 26px;
-    border-width: 2px;
+  .dashboard-profile-badge-card .dashboard-badge-art-viewport.rank-two {
+    --dashboard-badge-art-scale: 0.28;
   }
 
-  .dashboard-profile-badge-card.friend-badge-card .badge-family-icon {
-    width: 19px;
-    height: 19px;
+  .dashboard-profile-badge-card .dashboard-badge-art-viewport.rank-three {
+    --dashboard-badge-art-scale: 0.22;
   }
 
-  .dashboard-profile-badge-card.friend-badge-card strong {
+  .dashboard-profile-badge-card strong {
     font-size: 0.66rem;
   }
 

@@ -76,6 +76,15 @@ function presenceLabel(status: PresenceStatus) {
   return 'Hors ligne'
 }
 
+function ProfileIcon() {
+  return (
+    <svg className="profile-action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <circle cx="12" cy="8" r="3.25" />
+      <path d="M5.75 19c.55-3.2 2.65-5 6.25-5s5.7 1.8 6.25 5" />
+    </svg>
+  )
+}
+
 function PlayerAvatar({ player }: { player: PublicPlayer }) {
   if (player.avatarUrl) {
     return <img className="profile-card-avatar" src={player.avatarUrl} alt="" />
@@ -599,8 +608,9 @@ export function FriendsPage() {
                   <>
                     {card.status === 'friend' ? (
                       <>
-                        <button className="secondary-button" type="button" onClick={() => navigate(`/amis/${encodeURIComponent(card.player.id)}`)}>
-                          Voir le profil
+                        <button className="secondary-button profile-action-button" type="button" onClick={() => navigate(`/amis/${encodeURIComponent(card.player.id)}`)}>
+                          <ProfileIcon />
+                          <span>Profil</span>
                         </button>
                         <button
                           className="primary-button"
@@ -697,8 +707,9 @@ export function FriendsPage() {
 
                       {status === 'friend' ? (
                         <>
-                          <button className="secondary-button" type="button" onClick={() => navigate(`/amis/${encodeURIComponent(player.id)}`)}>
-                            Voir le profil
+                          <button className="secondary-button profile-action-button" type="button" onClick={() => navigate(`/amis/${encodeURIComponent(player.id)}`)}>
+                            <ProfileIcon />
+                            <span>Profil</span>
                           </button>
                           <button
                             className="primary-button"

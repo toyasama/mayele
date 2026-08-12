@@ -213,7 +213,7 @@
 .multiplayer-result-stats {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: clamp(16px, 4vw, 34px);
+  gap: clamp(2px, 0.5vw, 8px);
   align-items: start;
   text-align: center;
 }
@@ -222,16 +222,17 @@
   display: grid;
   gap: 6px;
   min-width: 0;
-  font-size: clamp(1.65rem, 4vw, 2.2rem);
+  font-size: clamp(1.1rem, 1.7vw, 1.45rem);
+  font-variant-numeric: tabular-nums;
   line-height: 1;
 }
 
 .multiplayer-result-stats strong small {
   color: var(--muted);
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-  font-size: 0.7rem;
+  font-size: 0.6rem;
   font-weight: 850;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 

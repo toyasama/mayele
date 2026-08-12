@@ -4,6 +4,119 @@
   display: none;
 }
 
+/* Compact friend detail shared by the desktop panel and mobile sheet. */
+.friends-page .social-profile-detail.profile-card {
+  position: relative;
+  min-height: 0;
+  grid-template-columns: 1fr;
+  gap: 18px;
+}
+
+.friends-page .social-profile-identity {
+  min-width: 0;
+  padding-right: 84px;
+}
+
+.friends-page .social-profile-identity-copy {
+  min-width: 0;
+}
+
+.friends-page .social-profile-handle-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.friends-page .social-profile-relation {
+  width: fit-content;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(10, 159, 143, 0.1);
+  color: var(--primary-dark);
+  font-size: 0.68rem;
+  font-weight: 900;
+  line-height: 1.4;
+}
+
+.friends-page .social-profile-relation.status-incoming {
+  background: var(--yellow-soft);
+  color: #67640d;
+}
+
+.friends-page .social-profile-relation.status-outgoing {
+  background: #edf4f6;
+  color: var(--muted);
+}
+
+.friends-page .social-profile-summary {
+  display: grid;
+  grid-template-columns: 1fr;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.friends-page .social-profile-metrics {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  border: 0;
+}
+
+.friends-page .social-profile-metrics > div {
+  min-width: 88px;
+  display: grid;
+  gap: 2px;
+  padding: 9px 12px;
+  border: 1px solid rgba(180, 212, 218, 0.68);
+  border-radius: 13px;
+  background: rgba(247, 252, 252, 0.86);
+}
+
+.friends-page .social-profile-metrics > div:last-child {
+  min-width: 120px;
+}
+
+.friends-page .social-profile-metrics span {
+  font-size: 0.65rem;
+}
+
+.friends-page .social-profile-metrics strong {
+  font-size: 1rem;
+}
+
+.friends-page .social-profile-actions.profile-card-actions {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.friends-page .social-profile-actions .danger-button {
+  position: absolute;
+  top: clamp(22px, 3vw, 30px);
+  right: clamp(22px, 3vw, 30px);
+  width: auto;
+  min-height: 32px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+}
+
+.profile-action-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.profile-action-icon {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
 @media (max-width: 767px) {
   .friends-page {
     padding-bottom: 18px;
@@ -105,7 +218,7 @@
     position: fixed;
     top: calc(var(--app-topbar-height) + 8px);
     right: max(8px, env(safe-area-inset-right));
-    bottom: calc(var(--mobile-bottom-nav-height) + env(safe-area-inset-bottom) + 20px);
+    bottom: auto;
     left: max(8px, env(safe-area-inset-left));
     z-index: 28;
     width: auto;
@@ -114,7 +227,8 @@
     display: grid;
     grid-template-columns: 1fr;
     align-content: start;
-    gap: 14px;
+    max-height: calc(100dvh - var(--app-topbar-height) - var(--mobile-bottom-nav-height) - 44px);
+    gap: 16px;
     overflow-y: auto;
     overscroll-behavior: contain;
     padding: 16px;
@@ -124,27 +238,27 @@
   }
 
   .friends-page .social-profile-close {
-    position: sticky;
-    top: 0;
+    position: absolute;
+    top: 14px;
+    right: 14px;
     z-index: 2;
-    justify-self: end;
-    width: 40px;
-    height: 40px;
+    width: 36px;
+    height: 36px;
     display: grid;
     place-items: center;
-    margin-bottom: -48px;
     border: 1px solid var(--border);
     border-radius: 50%;
     background: rgba(255, 255, 255, 0.94);
     color: var(--text);
-    font-size: 1.5rem;
+    font-size: 1.3rem;
     box-shadow: 0 8px 18px rgba(0, 48, 72, 0.1);
   }
 
   .friends-page .social-profile-identity {
+    display: grid;
     grid-template-columns: 68px minmax(0, 1fr);
     gap: 12px;
-    padding-right: 44px;
+    padding-right: 86px;
   }
 
   .friends-page .social-roster-avatar.large {
@@ -157,34 +271,38 @@
   }
 
   .friends-page .social-profile-metrics {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    display: flex;
     gap: 7px;
   }
 
   .friends-page .social-profile-metrics > div {
-    min-height: 64px;
-    padding: 10px;
+    min-width: 82px;
+    min-height: 0;
+    padding: 8px 11px;
     border: 1px solid var(--border);
     border-radius: 12px;
   }
 
   .friends-page .social-profile-metrics > div:last-child {
-    grid-column: 1 / -1;
+    min-width: 112px;
   }
 
-  .friends-page .social-profile-progress {
+  .friends-page .social-profile-summary {
+    grid-template-columns: 1fr;
     gap: 8px;
-    padding: 12px;
-    border-radius: 14px;
-    background: #f4f8fa;
   }
 
   .friends-page .social-profile-actions.profile-card-actions {
-    position: sticky;
-    bottom: -16px;
-    z-index: 2;
+    position: static;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    padding: 10px 0 16px;
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0), #fff 24%);
+    padding: 0;
+    background: transparent;
+  }
+
+  .friends-page .social-profile-actions .danger-button {
+    top: 16px;
+    right: 58px;
+    min-height: 32px;
+    padding: 4px 9px;
   }
 }

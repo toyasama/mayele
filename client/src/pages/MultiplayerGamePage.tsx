@@ -72,6 +72,7 @@ import {
 } from '../lib/multiplayerPageUtils'
 
 type MobileRoomView = 'primary' | 'players'
+type TempoAnswerSyncState = 'idle' | 'saving' | 'recorded'
 
 const MATCH_HYDRATION_RETRY_DELAYS_MS = [100, 250, 500, 1_000, 2_000]
 
@@ -121,6 +122,7 @@ export function MultiplayerGamePage() {
   const [tempoActiveQuestionIndex, setTempoActiveQuestionIndex] = useState(0)
   const [tempoRemainingSeconds, setTempoRemainingSeconds] = useState(initialRoomConfig.perQuestionTimeLimitSeconds)
   const [tempoPendingAnswer, setTempoPendingAnswer] = useState<PendingTempoAnswer>(null)
+  const [tempoAnswerSyncState, setTempoAnswerSyncState] = useState<TempoAnswerSyncState>('idle')
   const [sprintRemainingSeconds, setSprintRemainingSeconds] = useState(initialRoomConfig.durationSeconds)
   const roomActionInFlightRef = useRef<string | null>(null)
   const questionRef = useRef(question)
@@ -535,6 +537,7 @@ export function MultiplayerGamePage() {
     setFriendPickerOpen(false)
     setSearchParams({})
     setError('')
+    setTempoAnswerSyncState('idle')
     setRoomSyncError('')
     setAction('')
     setAnswer('')
@@ -1058,7 +1061,14 @@ export function MultiplayerGamePage() {
     }
 
     applyMatchSnapshot(payload.match)
-  }, [applyMatchSnapshot])
+
+    if (
+      payload.playerId === profile?.id &&
+      tempoPendingAnswerRef.current?.questionIndex === payload.questionIndex
+    ) {
+      setTempoAnswerSyncState('recorded')
+    }
+  }, [applyMatchSnapshot, profile?.id])
 
   const realtimeCommands = useRealtimeEvents({
     isAuthenticated: roomRealtimeAuthenticated,
@@ -1188,6 +1198,7 @@ export function MultiplayerGamePage() {
     setTempoQuestionIndex(0)
     setTempoPendingAnswer(null)
     tempoPendingAnswerRef.current = null
+    setTempoAnswerSyncState('idle')
     resultSubmittedRef.current = null
     setLocalScore({ correct: 0, total: 0 })
     setAnswer('')
@@ -1229,7 +1240,11 @@ export function MultiplayerGamePage() {
       heartbeatInFlightMatchIdRef.current = heartbeatMatchId
 
       try {
-        await api.heartbeatMatch(getToken, heartbeatMatchId)
+        const { match } = await api.heartbeatMatch(getToken, heartbeatMatchId)
+
+        if (active && heartbeatTargetIdRef.current === heartbeatMatchId) {
+          applyMatchSnapshot(match)
+        }
       } catch (caughtError) {
         if (!active || heartbeatTargetIdRef.current !== heartbeatMatchId) {
           return
@@ -1259,7 +1274,7 @@ export function MultiplayerGamePage() {
         heartbeatTargetIdRef.current = null
       }
     }
-  }, [heartbeatMatchId, getToken, reportBackgroundRoomError, resetToMultiplayerHome])
+  }, [applyMatchSnapshot, heartbeatMatchId, getToken, reportBackgroundRoomError, resetToMultiplayerHome])
 
   function openInvitation(match: MatchData) {
     cancelQueuedConfigFlush()
@@ -1871,6 +1886,7 @@ export function MultiplayerGamePage() {
 
     tempoPendingAnswerRef.current = null
     setTempoPendingAnswer(null)
+    setTempoAnswerSyncState('idle')
     setAnswer('')
   }, [serverNowMs, setTempoQuestionIndex])
 
@@ -1906,7 +1922,9 @@ export function MultiplayerGamePage() {
     appendMatchAnswer(userAnswer, responseTimeMs, currentQuestionIndex)
     tempoPendingAnswerRef.current = nextPendingAnswer
     setTempoPendingAnswer(nextPendingAnswer)
+    setTempoAnswerSyncState('saving')
     setAnswer('')
+    setError('')
 
     void submitTempoAnswerRealtime(displayedMatch.id, {
       questionIndex: currentQuestionIndex,
@@ -1917,20 +1935,54 @@ export function MultiplayerGamePage() {
       skill: questionForAnswer.skill,
       source,
     }).then((payload) => {
-      applyMatchSnapshot(payload.match)
-
       if (payload.progress.complete) {
         completeTempoQuestionRef.current(payload.progress.questionIndex, new Date(payload.match.serverNow).getTime())
       }
-    }).catch((caughtError) => {
+
+      applyMatchSnapshot(payload.match)
+
+      if (!payload.progress.complete && tempoPendingAnswerRef.current?.questionIndex === payload.progress.questionIndex) {
+        setTempoAnswerSyncState('recorded')
+      }
+    }).catch(async (caughtError) => {
       if (isMatchSettlementConfirmed(activeMatchRef.current, displayedMatch.id, profile?.id)) {
         return
       }
 
-      if (isStaleRoomError(caughtError)) {
-        void refreshRoomData().catch((refreshError) => {
+      const outcomeUnknown = isRealtimeCommandOutcomeUnknown(caughtError) || (
+        caughtError instanceof ApiRequestError && caughtError.code === 'realtime_unavailable'
+      )
+      const confirmedBusinessRejection = caughtError instanceof ApiRequestError && (
+        caughtError.status >= 400 &&
+        caughtError.status < 500 &&
+        !isTransientAuthError(caughtError) &&
+        !outcomeUnknown
+      )
+
+      if (isStaleRoomError(caughtError) || !confirmedBusinessRejection) {
+        try {
+          await refreshRoomData()
+        } catch (refreshError) {
           reportBackgroundRoomError(refreshError, 'Impossible de resynchroniser la fin du tempo.')
-        })
+        }
+
+        const refreshedMatch = activeMatchRef.current
+        const canonicalQuestionAdvanced =
+          refreshedMatch?.id === displayedMatch.id &&
+          typeof refreshedMatch.tempoQuestionIndex === 'number' &&
+          refreshedMatch.tempoQuestionIndex > currentQuestionIndex
+
+        if (
+          canonicalQuestionAdvanced ||
+          isMatchSettlementConfirmed(refreshedMatch, displayedMatch.id, profile?.id)
+        ) {
+          if (tempoPendingAnswerRef.current?.questionIndex === currentQuestionIndex) {
+            tempoPendingAnswerRef.current = null
+            setTempoPendingAnswer(null)
+          }
+          setTempoAnswerSyncState('idle')
+        }
+
         return
       }
 
@@ -1938,6 +1990,7 @@ export function MultiplayerGamePage() {
         tempoPendingAnswerRef.current = null
         setTempoPendingAnswer(null)
       }
+      setTempoAnswerSyncState('idle')
 
       removeTempoAnswer(currentQuestionIndex)
 
@@ -1947,9 +2000,7 @@ export function MultiplayerGamePage() {
 
       window.requestAnimationFrame(focusAnswerInput)
 
-      if (!isTransientAuthError(caughtError)) {
-        setError(caughtError instanceof Error ? caughtError.message : 'Reponse tempo impossible.')
-      }
+      setError(caughtError.message)
     })
   }, [appendMatchAnswer, applyMatchSnapshot, config.game, config.level, displayedMatch, focusAnswerInput, profile?.id, refreshRoomData, removeTempoAnswer, reportBackgroundRoomError, serverNowMs])
 
@@ -1979,7 +2030,12 @@ export function MultiplayerGamePage() {
       return
     }
 
-    if (action === `result:${displayedMatch.id}` || tempoActiveQuestionIndex >= (displayedMatch.questionCount ?? 0)) {
+    if (
+      action === `result:${displayedMatch.id}` ||
+      localTempoRunComplete ||
+      completedTempoQuestionIndexesRef.current.has(tempoActiveQuestionIndex) ||
+      tempoActiveQuestionIndex >= (displayedMatch.questionCount ?? 0)
+    ) {
       return
     }
 
@@ -2006,7 +2062,72 @@ export function MultiplayerGamePage() {
     setTempoRemainingSeconds(initialRemainingSeconds)
 
     return () => window.clearInterval(interval)
-  }, [action, answer, config.challengeMode, config.perQuestionTimeLimitSeconds, displayedMatch?.id, displayedMatch?.perQuestionTimeLimitSeconds, displayedMatch?.questionCount, displayedMatch?.status, serverNowMs, submitTempoAnswer, tempoActiveQuestionIndex])
+  }, [action, answer, config.challengeMode, config.perQuestionTimeLimitSeconds, displayedMatch?.id, displayedMatch?.perQuestionTimeLimitSeconds, displayedMatch?.questionCount, displayedMatch?.status, localTempoRunComplete, serverNowMs, submitTempoAnswer, tempoActiveQuestionIndex])
+
+  useEffect(() => {
+    if (
+      displayedMatch?.status !== 'in_progress' ||
+      config.challengeMode !== 'tempo' ||
+      !localTempoRunComplete
+    ) {
+      return
+    }
+
+    const matchId = displayedMatch.id
+    const retryDelaysMs = [250, 500, 1000, 1500, 2000]
+    let active = true
+    let retryIndex = 0
+    let timeoutId: number | null = null
+
+    const scheduleReconciliation = () => {
+      if (!active) {
+        return
+      }
+
+      const delayMs = retryDelaysMs[Math.min(retryIndex, retryDelaysMs.length - 1)]
+      retryIndex += 1
+      timeoutId = window.setTimeout(() => void reconcileFinalTempoSnapshot(), delayMs)
+    }
+
+    const reconcileFinalTempoSnapshot = async () => {
+      if (
+        !active ||
+        activeMatchRef.current?.id !== matchId ||
+        activeMatchRef.current.status !== 'in_progress'
+      ) {
+        return
+      }
+
+      try {
+        const { match } = await api.getMatch(getToken, matchId)
+
+        if (!active) {
+          return
+        }
+
+        const appliedMatch = applyMatchSnapshot(match)
+
+        if (appliedMatch.status !== 'in_progress') {
+          return
+        }
+      } catch {
+        // La diffusion Socket reste le chemin principal. Cette lecture ne sert
+        // qu'a reparer un evenement de completion perdu ou arrive en retard.
+      }
+
+      scheduleReconciliation()
+    }
+
+    scheduleReconciliation()
+
+    return () => {
+      active = false
+
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId)
+      }
+    }
+  }, [applyMatchSnapshot, config.challengeMode, displayedMatch?.id, displayedMatch?.status, getToken, localTempoRunComplete])
 
   useEffect(() => {
     if (displayedMatch?.status !== 'in_progress' || config.challengeMode !== 'sprint' || myParticipant?.status !== 'playing') {
@@ -2283,6 +2404,13 @@ export function MultiplayerGamePage() {
               elapsedLabel={`${activeTimerElapsedSeconds}/${activeTimerTotalSeconds}`}
               exitDisabled={action === `stop:${displayedMatch.id}`}
               exitLabel="Stop"
+              feedbackSlot={tempoPendingAnswer ? (
+                <p aria-live="polite" role="status">
+                  {tempoAnswerSyncState === 'recorded'
+                    ? "Réponse enregistrée — attente de l’adversaire."
+                    : 'Enregistrement…'}
+                </p>
+              ) : undefined}
               metrics={multiplayerMetrics}
               modeLabel="Multi"
               onAnswerChange={setAnswer}

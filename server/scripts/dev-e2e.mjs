@@ -6,10 +6,16 @@ import { fileURLToPath } from 'node:url'
 const serverRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
 const npmCli = process.env.npm_execpath
 const tsxCli = join(serverRoot, 'node_modules', 'tsx', 'dist', 'cli.mjs')
+const portArgumentIndex = process.argv.indexOf('--port')
+const requestedPort = portArgumentIndex >= 0 ? process.argv[portArgumentIndex + 1] : undefined
+const postgresAdapterEnabled = process.argv.includes('--postgres-adapter')
+const skipPrismaGenerate = process.argv.includes('--skip-prisma-generate')
 const e2eEnvironment = {
   ...process.env,
   NODE_ENV: 'test',
   E2E_AUTH_BYPASS: 'true',
+  ...(requestedPort ? { PORT: requestedPort } : {}),
+  ...(postgresAdapterEnabled ? { REALTIME_POSTGRES_ADAPTER_ENABLED: 'true' } : {}),
 }
 
 function runNodeScript(scriptPath, args, options = {}) {
@@ -39,7 +45,9 @@ if (!existsSync(tsxCli)) {
   throw new Error('tsx is not installed. Run npm install in the server workspace.')
 }
 
-await runNodeScript(npmCli, ['run', 'prisma:generate'], { env: e2eEnvironment })
+if (!skipPrismaGenerate) {
+  await runNodeScript(npmCli, ['run', 'prisma:generate'], { env: e2eEnvironment })
+}
 
 const server = spawn(process.execPath, [tsxCli, 'watch', '--exclude', 'src/generated/**', 'src/server.ts'], {
   cwd: serverRoot,

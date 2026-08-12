@@ -19,6 +19,9 @@ vi.mock('./services/outboxDispatcher.js', () => ({
 vi.mock('./services/matchExpirationWorker.js', () => ({
   getMatchExpirationWorkerHealth: vi.fn(() => ({ started: true, running: false, lastSucceededAt: null, lastFailedAt: null })),
 }))
+vi.mock('./services/soloRunExpirationWorker.js', () => ({
+  getSoloRunExpirationWorkerHealth: vi.fn(() => ({ started: true, running: false, lastSucceededAt: null, lastFailedAt: null })),
+}))
 
 const { adminRoutes } = await import('./routes/adminRoutes.js')
 

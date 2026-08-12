@@ -3,7 +3,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { DashboardData, OperationHistorySession } from '../../lib/api'
 import type { GameLevel, GameType } from '../../lib/game'
-import { PerformanceCockpit } from './PerformanceCockpit'
+import { PerformanceCockpit, PerformanceLevelCards } from './PerformanceCockpit'
 
 const stats: DashboardData['stats'] = {
   averageResponseTimeMs: 2700,
@@ -156,6 +156,21 @@ function renderPerformance(loadOperationHistory = async () => operationHistory) 
 
 describe('PerformanceCockpit', () => {
   afterEach(cleanup)
+
+  it('peut afficher les résultats par niveau sans interaction', () => {
+    render(
+      <PerformanceLevelCards
+        stats={stats}
+        levelLabel={(level) => ({ debutant: 'Débutant', intermediaire: 'Intermédiaire', avance: 'Avancé', expert: 'Expert' }[level ?? ''] ?? String(level))}
+      />,
+    )
+
+    const levelResults = screen.getByRole('list', { name: 'Résultats par niveau de difficulté' })
+    expect(within(levelResults).getAllByRole('listitem')).toHaveLength(4)
+    expect(within(levelResults).queryByRole('button')).not.toBeInTheDocument()
+    expect(within(levelResults).getByLabelText('50% de précision au niveau Débutant')).toBeVisible()
+    expect(within(levelResults).getByText('20 sprints')).toBeVisible()
+  })
 
   it('contextualise un même pourcentage par difficulté et par volume de jeu', () => {
     renderPerformance()

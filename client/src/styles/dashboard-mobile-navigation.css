@@ -336,27 +336,28 @@
   .dashboard-page .trophy-cabinet-heading {
     align-items: center;
     flex-direction: row;
-    gap: 12px;
-    padding: 14px;
+    gap: 9px;
+    padding: 11px;
   }
 
   .dashboard-page .quest-path-heading h3,
   .dashboard-page .trophy-cabinet-heading h3 {
-    font-size: 1.2rem;
+    font-size: 1.08rem;
   }
 
   .dashboard-page .quest-path-heading > strong,
   .dashboard-page .trophy-cabinet-heading > strong {
     flex: 0 0 auto;
-    padding: 7px 9px;
-    font-size: 0.78rem;
+    min-height: 30px;
+    padding: 5px 8px;
+    font-size: 0.68rem;
   }
 
   .dashboard-page .quest-path-list.mission-board-grid {
     display: flex;
-    gap: 10px;
+    gap: 8px;
     overflow-x: auto;
-    padding: 10px 14px 16px;
+    padding: 8px 10px 12px;
     scroll-snap-type: x mandatory;
     scrollbar-width: none;
   }
@@ -370,31 +371,90 @@
   }
 
   .dashboard-page .quest-path-step.mission-xp-card {
-    flex: 0 0 var(--dashboard-mobile-card);
-    min-height: 118px;
-    grid-template-columns: 42px minmax(0, 1fr) 58px;
-    gap: 9px;
-    padding: 12px;
+    flex: 0 0 min(250px, 74vw);
+    min-height: 0;
+    grid-template-columns: 32px minmax(0, 1fr) 48px;
+    align-items: start;
+    gap: 6px;
+    padding: 9px;
     border: 1px solid var(--border);
-    border-radius: 15px;
+    border-radius: 13px;
     scroll-snap-align: start;
   }
 
   .dashboard-page .quest-node {
-    width: 40px;
-    height: 40px;
-    border-width: 5px;
+    width: 30px;
+    height: 30px;
+    border-width: 4px;
+    font-size: 0.72rem;
+  }
+
+  .dashboard-page .quest-step-copy h3 {
+    display: -webkit-box;
+    overflow: hidden;
+    margin: 0 0 3px;
+    font-size: 0.82rem;
+    line-height: 1.08;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+  }
+
+  .dashboard-page .quest-step-copy .mission-tag-row {
+    gap: 3px;
+    margin: 3px 0;
+  }
+
+  .dashboard-page .quest-step-copy .mission-tag-row em {
+    padding: 2px 4px;
+    font-size: 0.56rem;
+  }
+
+  .dashboard-page .quest-step-copy .mission-tag-row em:nth-child(n + 4) {
+    display: none;
   }
 
   .dashboard-page .quest-step-copy p {
-    display: block;
-    font-size: 0.76rem;
-    line-height: 1.2;
+    display: -webkit-box;
+    overflow: hidden;
+    font-size: 0.66rem;
+    line-height: 1.15;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .dashboard-page .quest-step-progress {
+    grid-template-columns: minmax(44px, 1fr) auto;
+    gap: 5px;
+    margin-top: 5px;
+  }
+
+  .dashboard-page .quest-step-progress > span {
+    height: 4px;
+  }
+
+  .dashboard-page .quest-step-progress strong {
+    font-size: 0.64rem;
   }
 
   .dashboard-page .quest-reward {
-    min-width: 56px;
-    padding: 8px 4px;
+    min-width: 44px;
+    padding: 6px 3px;
+    border-radius: 10px;
+  }
+
+  .dashboard-page .quest-reward strong {
+    font-size: 0.92rem;
+  }
+
+  .dashboard-page .quest-reward span,
+  .dashboard-page .quest-reward small {
+    font-size: 0.56rem;
+  }
+
+  .dashboard-page .mission-prepare-link {
+    margin-top: 5px;
+    padding: 4px 3px;
+    font-size: 0.58rem;
   }
 
   .dashboard-page .trophy-family-tabs {

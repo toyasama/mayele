@@ -2,6 +2,12 @@ import type { Prisma } from '../generated/prisma/client.js'
 import { buildBadgeStates } from '../domain/rewards.js'
 import { prisma } from '../lib/prisma.js'
 
+type BadgeDatabase = Pick<Prisma.TransactionClient, 'answer' | 'gameSession'>
+
+type BadgeStateLoadOptions = {
+  includeSessionId?: string | null
+}
+
 // First production deployment that replaced direct /sessions submissions with
 // authoritative SoloRun records. No unlinked GameSession exists after this
 // cutover in production.
@@ -45,25 +51,42 @@ function countByGameLevel(groups: Array<{ game: string; level: string; _count: {
   return new Map(groups.map((group) => [`${group.level}:${group.game}`, group._count._all]))
 }
 
-export async function getPlayerBadgeStates(playerId: string) {
-  const sprintSessionWhere = {
-    playerId,
-    ...BADGE_SOLO_SPRINT_SCOPE,
-  } satisfies Prisma.GameSessionWhereInput
+export async function loadPlayerBadgeStates(
+  database: BadgeDatabase,
+  playerId: string,
+  options: BadgeStateLoadOptions = {},
+) {
+  const sprintSessionWhere = options.includeSessionId
+    ? {
+        playerId,
+        OR: [...BADGE_SOLO_SPRINT_SCOPE.OR, { id: options.includeSessionId }],
+      } satisfies Prisma.GameSessionWhereInput
+    : {
+        playerId,
+        ...BADGE_SOLO_SPRINT_SCOPE,
+      } satisfies Prisma.GameSessionWhereInput
 
-  const sprintAnswerWhere = {
-    playerId,
-    session: { is: BADGE_SOLO_SPRINT_SCOPE },
-  } satisfies Prisma.AnswerWhereInput
+  const sprintAnswerWhere = options.includeSessionId
+    ? {
+        playerId,
+        OR: [
+          { session: { is: BADGE_SOLO_SPRINT_SCOPE } },
+          { sessionId: options.includeSessionId },
+        ],
+      } satisfies Prisma.AnswerWhereInput
+    : {
+        playerId,
+        session: { is: BADGE_SOLO_SPRINT_SCOPE },
+      } satisfies Prisma.AnswerWhereInput
 
   const [progressGroups, masterySessions, fastCorrect2500Groups, fastCorrect1800Groups, fastCorrect1200Groups] = await Promise.all([
-    prisma.gameSession.groupBy({
+    database.gameSession.groupBy({
       by: ['game', 'level'],
       where: sprintSessionWhere,
       _count: { _all: true },
       _max: { bestStreak: true },
     }),
-    prisma.gameSession.findMany({
+    database.gameSession.findMany({
       where: sprintSessionWhere,
       select: {
         game: true,
@@ -76,7 +99,7 @@ export async function getPlayerBadgeStates(playerId: string) {
         },
       },
     }),
-    prisma.answer.groupBy({
+    database.answer.groupBy({
       by: ['game', 'level'],
       where: {
         ...sprintAnswerWhere,
@@ -85,7 +108,7 @@ export async function getPlayerBadgeStates(playerId: string) {
       },
       _count: { _all: true },
     }),
-    prisma.answer.groupBy({
+    database.answer.groupBy({
       by: ['game', 'level'],
       where: {
         ...sprintAnswerWhere,
@@ -94,7 +117,7 @@ export async function getPlayerBadgeStates(playerId: string) {
       },
       _count: { _all: true },
     }),
-    prisma.answer.groupBy({
+    database.answer.groupBy({
       by: ['game', 'level'],
       where: {
         ...sprintAnswerWhere,
@@ -127,4 +150,8 @@ export async function getPlayerBadgeStates(playerId: string) {
       durationSeconds: session.soloRun?.durationSeconds ?? session.durationSeconds,
     })),
   )
+}
+
+export async function getPlayerBadgeStates(playerId: string) {
+  return loadPlayerBadgeStates(prisma, playerId)
 }

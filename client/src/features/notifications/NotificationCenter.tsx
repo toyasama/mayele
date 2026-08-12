@@ -38,6 +38,7 @@ function notificationDay(value: string) {
 function notificationKind(type: string) {
   if (type.includes('friend')) return { symbol: 'A', label: 'Social' }
   if (type.includes('match') || type.includes('challenge')) return { symbol: 'VS', label: 'Défi' }
+  if (type.includes('mission')) return { symbol: '✓', label: 'Mission' }
   if (type.includes('badge') || type.includes('level')) return { symbol: 'XP', label: 'Progression' }
   return { symbol: 'i', label: 'Information' }
 }

@@ -18,6 +18,7 @@ import {
   declineChallenge,
   declineChallengeProposal,
   forfeitChallenge,
+  getMatch,
   leaveChallenge,
   MatchServiceError,
   proposeChallenge,
@@ -69,6 +70,10 @@ function latestMatchFromValue(value: unknown, context: MatchCommandContext) {
     : null
 }
 
+async function currentMatch(matchId: string, context: MatchCommandContext) {
+  return context.getCachedMatch(matchId) ?? serializeMatch(await getMatch(context.playerId, matchId))
+}
+
 export function registerMatchCommandHandlers(socket: Socket, context: MatchCommandContext) {
   const { playerId } = context
 
@@ -81,11 +86,7 @@ export function registerMatchCommandHandlers(socket: Socket, context: MatchComma
         return
       }
 
-      const cachedMatch = context.getCachedMatch(command.matchId)
-
-      if (!cachedMatch) {
-        throw new MatchServiceError('match_not_found')
-      }
+      const cachedMatch = await currentMatch(command.matchId, context)
 
       if (cachedMatch.createdBy.id !== playerId) {
         throw new MatchServiceError('match_not_owned')
@@ -169,11 +170,7 @@ export function registerMatchCommandHandlers(socket: Socket, context: MatchComma
         return
       }
 
-      const cachedMatch = context.getCachedMatch(command.matchId)
-
-      if (!cachedMatch) {
-        throw new MatchServiceError('match_not_found')
-      }
+      const cachedMatch = await currentMatch(command.matchId, context)
 
       const match = await acceptChallenge(
         playerId,
@@ -206,11 +203,7 @@ export function registerMatchCommandHandlers(socket: Socket, context: MatchComma
         return
       }
 
-      const cachedMatch = context.getCachedMatch(command.matchId)
-
-      if (!cachedMatch) {
-        throw new MatchServiceError('match_not_found')
-      }
+      const cachedMatch = await currentMatch(command.matchId, context)
 
       const match = await declineChallenge(
         playerId,
@@ -236,11 +229,7 @@ export function registerMatchCommandHandlers(socket: Socket, context: MatchComma
         return
       }
 
-      const cachedMatch = context.getCachedMatch(command.matchId)
-
-      if (!cachedMatch) {
-        throw new MatchServiceError('match_not_found')
-      }
+      const cachedMatch = await currentMatch(command.matchId, context)
 
       const match = command.config
         ? await proposeChallenge(playerId, command.matchId, command.config)
@@ -270,11 +259,7 @@ export function registerMatchCommandHandlers(socket: Socket, context: MatchComma
         return
       }
 
-      const cachedMatch = context.getCachedMatch(command.matchId)
-
-      if (!cachedMatch) {
-        throw new MatchServiceError('match_not_found')
-      }
+      const cachedMatch = await currentMatch(command.matchId, context)
 
       const match = await declineChallengeProposal(playerId, command.matchId)
       const snapshot = serializeMatch(match)
@@ -295,11 +280,7 @@ export function registerMatchCommandHandlers(socket: Socket, context: MatchComma
         return
       }
 
-      const cachedMatch = context.getCachedMatch(command.matchId)
-
-      if (!cachedMatch) {
-        throw new MatchServiceError('match_not_found')
-      }
+      const cachedMatch = await currentMatch(command.matchId, context)
 
       const match = await acceptChallengeProposal(playerId, command.matchId)
       const snapshot = serializeMatch(match)
@@ -320,11 +301,7 @@ export function registerMatchCommandHandlers(socket: Socket, context: MatchComma
         return
       }
 
-      const cachedMatch = context.getCachedMatch(command.matchId)
-
-      if (!cachedMatch) {
-        throw new MatchServiceError('match_not_found')
-      }
+      const cachedMatch = await currentMatch(command.matchId, context)
 
       const match = await context.enqueueMatchPersistence(
         command.matchId,
@@ -348,11 +325,7 @@ export function registerMatchCommandHandlers(socket: Socket, context: MatchComma
         return
       }
 
-      const cachedMatch = context.getCachedMatch(command.matchId)
-
-      if (!cachedMatch) {
-        throw new MatchServiceError('match_not_found')
-      }
+      const cachedMatch = await currentMatch(command.matchId, context)
 
       const match = await requestChallengeRematch(playerId, command.matchId)
       const snapshot = serializeMatch(match)
@@ -374,11 +347,7 @@ export function registerMatchCommandHandlers(socket: Socket, context: MatchComma
         return
       }
 
-      const cachedMatch = context.getCachedMatch(command.matchId)
-
-      if (!cachedMatch) {
-        throw new MatchServiceError('match_not_found')
-      }
+      const cachedMatch = await currentMatch(command.matchId, context)
 
       const match = await leaveChallenge(
         playerId,
@@ -404,11 +373,7 @@ export function registerMatchCommandHandlers(socket: Socket, context: MatchComma
         return
       }
 
-      const cachedMatch = context.getCachedMatch(command.matchId)
-
-      if (!cachedMatch) {
-        throw new MatchServiceError('match_not_found')
-      }
+      const cachedMatch = await currentMatch(command.matchId, context)
 
       // Progress is derived from server-recorded answers. Client progress packets are
       // accepted for backwards compatibility but never mutate or broadcast match state.

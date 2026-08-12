@@ -8,7 +8,8 @@ import { calculateAnswerScorePoints } from '../domain/scoring.js'
 import { ApiError } from '../errors.js'
 import { prisma } from '../lib/prisma.js'
 import type { StartSoloRunInput, SubmitSoloAnswerInput } from '../schemas/soloRunSchema.js'
-import { saveSession, type SessionSaveResult } from './sessionService.js'
+import { invalidateDashboardCache } from './dashboardService.js'
+import { settleSession, type SessionSaveResult } from './sessionService.js'
 
 const RUN_RECEIPT_PREFIX = 'solo-run:'
 const RUN_EXPIRY_GRACE_MS = 5 * 60 * 1000
@@ -168,6 +169,26 @@ async function findRun(playerId: string, runId: string) {
   return run
 }
 
+async function lockRun(tx: Prisma.TransactionClient, playerId: string, runId: string) {
+  const locked = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT "id"
+    FROM "solo_runs"
+    WHERE "id" = ${runId}
+      AND "player_id" = ${playerId}
+    FOR UPDATE
+  `
+
+  if (!locked.length) throw notFound()
+
+  const run = await tx.soloRun.findUnique({
+    where: { id: runId },
+    include: { answers: { orderBy: { questionIndex: 'asc' } } },
+  })
+
+  if (!run || run.playerId !== playerId) throw notFound()
+  return run
+}
+
 export async function startSoloRun(playerId: string, input: StartSoloRunInput) {
   const existing = await prisma.soloRun.findUnique({
     where: { playerId_clientRunId: { playerId, clientRunId: input.clientRunId } },
@@ -244,93 +265,109 @@ function emptyRunResult(totalXp: number): SoloRunFinalResult {
     xpEarned: 0,
     missionXpEarned: 0,
     completedMissions: [],
+    completedBadges: [],
     playerProgress: getPlayerProgress(totalXp),
     earnedAchievements: [],
   }
 }
 
 export async function finishSoloRun(playerId: string, runId: string) {
-  let run = await findRun(playerId, runId)
-
-  if (run.status === 'completed' && run.result) return buildRunView(run)
-  if (run.status === 'abandoned' || run.status === 'expired') {
-    throw conflict('Cette partie Solo n’est plus active.', 'solo_run_closed')
-  }
-
   const finishedAt = new Date()
-  if (run.status === 'active') {
-    const claimed = await prisma.soloRun.updateMany({
-      where: { id: run.id, playerId, status: 'active' },
-      data: { status: 'finalizing', finishedAt },
-    })
-    run = await findRun(playerId, runId)
+  const outcome = await prisma.$transaction(
+    async (tx) => {
+      let run = await lockRun(tx, playerId, runId)
 
-    if (claimed.count !== 1) {
-      if (run.status === 'completed' && run.result) return buildRunView(run)
+      if (run.status === 'completed' && run.result) {
+        return { run: buildRunView(run), sessionCreated: false }
+      }
       if (run.status === 'abandoned' || run.status === 'expired') {
         throw conflict('Cette partie Solo n’est plus active.', 'solo_run_closed')
       }
-      if (run.status !== 'finalizing') {
+      if (run.status !== 'active' && run.status !== 'finalizing') {
         throw conflict('Cette partie Solo ne peut pas être finalisée.', 'solo_run_closed')
       }
-    }
-  }
 
-  const player = await prisma.player.findUniqueOrThrow({
-    where: { id: playerId },
-    select: { totalXp: true, timeZone: true },
-  })
-  const canonicalFinishedAt = run.finishedAt ?? finishedAt
-  const result = run.answers.length === 0
-    ? emptyRunResult(player.totalXp)
-    : await saveSession(
-        playerId,
-        {
-          game: run.game as GameType,
-          level: run.level as GameLevel,
-          practiceSkill: run.practiceSkill as SkillTag | null,
-          totalQuestions: run.answers.length,
-          durationSeconds: Math.min(
-            run.durationSeconds,
-            Math.max(1, Math.round((canonicalFinishedAt.getTime() - run.startedAt.getTime()) / 1000)),
-          ),
-          bestStreak: run.bestStreak,
-          answers: run.answers.map((answer) => ({
-            prompt: answer.prompt,
-            correctAnswer: answer.correctAnswer,
-            userAnswer: answer.userAnswer,
-            responseTimeMs: answer.responseTimeMs,
-            isCorrect: answer.isCorrect,
-            game: answer.game as GameType,
-            level: answer.level as GameLevel,
-            skill: answer.skill as SkillTag,
-          })),
-        },
-        player.timeZone,
-        {
-          submissionKey: `${RUN_RECEIPT_PREFIX}${run.id}`,
-          dailyMissionContext: {
-            playContext: 'solo',
-            challengeMode: run.mode as 'sprint' | 'tempo',
-            completedWithoutAbandonment: completedSoloRunForDailyMissions(run, canonicalFinishedAt),
-            configuredDurationSeconds: run.mode === 'sprint' ? run.durationSeconds : null,
-            configuredQuestionCount: run.mode === 'tempo' ? run.questionCount : null,
-            configuredQuestionSeconds: run.mode === 'tempo' ? run.perQuestionTimeLimitSeconds : null,
+      const canonicalFinishedAt = run.finishedAt ?? finishedAt
+
+      if (run.status === 'active') {
+        run = await tx.soloRun.update({
+          where: { id: run.id },
+          data: { status: 'finalizing', finishedAt: canonicalFinishedAt },
+          include: { answers: { orderBy: { questionIndex: 'asc' } } },
+        })
+      }
+
+      const player = await tx.player.findUniqueOrThrow({
+        where: { id: playerId },
+        select: { totalXp: true, timeZone: true },
+      })
+      let sessionCreated = false
+      let result: SoloRunFinalResult
+
+      if (run.answers.length === 0) {
+        result = emptyRunResult(player.totalXp)
+      } else {
+        const settlement = await settleSession(
+          tx,
+          playerId,
+          {
+            game: run.game as GameType,
+            level: run.level as GameLevel,
+            practiceSkill: run.practiceSkill as SkillTag | null,
+            totalQuestions: run.answers.length,
+            durationSeconds: Math.min(
+              run.durationSeconds,
+              Math.max(1, Math.round((canonicalFinishedAt.getTime() - run.startedAt.getTime()) / 1000)),
+            ),
+            bestStreak: run.bestStreak,
+            answers: run.answers.map((answer) => ({
+              prompt: answer.prompt,
+              correctAnswer: answer.correctAnswer,
+              userAnswer: answer.userAnswer,
+              responseTimeMs: answer.responseTimeMs,
+              isCorrect: answer.isCorrect,
+              game: answer.game as GameType,
+              level: answer.level as GameLevel,
+              skill: answer.skill as SkillTag,
+            })),
           },
+          player.timeZone,
+          {
+            submissionKey: `${RUN_RECEIPT_PREFIX}${run.id}`,
+            dailyMissionContext: {
+              playContext: 'solo',
+              challengeMode: run.mode as 'sprint' | 'tempo',
+              completedWithoutAbandonment: completedSoloRunForDailyMissions(run, canonicalFinishedAt),
+              configuredDurationSeconds: run.mode === 'sprint' ? run.durationSeconds : null,
+              configuredQuestionCount: run.mode === 'tempo' ? run.questionCount : null,
+              configuredQuestionSeconds: run.mode === 'tempo' ? run.perQuestionTimeLimitSeconds : null,
+            },
+          },
+        )
+        result = settlement.result
+        sessionCreated = settlement.created
+      }
+
+      const completedRun = await tx.soloRun.update({
+        where: { id: run.id },
+        data: {
+          status: 'completed',
+          finishedAt: canonicalFinishedAt,
+          sessionId: result.sessionId,
+          result: result as Prisma.InputJsonValue,
         },
-      )
+        include: { answers: { orderBy: { questionIndex: 'asc' } } },
+      })
 
-  await prisma.soloRun.update({
-    where: { id: run.id },
-    data: {
-      status: 'completed',
-      finishedAt: canonicalFinishedAt,
-      sessionId: result.sessionId,
-      result: result as Prisma.InputJsonValue,
+      return { run: buildRunView(completedRun), sessionCreated }
     },
-  })
+    { timeout: 20_000 },
+  )
 
-  return buildRunView(await findRun(playerId, runId))
+  if (outcome.sessionCreated) {
+    invalidateDashboardCache(playerId)
+  }
+  return outcome.run
 }
 
 export async function getSoloRun(playerId: string, runId: string) {

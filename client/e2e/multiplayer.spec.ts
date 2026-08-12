@@ -1282,6 +1282,19 @@ test("tempo finalise les deux joueurs sur resultats quand la derniere reponse in
   test.setTimeout(75_000)
 
   const { host, guest } = await createAcceptedRoom(browser, request)
+  const [hostBaselineResponse, guestBaselineResponse] = await Promise.all([
+    request.get(`${API_URL}/api/dashboard`, {
+      headers: { Authorization: 'Bearer e2e:e2e-host' },
+    }),
+    request.get(`${API_URL}/api/dashboard`, {
+      headers: { Authorization: 'Bearer e2e:e2e-guest' },
+    }),
+  ])
+
+  expect(hostBaselineResponse.ok()).toBe(true)
+  expect(guestBaselineResponse.ok()).toBe(true)
+  const hostBaseline = await hostBaselineResponse.json() as { summary: { totalSessions: number } }
+  const guestBaseline = await guestBaselineResponse.json() as { summary: { totalSessions: number } }
 
   try {
     await startTempoMatch(host.page, guest.page)
@@ -1306,6 +1319,22 @@ test("tempo finalise les deux joueurs sur resultats quand la derniere reponse in
       await expect(page.locator('.question-line')).toHaveCount(0)
       await expect(page.getByRole('button', { name: /^Rejouer ce duel$/i })).toBeVisible()
     }
+
+    const [hostDashboardResponse, guestDashboardResponse] = await Promise.all([
+      request.get(`${API_URL}/api/dashboard`, {
+        headers: { Authorization: 'Bearer e2e:e2e-host' },
+      }),
+      request.get(`${API_URL}/api/dashboard`, {
+        headers: { Authorization: 'Bearer e2e:e2e-guest' },
+      }),
+    ])
+
+    expect(hostDashboardResponse.ok()).toBe(true)
+    expect(guestDashboardResponse.ok()).toBe(true)
+    const hostDashboard = await hostDashboardResponse.json() as { summary: { totalSessions: number } }
+    const guestDashboard = await guestDashboardResponse.json() as { summary: { totalSessions: number } }
+    expect(hostDashboard.summary.totalSessions).toBe(hostBaseline.summary.totalSessions + 1)
+    expect(guestDashboard.summary.totalSessions).toBe(guestBaseline.summary.totalSessions + 1)
 
     await host.page.screenshot({ path: 'test-results/tempo-final-expired-answer-host-results.png', fullPage: true })
     await guest.page.screenshot({ path: 'test-results/tempo-final-expired-answer-guest-results.png', fullPage: true })

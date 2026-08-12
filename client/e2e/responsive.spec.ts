@@ -349,35 +349,46 @@ test('amis et profil restent lisibles sans debordement', async ({ page }, testIn
   if ((page.viewportSize()?.width ?? 1024) < 768) {
     await expect(page.locator('.profile-card-scroller').or(page.locator('.friends-empty-panel'))).toBeVisible()
     const rosterItem = page.locator('.social-roster-item').first()
-    if (await rosterItem.count()) {
-      await expect(page.locator('.social-profile-detail')).toBeHidden()
-      await rosterItem.click()
-      const mobileDetail = page.locator('.social-profile-detail.mobile-open')
-      await expect(mobileDetail).toBeVisible()
+    await expect(rosterItem).toBeVisible()
+    await expect(page.locator('.social-profile-detail')).toBeHidden()
+    await rosterItem.click()
+    const mobileDetail = page.locator('.social-profile-detail.mobile-open')
+    await expect(mobileDetail).toBeVisible()
 
-      const detailLayout = await mobileDetail.evaluate((card) => {
-        const rect = card.getBoundingClientRect()
-        const actions = card.querySelector('.profile-card-actions')
-        return {
-          left: rect.left,
-          right: rect.right,
-          bottom: rect.bottom,
-          innerWidth: window.innerWidth,
-          innerHeight: window.innerHeight,
-          actionsColumns: actions ? window.getComputedStyle(actions).gridTemplateColumns.split(' ').length : 0,
-        }
-      })
+    const detailLayout = await mobileDetail.evaluate((card) => {
+      const rect = card.getBoundingClientRect()
+      const actions = card.querySelector('.profile-card-actions')
+      const removeButton = card.querySelector('.danger-button')?.getBoundingClientRect()
+      const closeButton = card.querySelector('.social-profile-close')?.getBoundingClientRect()
+      return {
+        left: rect.left,
+        right: rect.right,
+        bottom: rect.bottom,
+        innerWidth: window.innerWidth,
+        innerHeight: window.innerHeight,
+        actionsColumns: actions ? window.getComputedStyle(actions).gridTemplateColumns.split(' ').length : 0,
+        removeWidth: removeButton?.width ?? 0,
+        removeRight: removeButton?.right ?? 0,
+        removeTop: removeButton?.top ?? 0,
+        closeLeft: closeButton?.left ?? 0,
+        closeBottom: closeButton?.bottom ?? 0,
+      }
+    })
 
-      expect(detailLayout.left).toBeGreaterThanOrEqual(0)
-      expect(detailLayout.right).toBeLessThanOrEqual(detailLayout.innerWidth + 1)
-      expect(detailLayout.bottom).toBeLessThan(detailLayout.innerHeight)
-      expect(detailLayout.actionsColumns).toBe(2)
-      await attachScreenshot(page, testInfo, 'friends-mobile-detail')
-      await page.getByRole('button', { name: /Fermer le profil/i }).last().click()
-      await expect(mobileDetail).toBeHidden()
-    } else {
-      await expect(page.locator('.friends-empty-panel')).toBeVisible()
-    }
+    expect(detailLayout.left).toBeGreaterThanOrEqual(0)
+    expect(detailLayout.right).toBeLessThanOrEqual(detailLayout.innerWidth + 1)
+    expect(detailLayout.bottom).toBeLessThan(detailLayout.innerHeight)
+    expect(detailLayout.actionsColumns).toBe(2)
+    expect(detailLayout.removeWidth).toBeLessThan(90)
+    expect(detailLayout.removeTop).toBeLessThanOrEqual(detailLayout.closeBottom)
+    expect(detailLayout.removeRight).toBeLessThanOrEqual(detailLayout.closeLeft)
+    await expect(mobileDetail.getByText('Ami', { exact: true })).toBeVisible()
+    await expect(mobileDetail.getByText('Dernière activité', { exact: true })).toHaveCount(0)
+    await expect(mobileDetail.getByText(/XP avant le niveau/i)).toHaveCount(0)
+    await expect(mobileDetail.getByRole('button', { name: /^Profil$/i })).toBeVisible()
+    await attachScreenshot(page, testInfo, 'friends-mobile-detail')
+    await page.getByRole('button', { name: /Fermer le profil/i }).last().click()
+    await expect(mobileDetail).toBeHidden()
 
     await page.getByRole('button', { name: /Rechercher/i }).click()
     await expect(page.getByLabel(/Nom d'utilisateur/i)).toBeVisible()
@@ -417,7 +428,7 @@ test('amis et profil restent lisibles sans debordement', async ({ page }, testIn
     await expectNoHorizontalOverflow(page, 'friends')
     await attachScreenshot(page, testInfo, 'friends')
 
-    await page.locator('.profile-card').filter({ hasText: /Bob Guest/i }).getByRole('button', { name: /Voir le profil/i }).click()
+    await page.locator('.profile-card').filter({ hasText: /Bob Guest/i }).getByRole('button', { name: /^Profil$/i }).click()
     await expect(page).toHaveURL(/\/amis\//)
     await expect(page.getByRole('heading', { name: /Bob Guest/i })).toBeVisible()
     const profileTabs = page.locator('.friend-profile-section-nav')
@@ -487,7 +498,7 @@ test('amis et profil restent lisibles sans debordement', async ({ page }, testIn
     await expectNoHorizontalOverflow(page, 'friends')
     await attachScreenshot(page, testInfo, 'friends')
 
-    const profileButton = page.getByRole('button', { name: /Voir le profil/i }).first()
+    const profileButton = page.getByRole('button', { name: /^Profil$/i }).first()
     await expect(profileButton).toBeVisible()
     await profileButton.click()
     await expect(page.locator('.friend-profile-duels-panel')).toBeVisible()

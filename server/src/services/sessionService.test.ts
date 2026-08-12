@@ -27,8 +27,12 @@ type AchievementCreateInput = {
 }
 
 const tx = {
+  $queryRaw: vi.fn(async () => [{ acquired: '1' }]),
   gameSession: {
-    create: vi.fn(async (_input: GameSessionCreateInput) => ({ id: 'session-1' })),
+    findUnique: vi.fn(),
+    create: vi.fn(async (_input: GameSessionCreateInput) => ({
+      id: 'session-1',
+    })),
     count: vi.fn(async () => 4),
     update: vi.fn(async () => ({ id: 'session-1' })),
   },
@@ -44,19 +48,18 @@ const tx = {
     update: vi.fn(async () => ({ xp: 940 })),
   },
   missionCompletion: {
-    createMany: vi.fn(async (_input: MissionCompletionCreateInput) => ({ count: 1 })),
+    createMany: vi.fn(async (_input: MissionCompletionCreateInput) => ({
+      count: 1,
+    })),
   },
   achievement: {
-    findMany: vi.fn(async () => [
-      { achievementKey: 'accuracy_80' },
-      { achievementKey: 'perfect_sprint' },
-    ]),
+    findMany: vi.fn(async () => [{ achievementKey: 'accuracy_80' }, { achievementKey: 'perfect_sprint' }]),
     createMany: vi.fn(async (_input: AchievementCreateInput) => ({ count: 1 })),
   },
   xpLedgerEntry: {
-    createManyAndReturn: vi.fn(async (input: { data: Array<{ amount: number }> }) => (
-      input.data.map((entry) => ({ amount: entry.amount }))
-    )),
+    createManyAndReturn: vi.fn(async (input: { data: Array<{ amount: number }> }) =>
+      input.data.map((entry) => ({ amount: entry.amount })),
+    ),
   },
   player: {
     findUniqueOrThrow: vi.fn(async () => ({ totalXp: 940 })),
@@ -67,6 +70,10 @@ const tx = {
 const gameSessionFindUnique = vi.fn()
 const transactionMock = vi.fn(async (callback: (txArg: typeof tx) => Promise<unknown>) => callback(tx))
 const loadDailyMissionStatesMock = vi.fn()
+const loadPlayerBadgeStatesMock = vi.fn()
+const createNotificationMock = vi.fn(async (input: Record<string, unknown>) => input)
+const serializeNotificationMock = vi.fn((notification: Record<string, unknown>) => notification)
+const enqueueOutboxEventMock = vi.fn(async () => ({ id: 'outbox-1' }))
 
 vi.mock('../lib/prisma.js', () => ({
   prisma: {
@@ -77,6 +84,25 @@ vi.mock('../lib/prisma.js', () => ({
 
 vi.mock('./dailyMissionService.js', () => ({
   loadDailyMissionStates: loadDailyMissionStatesMock,
+}))
+
+vi.mock('./badgeService.js', () => ({
+  BADGE_SPRINT_DURATION_SECONDS: [60, 90, 120],
+  loadPlayerBadgeStates: loadPlayerBadgeStatesMock,
+}))
+
+vi.mock('./notificationService.js', () => ({
+  badgeEarnedNotificationKey: (badgeKey: string) => `reward:badge:${badgeKey}`,
+  createNotification: createNotificationMock,
+  missionCompletedNotificationKey: (scopeKey: string, missionKey: string) => `reward:mission:${scopeKey}:${missionKey}`,
+}))
+
+vi.mock('./notificationPresenter.js', () => ({
+  serializeNotification: serializeNotificationMock,
+}))
+
+vi.mock('./outboxService.js', () => ({
+  enqueueOutboxEvent: enqueueOutboxEventMock,
 }))
 
 const { saveSession } = await import('./sessionService.js')
@@ -131,10 +157,12 @@ describe('saveSession', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     gameSessionFindUnique.mockResolvedValue(null)
+    tx.gameSession.findUnique.mockResolvedValue(null)
     transactionMock.mockImplementation(async (callback: (txArg: typeof tx) => Promise<unknown>) => callback(tx))
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-07-01T12:00:00.000Z'))
     loadDailyMissionStatesMock.mockResolvedValue(completedMissionStates('2026-07-01'))
+    loadPlayerBadgeStatesMock.mockResolvedValue([])
   })
 
   afterEach(() => {
@@ -178,12 +206,14 @@ describe('saveSession', () => {
           sourceId: 'session-1',
           amount: 600,
         }),
-        ...expectedMissions.map((mission) => expect.objectContaining({
-          playerId: 'player-1',
-          sourceType: 'mission',
-          sourceId: `${day}:${mission.key}`,
-          amount: mission.rewardXp,
-        })),
+        ...expectedMissions.map((mission) =>
+          expect.objectContaining({
+            playerId: 'player-1',
+            sourceType: 'mission',
+            sourceId: `${day}:${mission.key}`,
+            amount: mission.rewardXp,
+          }),
+        ),
       ],
       skipDuplicates: true,
       select: { amount: true },
@@ -191,12 +221,14 @@ describe('saveSession', () => {
     expect(tx.missionCompletion.createMany).toHaveBeenCalledTimes(3)
     expect(tx.missionCompletion.createMany.mock.calls.map(([call]) => call)).toEqual(
       expectedMissions.map((mission) => ({
-        data: [{
-          playerId: 'player-1',
-          missionKey: mission.key,
-          scopeKey: day,
-          xpAwarded: mission.rewardXp,
-        }],
+        data: [
+          {
+            playerId: 'player-1',
+            missionKey: mission.key,
+            scopeKey: day,
+            xpAwarded: mission.rewardXp,
+          },
+        ],
         skipDuplicates: true,
       })),
     )
@@ -243,14 +275,60 @@ describe('saveSession', () => {
         { key: 'daily_goal', label: 'Objectif du jour' },
       ],
     })
+    expect(createNotificationMock).toHaveBeenCalledTimes(3)
+    expect(createNotificationMock).toHaveBeenCalledWith(expect.objectContaining({
+      playerId: 'player-1',
+      type: 'mission_completed',
+      title: 'Mission terminée : Mission facile',
+      body: 'Vous gagnez 40 XP.',
+      dedupeKey: `reward:mission:${day}:daily-v2_easy`,
+    }), tx)
+    expect(enqueueOutboxEventMock).toHaveBeenCalledTimes(3)
+  })
+
+  it('returns and notifies a badge completed by the current Solo Sprint', async () => {
+    const day = getDailyScopeKey(undefined, 'Europe/Paris')
+    const badge = {
+      key: 'streak_stable_expert',
+      title: 'Série stable Expert',
+      familyLabel: 'Séries',
+    }
+    loadDailyMissionStatesMock.mockResolvedValueOnce(
+      completedMissionStates(day).map((mission) => ({ ...mission, claimed: true })),
+    )
+    loadPlayerBadgeStatesMock
+      .mockResolvedValueOnce([{ ...badge, completed: false }])
+      .mockResolvedValueOnce([{ ...badge, completed: true }])
+
+    const result = await saveSession('player-1', perfectSessionPayload, 'Europe/Paris', {
+      dailyMissionContext: completedSoloSprintContext,
+    })
+
+    expect(loadPlayerBadgeStatesMock).toHaveBeenNthCalledWith(1, tx, 'player-1')
+    expect(loadPlayerBadgeStatesMock).toHaveBeenNthCalledWith(2, tx, 'player-1', { includeSessionId: 'session-1' })
+    expect(result.completedBadges).toEqual([badge])
+    expect(createNotificationMock).toHaveBeenCalledTimes(1)
+    expect(createNotificationMock).toHaveBeenCalledWith(expect.objectContaining({
+      playerId: 'player-1',
+      type: 'badge_earned',
+      title: 'Badge débloqué : Série stable Expert',
+      body: 'Nouveau badge Séries.',
+      dedupeKey: 'reward:badge:streak_stable_expert',
+    }), tx)
+    expect(enqueueOutboxEventMock).toHaveBeenCalledWith(tx, expect.objectContaining({
+      dedupeKey: 'session:session-1:badge:streak_stable_expert:notification',
+      topic: 'notification.created',
+    }))
   })
 
   it('does not award the same daily missions twice', async () => {
     const day = getDailyScopeKey(undefined, 'Europe/Paris')
-    loadDailyMissionStatesMock.mockResolvedValueOnce(completedMissionStates(day).map((mission) => ({
-      ...mission,
-      claimed: true,
-    })))
+    loadDailyMissionStatesMock.mockResolvedValueOnce(
+      completedMissionStates(day).map((mission) => ({
+        ...mission,
+        claimed: true,
+      })),
+    )
 
     const result = await saveSession('player-1', perfectSessionPayload, 'Europe/Paris', {
       dailyMissionContext: completedSoloSprintContext,
@@ -275,7 +353,11 @@ describe('saveSession', () => {
     })
 
     expect(tx.gameSession.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ missionDay: '2026-07-01', missionEligible: false, validAnswers: 30 }),
+      data: expect.objectContaining({
+        missionDay: '2026-07-01',
+        missionEligible: false,
+        validAnswers: 30,
+      }),
     })
     expect(loadDailyMissionStatesMock).not.toHaveBeenCalled()
     expect(tx.missionCompletion.createMany).not.toHaveBeenCalled()
@@ -295,7 +377,10 @@ describe('saveSession', () => {
     })
 
     expect(tx.gameSession.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ missionEligible: false, validAnswers: 0 }),
+      data: expect.objectContaining({
+        missionEligible: false,
+        validAnswers: 0,
+      }),
     })
     expect(loadDailyMissionStatesMock).not.toHaveBeenCalled()
     expect(tx.missionCompletion.createMany).not.toHaveBeenCalled()
@@ -307,10 +392,7 @@ describe('saveSession', () => {
       ...perfectSessionPayload,
       totalQuestions: 2,
       bestStreak: 1,
-      answers: [
-        perfectSessionPayload.answers[0],
-        { ...perfectSessionPayload.answers[1], userAnswer: null },
-      ],
+      answers: [perfectSessionPayload.answers[0], { ...perfectSessionPayload.answers[1], userAnswer: null }],
     }
 
     loadDailyMissionStatesMock.mockResolvedValueOnce([])
@@ -325,7 +407,10 @@ describe('saveSession', () => {
   })
 
   it('returns the canonical stored result on retry without crediting rewards again', async () => {
-    const payload = { ...perfectSessionPayload, submissionId: '5d0207bc-328c-4e5f-98dd-f8ac1ce7907a' }
+    const payload = {
+      ...perfectSessionPayload,
+      submissionId: '5d0207bc-328c-4e5f-98dd-f8ac1ce7907a',
+    }
     const firstResult = await saveSession('player-1', payload)
     const createdData = createdSessionData()
 
@@ -345,8 +430,47 @@ describe('saveSession', () => {
     })
   })
 
+  it('locks and re-reads the receipt inside the transaction before creating a keyed session', async () => {
+    const payload = {
+      ...perfectSessionPayload,
+      submissionId: '7a0d8968-b546-4022-ac91-48897b28a8ed',
+    }
+    const firstResult = await saveSession('player-1', payload)
+    const createdData = createdSessionData()
+
+    vi.clearAllMocks()
+    gameSessionFindUnique.mockResolvedValueOnce(null)
+    tx.gameSession.findUnique.mockResolvedValueOnce({
+      submissionPayloadHash: createdData.submissionPayloadHash,
+      submissionResult: firstResult,
+    })
+
+    const replay = await saveSession('player-1', payload)
+
+    expect(replay).toEqual(firstResult)
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1)
+    expect(tx.gameSession.findUnique).toHaveBeenCalledWith({
+      where: {
+        playerId_submissionKey: {
+          playerId: 'player-1',
+          submissionKey: payload.submissionId,
+        },
+      },
+      select: {
+        submissionPayloadHash: true,
+        submissionResult: true,
+      },
+    })
+    expect(tx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(tx.gameSession.findUnique.mock.invocationCallOrder[0])
+    expect(tx.gameSession.create).not.toHaveBeenCalled()
+    expect(tx.player.update).not.toHaveBeenCalled()
+  })
+
   it('returns the committed result when concurrent submissions race on the same key', async () => {
-    const payload = { ...perfectSessionPayload, submissionId: '00902ca5-f8dd-4a29-b46c-c0c0f111d8bc' }
+    const payload = {
+      ...perfectSessionPayload,
+      submissionId: '00902ca5-f8dd-4a29-b46c-c0c0f111d8bc',
+    }
     const committedResult = {
       sessionId: 'session-from-winner',
       scorePoints: 480,
@@ -360,12 +484,10 @@ describe('saveSession', () => {
     const first = await saveSession('player-1', payload)
     const createdData = createdSessionData()
     vi.clearAllMocks()
-    gameSessionFindUnique
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({
-        submissionPayloadHash: createdData.submissionPayloadHash,
-        submissionResult: committedResult,
-      })
+    gameSessionFindUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({
+      submissionPayloadHash: createdData.submissionPayloadHash,
+      submissionResult: committedResult,
+    })
     transactionMock.mockRejectedValueOnce({
       code: 'P2002',
       meta: { target: ['player_id', 'submission_key'] },
@@ -376,6 +498,24 @@ describe('saveSession', () => {
     expect(first.sessionId).toBe('session-1')
     expect(raceLoser).toEqual(committedResult)
     expect(tx.player.update).not.toHaveBeenCalled()
+  })
+
+  it('recovers the canonical receipt when Prisma omits the P2002 target metadata', async () => {
+    const payload = {
+      ...perfectSessionPayload,
+      submissionId: '113a8175-7d1a-43ec-8816-c4327bcba96f',
+    }
+    const firstResult = await saveSession('player-1', payload)
+    const createdData = createdSessionData()
+    vi.clearAllMocks()
+    gameSessionFindUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({
+      submissionPayloadHash: createdData.submissionPayloadHash,
+      submissionResult: firstResult,
+    })
+    transactionMock.mockRejectedValueOnce({ code: 'P2002', meta: {} })
+
+    await expect(saveSession('player-1', payload)).resolves.toEqual(firstResult)
+    expect(gameSessionFindUnique).toHaveBeenCalledTimes(2)
   })
 
   it('does not mask an unrelated unique constraint failure as an idempotent retry', async () => {
@@ -390,7 +530,7 @@ describe('saveSession', () => {
     transactionMock.mockRejectedValueOnce(unrelatedConflict)
 
     await expect(saveSession('player-1', payload)).rejects.toBe(unrelatedConflict)
-    expect(gameSessionFindUnique).toHaveBeenCalledTimes(1)
+    expect(gameSessionFindUnique).toHaveBeenCalledTimes(2)
   })
 
   it('rejects reuse of a submission key with a different payload', async () => {

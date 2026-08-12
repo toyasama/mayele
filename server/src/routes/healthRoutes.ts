@@ -4,6 +4,8 @@ import { prisma } from '../lib/prisma.js'
 import { getRealtimeHealth } from '../realtime/notifications.js'
 import { getMatchExpirationWorkerHealth } from '../services/matchExpirationWorker.js'
 import { getOutboxDispatcherHealth } from '../services/outboxDispatcher.js'
+import { getSoloRunExpirationWorkerHealth } from '../services/soloRunExpirationWorker.js'
+import { getTempoMatchWorkerHealth } from '../services/tempoMatchWorker.js'
 
 export function healthRoutes() {
   const router = Router()
@@ -18,6 +20,8 @@ export function healthRoutes() {
       const realtime = getRealtimeHealth()
       const outbox = getOutboxDispatcherHealth()
       const matchExpiration = getMatchExpirationWorkerHealth()
+      const soloRunExpiration = getSoloRunExpirationWorkerHealth()
+      const tempoMatches = getTempoMatchWorkerHealth()
       const backgroundReady = (
         outbox.started
         && Boolean(outbox.lastSucceededAt)
@@ -25,14 +29,20 @@ export function healthRoutes() {
         && matchExpiration.started
         && Boolean(matchExpiration.lastSucceededAt)
         && !matchExpiration.lastFailedAt
+        && soloRunExpiration.started
+        && Boolean(soloRunExpiration.lastSucceededAt)
+        && !soloRunExpiration.lastFailedAt
+        && tempoMatches.started
+        && Boolean(tempoMatches.lastSucceededAt)
+        && !tempoMatches.lastFailedAt
       )
 
-      if (env.isProduction && (!realtime.initialized || !backgroundReady)) {
-        res.status(503).json({ status: 'not_ready', realtime, background: { outbox, matchExpiration } })
+      if (env.isProduction && (!realtime.initialized || !realtime.postgresAdapterEnabled || !backgroundReady)) {
+        res.status(503).json({ status: 'not_ready', realtime, background: { outbox, matchExpiration, soloRunExpiration, tempoMatches } })
         return
       }
 
-      res.json({ status: 'ready', realtime, background: { outbox, matchExpiration } })
+      res.json({ status: 'ready', realtime, background: { outbox, matchExpiration, soloRunExpiration, tempoMatches } })
     } catch (error) {
       res.status(503).json({
         status: 'not_ready',

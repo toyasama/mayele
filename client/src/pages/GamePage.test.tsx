@@ -29,13 +29,6 @@ vi.mock('../hooks/useDailyScopeKey', () => ({
   useDailyScopeKey: () => '2026-08-05',
 }))
 
-vi.mock('../hooks/useRealtimeEvents', () => ({
-  useRealtimeEvents: () => ({
-    isRealtimeReady: false,
-    submitSoloAnswer: vi.fn(),
-  }),
-}))
-
 vi.mock('../lib/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../lib/api')>()
 
@@ -107,6 +100,51 @@ function completedRun(run: SoloRunData): SoloRunData {
   }
 }
 
+function endingRun(delayMs = 700): SoloRunData {
+  const run = activeRun()
+  const serverNow = new Date()
+  const endsAt = new Date(serverNow.getTime() + delayMs)
+
+  return {
+    ...run,
+    serverNow: serverNow.toISOString(),
+    endsAt: endsAt.toISOString(),
+    question: run.question ? { ...run.question, deadlineAt: endsAt.toISOString() } : null,
+  }
+}
+
+function advancedActiveRun(run: SoloRunData): SoloRunData {
+  const issuedAt = new Date()
+
+  return {
+    ...run,
+    currentQuestionIndex: 1,
+    serverNow: issuedAt.toISOString(),
+    question: {
+      index: 1,
+      prompt: '2 + 2',
+      operation: 'addition',
+      skill: 'addition',
+      issuedAt: issuedAt.toISOString(),
+      deadlineAt: run.endsAt,
+    },
+    nextQuestion: {
+      index: 2,
+      prompt: '3 + 3',
+      operation: 'addition',
+      skill: 'addition',
+    },
+    progress: {
+      correctAnswers: 1,
+      totalQuestions: 1,
+      scorePoints: 10,
+      xp: 1,
+      currentStreak: 1,
+      bestStreak: 1,
+    },
+  }
+}
+
 function renderGamePage(initialEntry = '/jeu/solo') {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
@@ -152,6 +190,93 @@ describe('GamePage solo completion', () => {
 
     expect(await screen.findByRole('heading', { name: /Partie terminée/i })).toBeVisible()
     expect(screen.queryByText('Cette partie est déjà terminée.')).not.toBeInTheDocument()
+  })
+
+  it("n'envoie qu'un POST HTTP pour enregistrer une reponse", async () => {
+    const run = activeRun()
+    apiMocks.submitSoloAnswer.mockResolvedValueOnce({ run: advancedActiveRun(run), correction: null })
+
+    await startGame(run)
+    fireEvent.change(screen.getByRole('textbox', { name: /Votre reponse/i }), { target: { value: '2' } })
+    fireEvent.click(screen.getByRole('button', { name: /Valider/i }))
+
+    await waitFor(() => expect(apiMocks.submitSoloAnswer).toHaveBeenCalledOnce())
+    expect(apiMocks.submitSoloAnswer).toHaveBeenCalledWith(
+      expect.any(Function),
+      run.id,
+      { questionIndex: 0, userAnswer: 2 },
+    )
+  })
+
+  it("attend la reponse en cours avant de finaliser a l'expiration", async () => {
+    const run = endingRun()
+    const advanced = advancedActiveRun(run)
+    let resolveAnswer!: (value: { run: SoloRunData; correction: null }) => void
+    apiMocks.submitSoloAnswer.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveAnswer = resolve
+    }))
+    apiMocks.finishSoloRun.mockResolvedValueOnce({ run: completedRun(advanced) })
+
+    await startGame(run)
+    fireEvent.change(screen.getByRole('textbox', { name: /Votre reponse/i }), { target: { value: '2' } })
+    fireEvent.click(screen.getByRole('button', { name: /Valider/i }))
+    await waitFor(() => expect(apiMocks.submitSoloAnswer).toHaveBeenCalledOnce())
+
+    await new Promise((resolve) => window.setTimeout(resolve, 900))
+    expect(apiMocks.finishSoloRun).not.toHaveBeenCalled()
+
+    resolveAnswer({ run: advanced, correction: null })
+    await waitFor(() => expect(apiMocks.finishSoloRun).toHaveBeenCalledOnce())
+    expect(apiMocks.finishSoloRun).toHaveBeenCalledWith(expect.any(Function), run.id)
+  })
+
+  it("n'appelle pas finish si la reponse en cours retourne deja un run termine", async () => {
+    const run = endingRun()
+    let resolveAnswer!: (value: { run: SoloRunData; correction: null }) => void
+    apiMocks.submitSoloAnswer.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveAnswer = resolve
+    }))
+
+    await startGame(run)
+    fireEvent.change(screen.getByRole('textbox', { name: /Votre reponse/i }), { target: { value: '2' } })
+    fireEvent.click(screen.getByRole('button', { name: /Valider/i }))
+    await waitFor(() => expect(apiMocks.submitSoloAnswer).toHaveBeenCalledOnce())
+
+    await new Promise((resolve) => window.setTimeout(resolve, 900))
+    resolveAnswer({ run: completedRun(run), correction: null })
+
+    expect(await screen.findByRole('heading', { name: /Partie termin/i })).toBeVisible()
+    expect(apiMocks.finishSoloRun).not.toHaveBeenCalled()
+  })
+
+  it('reconcilie une erreur de finalisation avant de montrer une erreur', async () => {
+    const run = activeRun()
+    apiMocks.finishSoloRun.mockRejectedValueOnce(new Error('Erreur serveur.'))
+    apiMocks.getSoloRun.mockResolvedValueOnce({ run: completedRun(run) })
+
+    await startGame(run)
+    fireEvent.click(screen.getByRole('button', { name: /Quitter/i }))
+
+    expect(await screen.findByRole('heading', { name: /Partie termin/i })).toBeVisible()
+    expect(apiMocks.getSoloRun).toHaveBeenCalledWith(expect.any(Function), run.id)
+    expect(screen.queryByText('Erreur serveur.')).not.toBeInTheDocument()
+  })
+
+  it('efface une erreur precedente lorsqu une nouvelle finalisation est confirmee', async () => {
+    const run = activeRun()
+    apiMocks.finishSoloRun
+      .mockRejectedValueOnce(new Error('Erreur serveur.'))
+      .mockResolvedValueOnce({ run: completedRun(run) })
+    apiMocks.getSoloRun.mockRejectedValueOnce(new Error('Lecture impossible.'))
+
+    await startGame(run)
+    fireEvent.click(screen.getByRole('button', { name: /Quitter/i }))
+
+    expect(await screen.findByText('Erreur serveur.')).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: /essayer la finalisation/i }))
+
+    expect(await screen.findByRole('heading', { name: /Partie termin/i })).toBeVisible()
+    expect(screen.queryByText('Erreur serveur.')).not.toBeInTheDocument()
   })
 
   it('verrouille la saisie pendant la finalisation', async () => {

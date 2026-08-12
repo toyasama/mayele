@@ -5,7 +5,7 @@ import { ResponsiveTabs } from '../components/layout/ResponsiveTabs'
 import { useAuth } from '../context/auth'
 import { useProfile } from '../context/profile-context'
 import { DashboardPlayerHeader } from '../features/dashboard/DashboardPlayerHeader'
-import { PerformanceCockpit } from '../features/dashboard/PerformanceCockpit'
+import { PerformanceCockpit, PerformanceLevelCards } from '../features/dashboard/PerformanceCockpit'
 import { QuestPath } from '../features/dashboard/QuestPath'
 import { SessionTimeline } from '../features/dashboard/SessionTimeline'
 import { TrophyShelf } from '../features/dashboard/TrophyShelf'
@@ -152,6 +152,23 @@ function badgeFamilyIcon(badge: BadgeItem) {
   return badge.family === 'mastery' ? levelLabel(badge.level) : badge.familyLabel
 }
 
+function DashboardBadgeArt({ badge, locked = false }: { badge?: BadgeItem; locked?: boolean }) {
+  const rank = badge ? badgeRankClass(badge.tier) : 'rank-one'
+  const family = badge ? `badge-family-${badge.family}` : ''
+
+  return (
+    <span className={`dashboard-badge-art-viewport ${rank} ${family}`} aria-hidden="true">
+      <span className={`badge-art ${rank} ${locked ? 'locked' : ''}`}>
+        <span className="badge-core">
+          <span className="badge-family-icon">{badge ? badgeFamilyIcon(badge) : '?'}</span>
+        </span>
+        <span className="badge-tier-flourish" />
+        {locked ? <span className="badge-lock-icon" /> : null}
+      </span>
+    </span>
+  )
+}
+
 function weightedAverage(items: ProgressItem[], field: 'averageAccuracy' | 'averageScore') {
   const attempts = items.reduce((sum, item) => sum + item.attempts, 0)
 
@@ -200,13 +217,7 @@ function DashboardBadgeDetailSheet({ badge, onClose }: { badge: BadgeItem; onClo
       >
         <div className="dashboard-badge-sheet-grip" aria-hidden="true" />
         <div className="dashboard-badge-sheet-header">
-          <span className={`badge-art ${badgeRankClass(badge.tier)}`} aria-hidden="true">
-            <span className="badge-core">
-              <span className="badge-family-icon">{badgeFamilyIcon(badge)}</span>
-            </span>
-            <span className="badge-tier-flourish" />
-            {badge.completed ? null : <span className="badge-lock-icon" aria-hidden="true" />}
-          </span>
+          <DashboardBadgeArt badge={badge} locked={!badge.completed} />
           <div>
             <span className="eyebrow">{badge.familyLabel}</span>
             <h2>{badge.title}</h2>
@@ -249,13 +260,8 @@ function DashboardBadgeDetailSheet({ badge, onClose }: { badge: BadgeItem; onClo
 
 function DashboardUnlockedBadgeCard({ badge }: { badge: BadgeItem }) {
   return (
-    <article className={`card friend-badge-card dashboard-profile-badge-card badge-family-${badge.family}`} key={badge.key}>
-      <span className={`badge-art ${badgeRankClass(badge.tier)}`} aria-hidden="true">
-        <span className="badge-core">
-          <span className="badge-family-icon">{badgeFamilyIcon(badge)}</span>
-        </span>
-        <span className="badge-tier-flourish" />
-      </span>
+    <article className={`card dashboard-profile-badge-card badge-family-${badge.family}`} key={badge.key}>
+      <DashboardBadgeArt badge={badge} />
       <div>
         <strong>{badge.title}</strong>
       </div>
@@ -265,14 +271,8 @@ function DashboardUnlockedBadgeCard({ badge }: { badge: BadgeItem }) {
 
 function DashboardUnlockedBadgePlaceholder() {
   return (
-    <article className="card friend-badge-card friend-badge-placeholder dashboard-profile-badge-card">
-      <span className="badge-art locked rank-one" aria-hidden="true">
-        <span className="badge-core">
-          <span className="badge-family-icon">?</span>
-        </span>
-        <span className="badge-tier-flourish" />
-        <span className="badge-lock-icon" aria-hidden="true" />
-      </span>
+    <article className="card dashboard-profile-badge-card dashboard-profile-badge-placeholder">
+      <DashboardBadgeArt locked />
       <div>
         <strong>Pas de badge</strong>
       </div>
@@ -488,13 +488,6 @@ export function DashboardPage() {
       fastestAverageResponseTimeMs: null,
     },
   }
-  const stats = [
-    { label: 'Sessions', value: data.summary.totalSessions, tone: 'coral', mark: 'S' },
-    { label: 'XP totale', value: totalXp, tone: 'mint', mark: 'XP' },
-    { label: 'Record', value: `${data.summary.bestScore}%`, tone: 'blue', mark: 'R' },
-    { label: 'Meilleure série', value: data.summary.bestStreak, tone: 'rose', mark: 'x' },
-  ]
-
   const mobileTabs: Array<{ key: DashboardMobileTab; label: string }> = [
     { key: 'overview', label: 'Aperçu' },
     { key: 'stats', label: 'Stats' },
@@ -518,11 +511,7 @@ export function DashboardPage() {
           name={profileName}
           handle={profileHandle(data.player)}
           progress={playerLevel}
-          bestStreak={data.summary.bestStreak}
-          todaySessions={data.summary.todaySessions}
-          dailyGoal={data.summary.dailyGoal}
-          lastPlayedAt={data.summary.lastPlayedAt}
-          formatDate={formatDate}
+          missions={dashboardMissions}
         />
       ) : null}
 
@@ -561,17 +550,7 @@ export function DashboardPage() {
           <h2>Vos résultats</h2>
         </div>
 
-        <div className="stats-grid dashboard-stats-grid">
-          {stats.map((stat) => (
-            <article className={`card stat-card tone-${stat.tone}`} key={stat.label}>
-              <div>
-                <span>{stat.label}</span>
-                <strong>{stat.value}</strong>
-              </div>
-              <span className="stat-mark" aria-hidden="true">{stat.mark}</span>
-            </article>
-          ))}
-        </div>
+        <PerformanceLevelCards stats={dashboardStats} levelLabel={levelLabel} />
 
       </section>
 

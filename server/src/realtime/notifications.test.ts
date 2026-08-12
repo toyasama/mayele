@@ -3,6 +3,7 @@ import type { AddressInfo } from 'node:net'
 import { io as createClient, type Socket as ClientSocket } from 'socket.io-client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { generateMatchQuestion } from '../domain/matchQuestions.js'
+import { serializeMatch } from '../services/matchPresenter.js'
 import {
   closeRealtime,
   emitMatchSnapshot,
@@ -30,10 +31,12 @@ const matchServiceMocks = vi.hoisted(() => ({
     return Math.max(1, config.durationSeconds)
   },
   completeChallengeResult: vi.fn(),
+  completePersistedTempoMatch: vi.fn(),
   createChallenge: vi.fn(),
   declineChallenge: vi.fn(),
   declineChallengeProposal: vi.fn(),
   forfeitChallenge: vi.fn(),
+  getMatch: vi.fn(),
   leaveChallenge: vi.fn(),
   proposeChallenge: vi.fn(),
   startChallengeProposal: vi.fn(),
@@ -67,7 +70,7 @@ const matchEffectMocks = vi.hoisted(() => ({
   persistMatchLeftEffects: vi.fn(),
 }))
 const outboxDispatcherMocks = vi.hoisted(() => ({ requestOutboxDispatch: vi.fn() }))
-const soloRunServiceMocks = vi.hoisted(() => ({ submitSoloAnswer: vi.fn() }))
+const tempoCoordinatorMocks = vi.hoisted(() => ({ submitAtomicTempoAnswer: vi.fn() }))
 
 vi.mock('../services/matchService.js', () => matchServiceMocks)
 vi.mock('../services/notificationService.js', () => notificationServiceMocks)
@@ -75,7 +78,7 @@ vi.mock('../services/friendService.js', () => ({ listFriends: presenceServiceMoc
 vi.mock('../services/playerService.js', () => ({ updatePlayerPresenceById: presenceServiceMocks.updatePlayerPresenceById }))
 vi.mock('../services/matchOutboxEffects.js', () => matchEffectMocks)
 vi.mock('../services/outboxDispatcher.js', () => outboxDispatcherMocks)
-vi.mock('../services/soloRunService.js', () => soloRunServiceMocks)
+vi.mock('../services/tempoMatchCoordinator.js', () => tempoCoordinatorMocks)
 
 let httpServer: HttpServer | null = null
 const sockets: ClientSocket[] = []
@@ -327,6 +330,44 @@ function inProgressTempoMatchView() {
   }
 }
 
+function persistedTempoResult(options: {
+  answeredCount: number
+  complete?: boolean
+  isDuplicate?: boolean
+  terminal?: boolean
+  questionCount?: number
+}) {
+  const questionCount = options.questionCount ?? 2
+  const complete = options.complete ?? false
+  const startedAt = new Date()
+  const match = {
+    ...inProgressTempoMatchView(),
+    questionCount,
+    tempoQuestionIndex: complete ? 1 : 0,
+    tempoQuestionStartedAt: startedAt,
+    tempoQuestionDeadlineAt: new Date(startedAt.getTime() + 10_000),
+    participants: inProgressTempoMatchView().participants.map((participant, index) => ({
+      ...participant,
+      totalQuestions: index < options.answeredCount ? 1 : 0,
+      scorePoints: index < options.answeredCount ? 100 : 0,
+    })),
+  }
+
+  return {
+    snapshot: serializeMatch(match),
+    progress: {
+      questionIndex: 0,
+      answeredCount: options.answeredCount,
+      expectedAnswerCount: 2,
+      complete,
+      nextQuestionIndex: 1,
+    },
+    isDuplicate: options.isDuplicate ?? false,
+    advanced: complete,
+    terminal: options.terminal ?? false,
+  }
+}
+
 describe('realtime notifications', () => {
   beforeEach(() => {
     matchServiceMocks.assertMatchRoomMembership.mockReset()
@@ -334,10 +375,13 @@ describe('realtime notifications', () => {
     matchServiceMocks.acceptChallenge.mockReset()
     matchServiceMocks.acceptChallengeProposal.mockReset()
     matchServiceMocks.completeChallengeResult.mockReset()
+    matchServiceMocks.completePersistedTempoMatch.mockReset()
     matchServiceMocks.createChallenge.mockReset()
     matchServiceMocks.declineChallenge.mockReset()
     matchServiceMocks.declineChallengeProposal.mockReset()
     matchServiceMocks.forfeitChallenge.mockReset()
+    matchServiceMocks.getMatch.mockReset()
+    matchServiceMocks.getMatch.mockResolvedValue(matchView())
     matchServiceMocks.leaveChallenge.mockReset()
     matchServiceMocks.proposeChallenge.mockReset()
     matchServiceMocks.startChallengeProposal.mockReset()
@@ -345,6 +389,7 @@ describe('realtime notifications', () => {
     matchServiceMocks.requestChallengeRematch.mockReset()
     matchServiceMocks.persistTempoQuestionAnswer.mockReset()
     matchServiceMocks.submitSprintQuestionAnswer.mockReset()
+    tempoCoordinatorMocks.submitAtomicTempoAnswer.mockReset()
     notificationServiceMocks.createNotification.mockReset()
     notificationServiceMocks.createNotification.mockResolvedValue(notificationView())
     notificationServiceMocks.dismissNotificationByDedupeKey.mockReset()
@@ -1475,35 +1520,6 @@ describe('realtime notifications', () => {
     }))
   })
 
-  it('valide une reponse solo par la socket authentifiee', async () => {
-    httpServer = createServer()
-    initRealtime(httpServer, {
-      authenticateToken: async (token) => token === 'token_a'
-        ? { clerkUserId: 'clerk_a', playerId: 'player_a' }
-        : null,
-    })
-    soloRunServiceMocks.submitSoloAnswer.mockResolvedValueOnce({
-      run: { id: 'run_1', currentQuestionIndex: 1 },
-      correction: { questionIndex: 0, isCorrect: true },
-    })
-    const port = await listen(httpServer)
-    const clientA = await connectClient(port, 'token_a')
-
-    const ack = await new Promise<{ ok: boolean; data?: { run: { currentQuestionIndex: number } } }>((resolve) => {
-      clientA.emit('solo:submit-answer', {
-        runId: 'run_1',
-        answer: { questionIndex: 0, userAnswer: 7 },
-        clientCommandId: '6cf369ad-4aa0-4c7f-bf67-1154fda9c50f',
-      }, resolve)
-    })
-
-    expect(ack).toMatchObject({ ok: true, data: { run: { currentQuestionIndex: 1 } } })
-    expect(soloRunServiceMocks.submitSoloAnswer).toHaveBeenCalledWith('player_a', 'run_1', {
-      questionIndex: 0,
-      userAnswer: 7,
-    })
-  })
-
   it('soumet un resultat par commande Socket.IO avec ACK et evenement de salon', async () => {
     httpServer = createServer()
     initRealtime(httpServer, {
@@ -1656,7 +1672,7 @@ describe('realtime notifications', () => {
         return null
       },
     })
-    matchServiceMocks.persistTempoQuestionAnswer.mockResolvedValue(undefined)
+    tempoCoordinatorMocks.submitAtomicTempoAnswer.mockResolvedValue(persistedTempoResult({ answeredCount: 1 }))
     const port = await listen(httpServer)
     emitMatchSnapshot(inProgressTempoMatchView(), 'match_started')
     const [clientA, clientB] = await Promise.all([connectClient(port, 'token_a'), connectClient(port, 'token_b')])
@@ -1696,7 +1712,8 @@ describe('realtime notifications', () => {
     })
     await new Promise((resolve) => setTimeout(resolve, 30))
     expect(progressEmitted).toBe(false)
-    await expect.poll(() => matchServiceMocks.persistTempoQuestionAnswer.mock.calls.length).toBe(1)
+    expect(tempoCoordinatorMocks.submitAtomicTempoAnswer).toHaveBeenCalledOnce()
+    expect(tempoCoordinatorMocks.submitAtomicTempoAnswer).toHaveBeenCalledWith('player_a', 'match_1', answer, expect.any(Object))
   })
 
   it('fait avancer une question tempo des que les deux joueurs ont repondu', async () => {
@@ -1714,7 +1731,9 @@ describe('realtime notifications', () => {
         return null
       },
     })
-    matchServiceMocks.persistTempoQuestionAnswer.mockResolvedValue(undefined)
+    tempoCoordinatorMocks.submitAtomicTempoAnswer
+      .mockResolvedValueOnce(persistedTempoResult({ answeredCount: 1 }))
+      .mockResolvedValueOnce(persistedTempoResult({ answeredCount: 2, complete: true }))
     const port = await listen(httpServer)
     emitMatchSnapshot(inProgressTempoMatchView(), 'match_started')
     const [clientA, clientB] = await Promise.all([connectClient(port, 'token_a'), connectClient(port, 'token_b')])
@@ -1746,7 +1765,7 @@ describe('realtime notifications', () => {
       questionIndex: 0,
       nextQuestionIndex: 1,
     })
-    await expect.poll(() => matchServiceMocks.persistTempoQuestionAnswer.mock.calls.length).toBe(2)
+    expect(tempoCoordinatorMocks.submitAtomicTempoAnswer).toHaveBeenCalledTimes(2)
   })
 
   it('ignore une reponse tempo dupliquee sans changer la reponse canonique', async () => {
@@ -1754,7 +1773,9 @@ describe('realtime notifications', () => {
     initRealtime(httpServer, {
       authenticateToken: async (token) => token === 'token_a' ? { clerkUserId: 'clerk_a', playerId: 'player_a' } : null,
     })
-    matchServiceMocks.persistTempoQuestionAnswer.mockResolvedValue(undefined)
+    tempoCoordinatorMocks.submitAtomicTempoAnswer
+      .mockResolvedValueOnce(persistedTempoResult({ answeredCount: 1 }))
+      .mockResolvedValueOnce(persistedTempoResult({ answeredCount: 1, isDuplicate: true }))
     const port = await listen(httpServer)
     emitMatchSnapshot(inProgressTempoMatchView(), 'match_started')
     const clientA = await connectClient(port, 'token_a')
@@ -1781,105 +1802,11 @@ describe('realtime notifications', () => {
 
     expect(firstAck).toMatchObject({ ok: true, data: { progress: { complete: false, answeredCount: 1 } } })
     expect(duplicateAck).toMatchObject({ ok: true, data: { progress: { complete: false, answeredCount: 1 } } })
-    await expect.poll(() => matchServiceMocks.persistTempoQuestionAnswer.mock.calls.length).toBe(1)
-    expect(matchServiceMocks.persistTempoQuestionAnswer).toHaveBeenCalledWith('player_a', 'match_1', expect.objectContaining({
+    expect(tempoCoordinatorMocks.submitAtomicTempoAnswer).toHaveBeenCalledTimes(2)
+    expect(tempoCoordinatorMocks.submitAtomicTempoAnswer).toHaveBeenNthCalledWith(1, 'player_a', 'match_1', expect.objectContaining({
       userAnswer: question.answer,
       responseTimeMs: 800,
-    }))
-  })
-
-  it('force une reponse tempo absente a null quand le serveur atteint le timeout', async () => {
-    httpServer = createServer()
-    initRealtime(httpServer, {
-      authenticateToken: async (token) => token === 'token_a' ? { clerkUserId: 'clerk_a', playerId: 'player_a' } : null,
-    })
-    matchServiceMocks.persistTempoQuestionAnswer.mockResolvedValue(undefined)
-    const port = await listen(httpServer)
-    emitMatchSnapshot({
-      ...inProgressTempoMatchView(),
-      questionCount: 2,
-      perQuestionTimeLimitSeconds: 1,
-      startedAt: new Date(Date.now() - 1000),
-    }, 'match_started')
-    const clientA = await connectClient(port, 'token_a')
-    const progressToHost = new Promise<{ reason: string; questionIndex: number; nextQuestionIndex: number }>((resolve) => {
-      clientA.once('match:tempo-progress', resolve)
-    })
-
-    await expect(progressToHost).resolves.toMatchObject({
-      reason: 'match_tempo_question_timeout',
-      questionIndex: 0,
-      nextQuestionIndex: 1,
-    })
-    await expect.poll(() => matchServiceMocks.persistTempoQuestionAnswer.mock.calls.length).toBe(2)
-    expect(matchServiceMocks.persistTempoQuestionAnswer).toHaveBeenCalledWith('player_a', 'match_1', expect.objectContaining({
-      questionIndex: 0,
-      userAnswer: null,
-      source: 'timeout',
-    }))
-    expect(matchServiceMocks.persistTempoQuestionAnswer).toHaveBeenCalledWith('player_b', 'match_1', expect.objectContaining({
-      questionIndex: 0,
-      userAnswer: null,
-      source: 'timeout',
-    }))
-  })
-
-  it('finalise une manche tempo quand la derniere reponse manquante est forcee par timeout', async () => {
-    httpServer = createServer()
-    initRealtime(httpServer, {
-      authenticateToken: async (token) => {
-        if (token === 'token_a') {
-          return { clerkUserId: 'clerk_a', playerId: 'player_a' }
-        }
-
-        if (token === 'token_b') {
-          return { clerkUserId: 'clerk_b', playerId: 'player_b' }
-        }
-
-        return null
-      },
-    })
-    matchServiceMocks.persistTempoQuestionAnswer.mockResolvedValue(undefined)
-    matchServiceMocks.completeChallengeResult.mockResolvedValue(completedMatchView())
-    const port = await listen(httpServer)
-    emitMatchSnapshot({
-      ...inProgressTempoMatchView(),
-      questionCount: 1,
-      perQuestionTimeLimitSeconds: 1,
-    }, 'match_started')
-    const [clientA, clientB] = await Promise.all([connectClient(port, 'token_a'), connectClient(port, 'token_b')])
-    const completedToGuest = new Promise<{ status: string; match: { status: string } }>((resolve) => {
-      clientB.on('match:changed', (payload) => {
-        if (payload.status === 'completed') {
-          resolve(payload)
-        }
-      })
-    })
-    const question = generateMatchQuestion('seed_1', 0, 'addition', 'debutant')
-    const answer = {
-      questionIndex: 0,
-      prompt: question.prompt,
-      correctAnswer: question.answer,
-      userAnswer: question.answer,
-      responseTimeMs: 800,
-      skill: question.skill,
-      source: 'manual',
-    }
-
-    await new Promise((resolve) => {
-      clientA.emit('match:submit-tempo-answer', { matchId: 'match_1', answer }, resolve)
-    })
-
-    await expect(completedToGuest).resolves.toMatchObject({
-      status: 'completed',
-      match: { status: 'completed' },
-    })
-    await expect.poll(() => matchServiceMocks.persistTempoQuestionAnswer.mock.calls.length).toBe(2)
-    expect(matchServiceMocks.persistTempoQuestionAnswer).toHaveBeenCalledWith('player_b', 'match_1', expect.objectContaining({
-      questionIndex: 0,
-      userAnswer: null,
-      source: 'timeout',
-    }))
+    }), expect.any(Object))
   })
 
   it('finalise une manche tempo cote serveur quand la derniere question est resolue', async () => {
@@ -1897,8 +1824,10 @@ describe('realtime notifications', () => {
         return null
       },
     })
-    matchServiceMocks.persistTempoQuestionAnswer.mockResolvedValue(undefined)
-    matchServiceMocks.completeChallengeResult.mockResolvedValue(completedMatchView())
+    tempoCoordinatorMocks.submitAtomicTempoAnswer
+      .mockResolvedValueOnce(persistedTempoResult({ answeredCount: 1, questionCount: 1 }))
+      .mockResolvedValueOnce(persistedTempoResult({ answeredCount: 2, complete: true, terminal: true, questionCount: 1 }))
+    matchServiceMocks.completePersistedTempoMatch.mockResolvedValue(completedMatchView())
     const port = await listen(httpServer)
     emitMatchSnapshot({ ...inProgressTempoMatchView(), questionCount: 1 }, 'match_started')
     const [clientA, clientB] = await Promise.all([connectClient(port, 'token_a'), connectClient(port, 'token_b')])
@@ -1934,7 +1863,8 @@ describe('realtime notifications', () => {
         winnerPlayerId: 'player_a',
       },
     })
-    await expect.poll(() => matchServiceMocks.completeChallengeResult.mock.calls.length).toBe(2)
+    expect(matchServiceMocks.completePersistedTempoMatch).toHaveBeenCalledOnce()
+    expect(matchServiceMocks.completePersistedTempoMatch).toHaveBeenCalledWith('match_1')
   })
 
   it('ne rediffuse pas un snapshot tempo in_progress plus ancien apres une completion', async () => {

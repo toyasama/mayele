@@ -357,6 +357,34 @@ export function e2eRoutes() {
     }
   })
 
+  router.post('/e2e/solo-runs/:runId/expire', async (req, res, next) => {
+    try {
+      assertE2EEnabled()
+      const expiredAt = new Date(Date.now() - 1_000)
+      const run = await prisma.soloRun.update({
+        where: { id: req.params.runId },
+        data: { endsAt: expiredAt, expiresAt: expiredAt },
+        select: { id: true, status: true, endsAt: true },
+      })
+      res.json({ run })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  router.get('/e2e/solo-runs/:runId/status', async (req, res, next) => {
+    try {
+      assertE2EEnabled()
+      const run = await prisma.soloRun.findUnique({
+        where: { id: req.params.runId },
+        select: { id: true, status: true, sessionId: true, result: true },
+      })
+      res.json({ run })
+    } catch (error) {
+      next(error)
+    }
+  })
+
   router.post('/e2e/completed-match', async (_req, res, next) => {
     try {
       assertE2EEnabled()
