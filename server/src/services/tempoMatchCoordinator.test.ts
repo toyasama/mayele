@@ -167,6 +167,52 @@ describe('tempoMatchCoordinator', () => {
     })
   })
 
+  it('calcule la meilleure serie Tempo sur tout l historique atomique', async () => {
+    const match = tempoMatch({ questionCount: 3, tempoQuestionIndex: 2 })
+    const question = generateMatchQuestion('seed-1', 2, 'addition', 'debutant')
+    prismaMock.$queryRaw.mockResolvedValue([{
+      inserted: true,
+      eligible: true,
+      duplicate: false,
+      answered_count: 1n,
+      expected_count: 2n,
+      current_index: 2,
+      question_started_at: match.tempoQuestionStartedAt,
+      question_deadline_at: match.tempoQuestionDeadlineAt,
+      started_at: match.startedAt,
+      status: 'in_progress',
+      participant_progress: match.participants.map((participant) => ({
+        player_id: participant.playerId,
+        status: 'playing',
+        score: participant.playerId === 'player-a' ? 100 : null,
+        score_points: participant.playerId === 'player-a' ? 24 : 0,
+        correct_answers: participant.playerId === 'player-a' ? 3 : 0,
+        total_questions: participant.playerId === 'player-a' ? 3 : 0,
+        total_response_time_ms: participant.playerId === 'player-a' ? 1_500 : 0,
+        best_streak: participant.playerId === 'player-a' ? 3 : 0,
+      })),
+      terminal: false,
+      advanced: false,
+    }])
+
+    const result = await submitAtomicTempoAnswer('player-a', 'match-1', {
+      questionIndex: 2,
+      prompt: question.prompt,
+      correctAnswer: question.answer,
+      userAnswer: question.answer,
+      responseTimeMs: 500,
+      skill: question.skill,
+      source: 'manual',
+    }, serializeMatch(toMatchView(match as never)))
+    const query = (prismaMock.$queryRaw.mock.calls[0]?.[0] as TemplateStringsArray).join(' ')
+
+    expect(query).toContain('computed_best_streak')
+    expect(query).toContain('GROUP BY "streak_group"')
+    expect(result.snapshot.participants.find((participant) => participant.player.id === 'player-a')).toMatchObject({
+      bestStreak: 3,
+    })
+  })
+
   it('verrouille le match avant d enregistrer une reponse et laisse PostgreSQL compter', async () => {
     const match = tempoMatch()
     const question = generateMatchQuestion('seed-1', 0, 'addition', 'debutant')

@@ -37,13 +37,6 @@ function relationLabel(status: SocialStatus) {
   return 'Ami'
 }
 
-function lastActivityLabel(value: string) {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return 'Activité inconnue'
-
-  return new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(date)
-}
-
 function PlayerFace({ player, size = 'normal' }: { player: PublicPlayer; size?: 'normal' | 'large' }) {
   if (player.avatarUrl) {
     return <img className={`social-roster-avatar ${size}`} src={player.avatarUrl} alt="" />

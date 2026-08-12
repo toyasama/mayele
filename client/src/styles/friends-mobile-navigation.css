@@ -51,7 +51,7 @@
 
 .friends-page .social-profile-summary {
   display: grid;
-  grid-template-columns: auto minmax(220px, 1fr);
+  grid-template-columns: 1fr;
   align-items: stretch;
   gap: 10px;
 }
@@ -83,56 +83,6 @@
 
 .friends-page .social-profile-metrics strong {
   font-size: 1rem;
-}
-
-.friends-page .social-profile-activity {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 12px;
-  border: 1px solid rgba(180, 212, 218, 0.68);
-  border-radius: 13px;
-  background: rgba(247, 252, 252, 0.86);
-}
-
-.friends-page .social-profile-activity-dot {
-  width: 9px;
-  height: 9px;
-  flex: 0 0 auto;
-  border-radius: 50%;
-  background: #94a3b8;
-}
-
-.friends-page .social-profile-activity.presence-online .social-profile-activity-dot {
-  background: #24c47a;
-  box-shadow: 0 0 0 4px rgba(36, 196, 122, 0.1);
-}
-
-.friends-page .social-profile-activity.presence-away .social-profile-activity-dot {
-  background: #f59e0b;
-}
-
-.friends-page .social-profile-activity > div {
-  min-width: 0;
-  display: grid;
-  gap: 2px;
-}
-
-.friends-page .social-profile-activity small {
-  color: var(--muted);
-  font-size: 0.64rem;
-  font-weight: 850;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.friends-page .social-profile-activity strong {
-  overflow: hidden;
-  color: var(--text);
-  font-size: 0.84rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .friends-page .social-profile-actions.profile-card-actions {
@@ -340,10 +290,6 @@
   .friends-page .social-profile-summary {
     grid-template-columns: 1fr;
     gap: 8px;
-  }
-
-  .friends-page .social-profile-activity {
-    padding: 9px 11px;
   }
 
   .friends-page .social-profile-actions.profile-card-actions {

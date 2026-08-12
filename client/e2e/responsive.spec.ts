@@ -383,7 +383,7 @@ test('amis et profil restent lisibles sans debordement', async ({ page }, testIn
     expect(detailLayout.removeTop).toBeLessThanOrEqual(detailLayout.closeBottom)
     expect(detailLayout.removeRight).toBeLessThanOrEqual(detailLayout.closeLeft)
     await expect(mobileDetail.getByText('Ami', { exact: true })).toBeVisible()
-    await expect(mobileDetail.getByText('Dernière activité', { exact: true })).toBeVisible()
+    await expect(mobileDetail.getByText('Dernière activité', { exact: true })).toHaveCount(0)
     await expect(mobileDetail.getByText(/XP avant le niveau/i)).toHaveCount(0)
     await expect(mobileDetail.getByRole('button', { name: /^Profil$/i })).toBeVisible()
     await attachScreenshot(page, testInfo, 'friends-mobile-detail')

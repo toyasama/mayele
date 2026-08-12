@@ -389,7 +389,7 @@ export async function submitAtomicTempoAnswer(
         ${payload.correctAnswer}, ${payload.userAnswer}, ${payload.responseTimeMs}, ${payload.skill}, CURRENT_TIMESTAMP
       FROM eligible e
       ON CONFLICT ("match_id", "player_id", "question_index") DO NOTHING
-      RETURNING "player_id"
+      RETURNING "question_index", "user_answer", "correct_answer"
     ), counts AS (
       SELECT
         EXISTS (SELECT 1 FROM eligible) AS "eligible",
@@ -414,6 +414,33 @@ export async function submitAtomicTempoAnswer(
             AND "status" IN ('playing', 'submitting', 'completed')
         ) AS "expected_count"
       FROM locked_match lm
+    ), answer_history AS (
+      SELECT
+        a."question_index",
+        a."user_answer" IS NOT NULL AND a."user_answer" = a."correct_answer" AS "is_correct"
+      FROM "match_question_answers" a
+      WHERE a."match_id" = ${matchId}
+        AND a."player_id" = ${playerId}
+
+      UNION ALL
+
+      SELECT
+        i."question_index",
+        i."user_answer" IS NOT NULL AND i."user_answer" = i."correct_answer" AS "is_correct"
+      FROM inserted i
+    ), streak_groups AS (
+      SELECT
+        "is_correct",
+        SUM(CASE WHEN "is_correct" THEN 0 ELSE 1 END) OVER (ORDER BY "question_index") AS "streak_group"
+      FROM answer_history
+    ), computed_best_streak AS (
+      SELECT COALESCE(MAX("streak_length"), 0)::INTEGER AS "value"
+      FROM (
+        SELECT COUNT(*)::INTEGER AS "streak_length"
+        FROM streak_groups
+        WHERE "is_correct"
+        GROUP BY "streak_group"
+      ) streaks
     ), participant_updated AS (
       UPDATE "match_participants" mp
       SET
@@ -425,8 +452,8 @@ export async function submitAtomicTempoAnswer(
           ((mp."correct_answers" + ${correctIncrement}) * 100.0) /
           (mp."total_questions" + 1)
         )::INTEGER,
-        "best_streak" = GREATEST(mp."best_streak", ${correctIncrement})
-      FROM counts c
+        "best_streak" = GREATEST(mp."best_streak", computed_best_streak."value")
+      FROM counts c, computed_best_streak
       WHERE mp."match_id" = ${matchId}
         AND mp."player_id" = ${playerId}
         AND c."inserted"

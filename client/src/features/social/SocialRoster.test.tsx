@@ -41,7 +41,7 @@ describe('SocialRoster', () => {
     expect(within(progression).getByText('Niveau')).toBeVisible()
     expect(within(progression).getByText('12')).toBeVisible()
     expect(within(progression).getByText('10 561')).toBeVisible()
-    expect(screen.getByText('Dernière activité')).toBeVisible()
+    expect(screen.queryByText('Dernière activité')).not.toBeInTheDocument()
     expect(screen.queryByText(/XP avant le niveau/i)).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Profil' })).toBeVisible()
     expect(screen.getByRole('button', { name: 'Retirer' })).toBeVisible()
