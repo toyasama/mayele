@@ -217,7 +217,7 @@ test('navigation mobile/tablette, notifications et vues secondaires restent util
     await page.locator('.social-roster-item').first().click()
     await expect(page.locator('.social-profile-detail.mobile-open')).toBeVisible()
   }
-  const profileButton = page.getByRole('button', { name: 'Profil' }).first()
+  const profileButton = page.locator('.social-profile-actions').getByRole('button', { name: 'Profil', exact: true })
   await expect(profileButton).toBeVisible()
   await profileButton.click()
   await expect(page.locator('.friend-versus-stage')).toBeVisible()

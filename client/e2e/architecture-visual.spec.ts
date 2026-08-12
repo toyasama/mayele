@@ -73,7 +73,7 @@ test('valide visuellement les nouvelles architectures hors landing page', async 
   await assertHealthySurface(page, 'notification-feed')
 
   await page.goto(`${APP_URL}/amis`)
-  const friendProfileButton = page.getByRole('button', { name: 'Profil' }).first()
+  const friendProfileButton = page.locator('.social-profile-actions').getByRole('button', { name: 'Profil', exact: true })
   await expect(friendProfileButton).toBeVisible()
   await friendProfileButton.click()
   await expect(page.locator('.friend-versus-stage')).toBeVisible({ timeout: 15_000 })
