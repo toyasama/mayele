@@ -1,0 +1,9 @@
+import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
+export function PlaceholderPage({ title, description }: { title: string; description: string }) {
+  return <SafeAreaView style={styles.safe}><View style={styles.content}><View style={styles.icon}><Ionicons color="#11a696" name="construct-outline" size={30} /></View><Text style={styles.eyebrow}>PROCHAINE ÉTAPE</Text><Text style={styles.title}>{title}</Text><Text style={styles.text}>{description}</Text><View style={styles.badge}><Text style={styles.badgeText}>Structure prête · contenu à reconstruire</Text></View><Pressable onPress={() => router.back()} style={styles.button}><Ionicons color="#fff" name="arrow-back" size={18} /><Text style={styles.buttonText}>Retour</Text></Pressable></View></SafeAreaView>;
+}
+const styles = StyleSheet.create({ safe: { flex: 1, backgroundColor: '#f3f8f7' }, content: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 }, icon: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#e2f6f2', alignItems: 'center', justifyContent: 'center' }, eyebrow: { color: '#11a696', fontSize: 11, letterSpacing: 3, fontWeight: '900', marginTop: 20 }, title: { color: '#102a3e', fontSize: 30, fontWeight: '900', textAlign: 'center', marginTop: 8 }, text: { color: '#627582', fontSize: 16, lineHeight: 24, textAlign: 'center', marginTop: 12 }, badge: { backgroundColor: '#fff', borderColor: '#d5e8e7', borderWidth: 1, borderRadius: 12, padding: 12, marginTop: 22 }, badgeText: { color: '#4b6b6a', fontSize: 12, fontWeight: '700' }, button: { flexDirection: 'row', gap: 8, backgroundColor: '#11a696', borderRadius: 14, paddingHorizontal: 20, paddingVertical: 13, marginTop: 22 }, buttonText: { color: '#fff', fontWeight: '900' } });

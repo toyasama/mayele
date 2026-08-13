@@ -687,6 +687,7 @@ describe('realtime notifications', () => {
         challengeMode: 'sprint',
         expectedConfigVersion: 1,
       }),
+      expect.objectContaining({ challengeStatsByPlayerId: expect.any(Map) }),
     )
   })
 
@@ -1075,11 +1076,13 @@ describe('realtime notifications', () => {
       'player_a',
       'match_1',
       expect.objectContaining({ perQuestionTimeLimitSeconds: 5 }),
+      expect.objectContaining({ challengeStatsByPlayerId: expect.any(Map) }),
     )
     expect(matchServiceMocks.updateChallengeConfig).toHaveBeenCalledWith(
       'player_a',
       'match_1',
       expect.not.objectContaining({ durationSeconds: expect.anything() }),
+      expect.objectContaining({ challengeStatsByPlayerId: expect.any(Map) }),
     )
   })
 

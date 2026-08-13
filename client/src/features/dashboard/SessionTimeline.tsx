@@ -91,7 +91,7 @@ export function SessionTimeline({ sessions, expandedSessionId, onToggleSession, 
           })}
         </div>
       ) : (
-        <div className="dashboard-empty-state"><strong>Aucune session enregistrée.</strong><Link className="primary-button" to="/jeu">Lancer un sprint</Link></div>
+        <div className="dashboard-empty-state"><Link className="primary-button" to="/jeu">Lancer un sprint</Link></div>
       )}
     </section>
   )

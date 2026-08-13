@@ -549,6 +549,34 @@ describe('matchService', () => {
     }))
   })
 
+  it('réutilise le bilan du snapshot lors d’une mise à jour temps réel de configuration', async () => {
+    prismaMock.match.update.mockResolvedValueOnce(makeAcceptedMatch({ configVersion: 4 }))
+    const challengeStatsByPlayerId = new Map([
+      ['player_a', { room: { wins: 3, losses: 1, draws: 2 }, friendship: { wins: 7, losses: 4, draws: 3 } }],
+      ['player_b', { room: { wins: 1, losses: 3, draws: 2 }, friendship: { wins: 4, losses: 7, draws: 3 } }],
+    ])
+
+    const match = await updateChallengeConfig(
+      'player_a',
+      'match_1',
+      {
+        game: 'multiplication',
+        level: 'intermediaire',
+        practiceSkill: null,
+        challengeMode: 'sprint',
+        durationSeconds: 90,
+        expectedConfigVersion: 3,
+      },
+      { challengeStatsByPlayerId },
+    )
+
+    expect(match.configVersion).toBe(4)
+    expect(match.participants.find((participant) => participant.player.id === 'player_a')?.challengeStats).toEqual(
+      challengeStatsByPlayerId.get('player_a'),
+    )
+    expect(prismaMock.match.findMany).not.toHaveBeenCalled()
+  })
+
   it("lance le defi quand l'invite accepte la proposition", async () => {
     const now = new Date('2026-07-08T12:00:00.000Z')
     vi.useFakeTimers()

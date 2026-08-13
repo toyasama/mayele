@@ -8,7 +8,7 @@ import type { TempoAnswerPayload, ChallengeConfigPayload, ChallengePayload, Matc
 import { saveSession } from './sessionService.js'
 import { MatchServiceError } from './matchServiceErrors.js'
 import { challengeRunDurationSeconds, MATCH_IN_PROGRESS_GRACE_MS } from './matchServiceTiming.js'
-import { MATCH_INCLUDE, enrichMatchView, enrichMatchViews, toMatchView, type MatchView } from './matchServiceView.js'
+import { MATCH_INCLUDE, enrichMatchView, enrichMatchViews, toMatchView, type MatchView, type ParticipantChallengeStats } from './matchServiceView.js'
 import {
   buildValidatedSessionPayload,
   calculateAccuracy,
@@ -398,7 +398,12 @@ export async function declineChallenge(playerId: string, matchId: string, onPers
   return enrichMatchView(cancelledMatch)
 }
 
-export async function updateChallengeConfig(playerId: string, matchId: string, payload: ChallengeConfigPayload) {
+export async function updateChallengeConfig(
+  playerId: string,
+  matchId: string,
+  payload: ChallengeConfigPayload,
+  options: { challengeStatsByPlayerId?: Map<string, ParticipantChallengeStats> } = {},
+) {
   const hasCompleteConfig = Boolean(payload.game && payload.level && payload.challengeMode)
   const config = payload.challengeMode && hasCompleteConfig
     ? buildChallengeConfig({
@@ -435,7 +440,9 @@ export async function updateChallengeConfig(playerId: string, matchId: string, p
       include: MATCH_INCLUDE,
     })
 
-    return enrichMatchView(fastUpdatedMatch)
+    return options.challengeStatsByPlayerId
+      ? toMatchView(fastUpdatedMatch, options.challengeStatsByPlayerId)
+      : enrichMatchView(fastUpdatedMatch)
   } catch {
     // Classify the miss below. The success path remains one DB round-trip.
   }
@@ -500,7 +507,9 @@ export async function updateChallengeConfig(playerId: string, matchId: string, p
       include: MATCH_INCLUDE,
     })
 
-    return enrichMatchView(readyUpdatedMatch)
+    return options.challengeStatsByPlayerId
+      ? toMatchView(readyUpdatedMatch, options.challengeStatsByPlayerId)
+      : enrichMatchView(readyUpdatedMatch)
   } catch {
     throw new MatchServiceError('match_version_conflict')
   }

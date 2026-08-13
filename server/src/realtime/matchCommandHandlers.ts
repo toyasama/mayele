@@ -102,7 +102,14 @@ export function registerMatchCommandHandlers(socket: Socket, context: MatchComma
         throw new MatchServiceError('match_version_conflict')
       }
 
-      const match = await updateChallengeConfig(playerId, command.matchId, command.config)
+      // Une configuration ne modifie pas le bilan du salon. Réutiliser les
+      // compteurs du snapshot évite deux requêtes d'historique avant le broadcast.
+      const challengeStatsByPlayerId = new Map(
+        cachedMatch.participants.map((participant) => [participant.player.id, participant.challengeStats]),
+      )
+      const match = await updateChallengeConfig(playerId, command.matchId, command.config, {
+        challengeStatsByPlayerId,
+      })
       const snapshot = serializeMatch(match)
 
       context.publishMatchRuntimeEvent(snapshot, 'match_config_updated', commandId)
