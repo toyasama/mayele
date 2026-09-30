@@ -129,7 +129,14 @@ export function startOutboxDispatcher() {
         nextRunAt: await nextOutboxAttemptAt(),
       }
     },
-    onRunFailed: logDispatchError,
+    onRunSucceeded: () => {
+      lastSucceededAt = new Date()
+      lastFailedAt = null
+    },
+    onRunFailed: (error) => {
+      lastFailedAt = new Date()
+      logDispatchError(error)
+    },
   })
   dispatcherScheduler = scheduler
   const unsubscribe = subscribeToBackgroundWork('outbox', () => scheduler.wake())
