@@ -372,6 +372,7 @@ export async function acceptChallenge(playerId: string, matchId: string, onPersi
     return persistedMatch
   })
 
+  signalBackgroundWork('match-expiration')
   return enrichMatchView(acceptedMatch)
 }
 
@@ -459,6 +460,7 @@ export async function updateChallengeConfig(playerId: string, matchId: string, p
       include: MATCH_INCLUDE,
     })
 
+    signalBackgroundWork('match-expiration')
     return enrichMatchView(fastUpdatedMatch)
   } catch {
     // Classify the miss below. The success path remains one DB round-trip.
@@ -524,6 +526,7 @@ export async function updateChallengeConfig(playerId: string, matchId: string, p
       include: MATCH_INCLUDE,
     })
 
+    signalBackgroundWork('match-expiration')
     return enrichMatchView(readyUpdatedMatch)
   } catch {
     throw new MatchServiceError('match_version_conflict')
@@ -609,6 +612,7 @@ export async function proposeChallenge(playerId: string, matchId: string, config
     throw new MatchServiceError('match_not_accepted')
   }
 
+  signalBackgroundWork('match-expiration')
   return getMatch(playerId, matchId)
 }
 
@@ -781,6 +785,7 @@ export async function declineChallengeProposal(playerId: string, matchId: string
     },
   })
 
+  signalBackgroundWork('match-expiration')
   return getMatch(playerId, matchId)
 }
 
@@ -910,6 +915,7 @@ export async function completeChallengeResult(playerId: string, matchId: string,
 
   const finalizedMatch = updatedMatch ?? await finalizeMatchIfDone(match.id)
 
+  if (finalizedMatch) signalBackgroundWork('match-expiration')
   return finalizedMatch ? enrichMatchView(finalizedMatch) : getMatch(playerId, matchId)
 }
 
@@ -1463,6 +1469,7 @@ export async function transferChallengeHost(playerId: string, matchId: string) {
     },
   })
 
+  signalBackgroundWork('match-expiration')
   return getMatch(playerId, matchId)
 }
 
