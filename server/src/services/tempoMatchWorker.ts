@@ -1,4 +1,5 @@
 import { logger } from '../lib/logger.js'
+import { prisma } from '../lib/prisma.js'
 import {
   emitMatchSnapshot,
   emitMatchTempoAnswerRecorded,
@@ -7,8 +8,9 @@ import {
 import { completePersistedTempoMatch } from './matchService.js'
 import { serializeMatch } from './matchPresenter.js'
 import { processExpiredTempoQuestions } from './tempoMatchCoordinator.js'
+import { createAdaptiveWorkerScheduler, IDLE_SCAN_MS } from './adaptiveWorker.js'
+import { signalBackgroundWork, subscribeToBackgroundWork } from './backgroundWorkSignals.js'
 
-const TEMPO_SWEEP_INTERVAL_MS = 250
 let workerStarted = false
 let workerRunning = false
 let lastSucceededAt: Date | null = null
@@ -42,6 +44,18 @@ export async function runTempoMatchSweep() {
   return resolvedQuestions.length
 }
 
+async function nextTempoDeadline() {
+  const [match] = await prisma.$queryRaw<Array<{ deadline: Date | null }>>`
+    SELECT "tempo_question_deadline_at" AS "deadline"
+    FROM "matches"
+    WHERE "status" = 'in_progress' AND "challenge_mode" = 'tempo'
+    ORDER BY "tempo_question_deadline_at" ASC NULLS FIRST
+    LIMIT 1
+  `
+  // A terminal Tempo match has no next deadline but still needs finalizing.
+  return match ? match.deadline ?? new Date(0) : null
+}
+
 export function getTempoMatchWorkerHealth() {
   return {
     started: workerStarted,
@@ -52,38 +66,47 @@ export function getTempoMatchWorkerHealth() {
 }
 
 export function startTempoMatchWorker() {
-  let sweepPromise: Promise<unknown> | null = null
-
-  const sweep = () => {
-    if (sweepPromise) return sweepPromise
-    workerRunning = true
-    sweepPromise = runTempoMatchSweep()
-      .then((result) => {
-        lastSucceededAt = new Date()
-        lastFailedAt = null
-        return result
+  const scheduler = createAdaptiveWorkerScheduler({
+    name: 'tempo-match',
+    initialIdleDelayMs: IDLE_SCAN_MS,
+    maxIdleDelayMs: IDLE_SCAN_MS,
+    overdueRetryDelayMs: 250,
+    run: async () => {
+      const now = new Date()
+      const pendingDeadline = await nextTempoDeadline()
+      if (!pendingDeadline || pendingDeadline > now) {
+        return { workCount: 0, nextRunAt: pendingDeadline }
+      }
+      return {
+        workCount: await runTempoMatchSweep(),
+        nextRunAt: await nextTempoDeadline(),
+      }
+    },
+    onRunStarted: () => { workerRunning = true },
+    onRunSucceeded: () => {
+      lastSucceededAt = new Date()
+      lastFailedAt = null
+    },
+    onRunFailed: (error) => {
+      lastFailedAt = new Date()
+      logger.error('tempo_match_sweep_failed', {
+        message: error instanceof Error ? error.message : String(error),
       })
-      .catch((error) => {
-        lastFailedAt = new Date()
-        logger.error('tempo_match_sweep_failed', {
-          message: error instanceof Error ? error.message : String(error),
-        })
-      })
-      .finally(() => {
-        sweepPromise = null
-        workerRunning = false
-      })
-    return sweepPromise
-  }
+    },
+    onRunFinished: () => { workerRunning = false },
+  })
+  const unsubscribe = subscribeToBackgroundWork('tempo-match', () => scheduler.wake())
 
   workerStarted = true
-  void sweep()
-  const timer = setInterval(() => void sweep(), TEMPO_SWEEP_INTERVAL_MS)
-  timer.unref()
+  scheduler.start()
 
   return async () => {
-    clearInterval(timer)
+    unsubscribe()
     workerStarted = false
-    await sweepPromise
+    await scheduler.stop()
   }
+}
+
+export function requestTempoMatchSweep() {
+  signalBackgroundWork('tempo-match')
 }

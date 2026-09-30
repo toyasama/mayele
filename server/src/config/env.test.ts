@@ -35,6 +35,32 @@ describe('productionEnvProblems', () => {
     vi.resetModules()
   })
 
+  it('ne garde pas de connexions PostgreSQL Socket.IO sur une seule replique', async () => {
+    vi.resetModules()
+    vi.stubEnv('NODE_ENV', 'production')
+    vi.stubEnv('REALTIME_POSTGRES_ADAPTER_ENABLED', undefined)
+
+    const { env } = await import('./env.js')
+
+    expect(env.realtimePostgresAdapterEnabled).toBe(false)
+
+    vi.unstubAllEnvs()
+    vi.resetModules()
+  })
+
+  it('active l adaptateur PostgreSQL uniquement sur demande', async () => {
+    vi.resetModules()
+    vi.stubEnv('NODE_ENV', 'production')
+    vi.stubEnv('REALTIME_POSTGRES_ADAPTER_ENABLED', 'true')
+
+    const { env } = await import('./env.js')
+
+    expect(env.realtimePostgresAdapterEnabled).toBe(true)
+
+    vi.unstubAllEnvs()
+    vi.resetModules()
+  })
+
   it('ecarte les origines non sures et utilise le domaine de production connu', async () => {
     vi.resetModules()
     vi.stubEnv('NODE_ENV', 'production')

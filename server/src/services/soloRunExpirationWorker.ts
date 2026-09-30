@@ -4,9 +4,10 @@ import { ApiError } from '../errors.js'
 import { logger } from '../lib/logger.js'
 import { prisma } from '../lib/prisma.js'
 import { finishSoloRun } from './soloRunService.js'
+import { createAdaptiveWorkerScheduler, IDLE_SCAN_MS } from './adaptiveWorker.js'
+import { signalBackgroundWork, subscribeToBackgroundWork } from './backgroundWorkSignals.js'
 
 const SOLO_RUN_EXPIRATION_JOB_KEY = 'solo-run-expiration'
-const SOLO_RUN_EXPIRATION_INTERVAL_MS = 15_000
 const SOLO_RUN_EXPIRATION_LEASE_MS = 60_000
 const SOLO_RUN_EXPIRATION_BATCH_SIZE = 50
 
@@ -122,6 +123,15 @@ export async function runSoloRunExpirationSweep(
   }
 }
 
+async function nextSoloRunExpirationAt(now = new Date()) {
+  const run = await prisma.soloRun.findFirst({
+    where: { status: 'active' },
+    orderBy: { endsAt: 'asc' },
+    select: { endsAt: true },
+  })
+  return run?.endsAt ?? null
+}
+
 export function getSoloRunExpirationWorkerHealth() {
   return {
     started: workerStarted,
@@ -133,38 +143,50 @@ export function getSoloRunExpirationWorkerHealth() {
 
 export function startSoloRunExpirationWorker() {
   const ownerId = `solo-run-expiration:${process.pid}:${randomUUID()}`
-  let sweepPromise: Promise<unknown> | null = null
-
-  const sweep = () => {
-    if (sweepPromise) return sweepPromise
-    workerRunning = true
-    sweepPromise = runSoloRunExpirationSweep(ownerId)
-      .then((result) => {
-        lastSucceededAt = new Date()
-        lastFailedAt = null
-        return result
+  const scheduler = createAdaptiveWorkerScheduler({
+    name: 'solo-run-expiration',
+    initialIdleDelayMs: IDLE_SCAN_MS,
+    maxIdleDelayMs: IDLE_SCAN_MS,
+    overdueRetryDelayMs: 1_000,
+    run: async () => {
+      const now = new Date()
+      const pendingExpiration = await nextSoloRunExpirationAt(now)
+      if (!pendingExpiration || pendingExpiration > now) {
+        return { workCount: 0, nextRunAt: pendingExpiration }
+      }
+      const result = await runSoloRunExpirationSweep(ownerId)
+      return {
+        workCount: result.candidates,
+        nextRunAt: result.acquired
+          ? await nextSoloRunExpirationAt()
+          : new Date(Date.now() + SOLO_RUN_EXPIRATION_LEASE_MS),
+      }
+    },
+    onRunStarted: () => { workerRunning = true },
+    onRunSucceeded: () => {
+      lastSucceededAt = new Date()
+      lastFailedAt = null
+    },
+    onRunFailed: (error) => {
+      lastFailedAt = new Date()
+      logger.error('solo_run_expiration_sweep_failed', {
+        message: error instanceof Error ? error.message : String(error),
       })
-      .catch((error) => {
-        lastFailedAt = new Date()
-        logger.error('solo_run_expiration_sweep_failed', {
-          message: error instanceof Error ? error.message : String(error),
-        })
-      })
-      .finally(() => {
-        sweepPromise = null
-        workerRunning = false
-      })
-    return sweepPromise
-  }
+    },
+    onRunFinished: () => { workerRunning = false },
+  })
+  const unsubscribe = subscribeToBackgroundWork('solo-run-expiration', () => scheduler.wake())
 
   workerStarted = true
-  void sweep()
-  const timer = setInterval(() => void sweep(), SOLO_RUN_EXPIRATION_INTERVAL_MS)
-  timer.unref()
+  scheduler.start()
 
   return async () => {
-    clearInterval(timer)
+    unsubscribe()
     workerStarted = false
-    await sweepPromise
+    await scheduler.stop()
   }
+}
+
+export function requestSoloRunExpirationSweep() {
+  signalBackgroundWork('solo-run-expiration')
 }

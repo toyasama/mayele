@@ -6,6 +6,7 @@ import { calculateSessionScorePoints } from '../domain/scoring.js'
 import { prisma } from '../lib/prisma.js'
 import type { TempoAnswerPayload, ChallengeConfigPayload, ChallengePayload, MatchResultPayload, ParticipantProgressPayload } from '../schemas/matchSchema.js'
 import { saveSession } from './sessionService.js'
+import { signalBackgroundWork } from './backgroundWorkSignals.js'
 import { MatchServiceError } from './matchServiceErrors.js'
 import { challengeRunDurationSeconds, MATCH_IN_PROGRESS_GRACE_MS } from './matchServiceTiming.js'
 import { MATCH_INCLUDE, enrichMatchView, enrichMatchViews, toMatchView, type MatchView } from './matchServiceView.js'
@@ -293,6 +294,7 @@ export async function createChallenge(creatorPlayerId: string, payload: Challeng
     return persistedMatch
   })
 
+  signalBackgroundWork('match-expiration')
   return toMatchView(match)
 }
 
@@ -692,6 +694,8 @@ export async function startChallengeProposal(
     throw new MatchServiceError('match_not_ready')
   }
 
+  signalBackgroundWork('tempo-match')
+  signalBackgroundWork('match-expiration')
   return enrichMatchView(updatedMatch)
 }
 
@@ -742,6 +746,8 @@ export async function acceptChallengeProposal(playerId: string, matchId: string)
     }),
   ])
 
+  signalBackgroundWork('tempo-match')
+  signalBackgroundWork('match-expiration')
   return getMatch(playerId, matchId)
 }
 
@@ -1066,6 +1072,7 @@ export async function completePersistedTempoMatch(matchId: string) {
         include: MATCH_INCLUDE,
       })
     })
+    signalBackgroundWork('match-expiration')
     return enrichMatchView(finalized)
   } catch (error) {
     await prisma.match.updateMany({
@@ -1286,6 +1293,7 @@ export async function forfeitChallenge(playerId: string, matchId: string, partic
     })
   })
 
+  signalBackgroundWork('match-expiration')
   return enrichMatchView(completedMatch)
 }
 
@@ -1376,6 +1384,7 @@ export async function requestChallengeRematch(playerId: string, matchId: string)
     include: MATCH_INCLUDE,
   })
 
+  signalBackgroundWork('match-expiration')
   return enrichMatchView(rematch)
 }
 

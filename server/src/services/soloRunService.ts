@@ -10,6 +10,7 @@ import { prisma } from '../lib/prisma.js'
 import type { StartSoloRunInput, SubmitSoloAnswerInput } from '../schemas/soloRunSchema.js'
 import { invalidateDashboardCache } from './dashboardService.js'
 import { settleSession, type SessionSaveResult } from './sessionService.js'
+import { signalBackgroundWork } from './backgroundWorkSignals.js'
 
 const RUN_RECEIPT_PREFIX = 'solo-run:'
 const RUN_EXPIRY_GRACE_MS = 5 * 60 * 1000
@@ -244,6 +245,7 @@ export async function startSoloRun(playerId: string, input: StartSoloRunInput) {
       })
     })
 
+    signalBackgroundWork('solo-run-expiration')
     return buildRunView(run, now)
   } catch (error) {
     if (prismaConflictTargets(error, ['clientRunId', 'client_run_id'])) {

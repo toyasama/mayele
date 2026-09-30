@@ -37,7 +37,7 @@ export function healthRoutes() {
         && !tempoMatches.lastFailedAt
       )
 
-      if (env.isProduction && (!realtime.initialized || !realtime.postgresAdapterEnabled || !backgroundReady)) {
+      if (env.isProduction && (!realtime.initialized || (env.realtimePostgresAdapterEnabled && !realtime.postgresAdapterEnabled) || !backgroundReady)) {
         res.status(503).json({ status: 'not_ready', realtime, background: { outbox, matchExpiration, soloRunExpiration, tempoMatches } })
         return
       }
