@@ -7,6 +7,7 @@ import { emitMatchSnapshot, resetRealtimeStateForTests } from '../realtime/notif
 import { invalidateDashboardCache } from '../services/dashboardService.js'
 import { getMatch } from '../services/matchService.js'
 import { serializeMatch } from '../services/matchPresenter.js'
+import { requestSoloRunExpirationSweep } from '../services/soloRunExpirationWorker.js'
 
 const E2E_PLAYERS = [
   {
@@ -366,6 +367,7 @@ export function e2eRoutes() {
         data: { endsAt: expiredAt, expiresAt: expiredAt },
         select: { id: true, status: true, endsAt: true },
       })
+      requestSoloRunExpirationSweep()
       res.json({ run })
     } catch (error) {
       next(error)

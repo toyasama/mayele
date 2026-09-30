@@ -19,6 +19,7 @@ import {
   missionCompletedNotificationKey,
 } from './notificationService.js'
 import { enqueueOutboxEvent } from './outboxService.js'
+import { signalBackgroundWork } from './backgroundWorkSignals.js'
 import { appendXpLedgerEntries } from './xpLedgerService.js'
 
 function calculateAccuracy(correctAnswers: number, totalQuestions: number) {
@@ -474,6 +475,7 @@ export async function saveSession(
 
   if (settlement.created) {
     invalidateDashboardCache(playerId)
+    signalBackgroundWork('outbox')
   }
   return settlement.result
 }

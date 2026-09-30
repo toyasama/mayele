@@ -13,6 +13,7 @@ import {
 } from './matchServiceResults.js'
 import { MATCH_INCLUDE, toMatchView, type MatchView } from './matchServiceView.js'
 import type { SerializedMatch } from './matchPresenter.js'
+import { signalBackgroundWork } from './backgroundWorkSignals.js'
 
 const TEMPO_ARRIVAL_GRACE_MS = 1_500
 
@@ -155,7 +156,7 @@ export async function submitPersistedTempoAnswer(
   matchId: string,
   payload: TempoAnswerPayload,
 ) {
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     await lockMatch(tx, matchId)
     const match = await tx.match.findFirst({
       where: { id: matchId, participants: { some: { playerId } } },
@@ -233,6 +234,8 @@ export async function submitPersistedTempoAnswer(
       terminal,
     }
   }, { maxWait: 5_000, timeout: 15_000 })
+  signalBackgroundWork('tempo-match')
+  return result
 }
 
 function timeoutAnswer(match: LockedTempoMatch, questionIndex: number): TempoAnswerPayload {
@@ -546,6 +549,7 @@ export async function submitAtomicTempoAnswer(
     nextQuestionIndex: payload.questionIndex + 1,
   }
 
+  signalBackgroundWork('tempo-match')
   return {
     snapshot: atomicTempoSnapshot(knownSnapshot, row),
     progress,

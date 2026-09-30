@@ -110,3 +110,18 @@ export function markOutboxFailed(eventId: string, attempts: number, error: unkno
     },
   })
 }
+
+export async function nextOutboxAttemptAt() {
+  const [row] = await prisma.$queryRaw<Array<{ next_attempt_at: Date | null }>>`
+    SELECT MIN(
+      CASE
+        WHEN "status" IN ('pending', 'failed') THEN "available_at"
+        WHEN "status" = 'processing' THEN "locked_at" + INTERVAL '30 seconds'
+        ELSE NULL
+      END
+    ) AS "next_attempt_at"
+    FROM "outbox_events"
+    WHERE "status" IN ('pending', 'failed', 'processing')
+  `
+  return row?.next_attempt_at ?? null
+}

@@ -5,9 +5,10 @@ import { prisma } from '../lib/prisma.js'
 import { requestOutboxDispatch } from './outboxDispatcher.js'
 import { persistMatchExpiredEffects } from './matchOutboxEffects.js'
 import { MATCH_INCLUDE, toMatchView } from './matchServiceView.js'
+import { createAdaptiveWorkerScheduler, IDLE_SCAN_MS } from './adaptiveWorker.js'
+import { signalBackgroundWork, subscribeToBackgroundWork } from './backgroundWorkSignals.js'
 
 const MATCH_EXPIRATION_JOB_KEY = 'match-expiration'
-const MATCH_EXPIRATION_INTERVAL_MS = 15_000
 const MATCH_EXPIRATION_LEASE_MS = 30_000
 const COMPLETED_ROOM_TTL_MS = 2 * 60 * 1_000
 const ACTIVE_MATCH_STATUSES = ['pending', 'accepted', 'ready', 'in_progress'] as const
@@ -102,6 +103,20 @@ export async function runMatchExpirationSweep(ownerId = `match-expiration:${rand
   }
 }
 
+async function nextMatchExpirationAt(now = new Date()) {
+  const match = await prisma.match.findFirst({
+    where: {
+      OR: [
+        { status: { in: [...ACTIVE_MATCH_STATUSES] } },
+        { status: 'completed', expiresAt: { gt: now } },
+      ],
+    },
+    orderBy: { expiresAt: 'asc' },
+    select: { expiresAt: true },
+  })
+  return match?.expiresAt ?? null
+}
+
 export function getMatchExpirationWorkerHealth() {
   return {
     started: workerStarted,
@@ -113,38 +128,50 @@ export function getMatchExpirationWorkerHealth() {
 
 export function startMatchExpirationWorker() {
   const ownerId = `match-expiration:${process.pid}:${randomUUID()}`
-  let sweepPromise: Promise<unknown> | null = null
-
-  const sweep = () => {
-    if (sweepPromise) return sweepPromise
-    workerRunning = true
-    sweepPromise = runMatchExpirationSweep(ownerId)
-      .then((result) => {
-        lastSucceededAt = new Date()
-        lastFailedAt = null
-        return result
+  const scheduler = createAdaptiveWorkerScheduler({
+    name: 'match-expiration',
+    initialIdleDelayMs: IDLE_SCAN_MS,
+    maxIdleDelayMs: IDLE_SCAN_MS,
+    overdueRetryDelayMs: 1_000,
+    run: async () => {
+      const now = new Date()
+      const pendingExpiration = await nextMatchExpirationAt(now)
+      if (!pendingExpiration || pendingExpiration > now) {
+        return { workCount: 0, nextRunAt: pendingExpiration }
+      }
+      const result = await runMatchExpirationSweep(ownerId)
+      return {
+        workCount: result.expiredMatches,
+        nextRunAt: result.acquired
+          ? await nextMatchExpirationAt()
+          : new Date(Date.now() + MATCH_EXPIRATION_LEASE_MS),
+      }
+    },
+    onRunStarted: () => { workerRunning = true },
+    onRunSucceeded: () => {
+      lastSucceededAt = new Date()
+      lastFailedAt = null
+    },
+    onRunFailed: (error) => {
+      lastFailedAt = new Date()
+      logger.error('match_expiration_sweep_failed', {
+        message: error instanceof Error ? error.message : String(error),
       })
-      .catch((error) => {
-        lastFailedAt = new Date()
-        logger.error('match_expiration_sweep_failed', {
-          message: error instanceof Error ? error.message : String(error),
-        })
-      })
-      .finally(() => {
-        sweepPromise = null
-        workerRunning = false
-      })
-    return sweepPromise
-  }
+    },
+    onRunFinished: () => { workerRunning = false },
+  })
+  const unsubscribe = subscribeToBackgroundWork('match-expiration', () => scheduler.wake())
 
   workerStarted = true
-  void sweep()
-  const timer = setInterval(() => void sweep(), MATCH_EXPIRATION_INTERVAL_MS)
-  timer.unref()
+  scheduler.start()
 
   return async () => {
-    clearInterval(timer)
+    unsubscribe()
     workerStarted = false
-    await sweepPromise
+    await scheduler.stop()
   }
+}
+
+export function requestMatchExpirationSweep() {
+  signalBackgroundWork('match-expiration')
 }
