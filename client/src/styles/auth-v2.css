@@ -51,6 +51,15 @@
   color: #ffffff;
 }
 
+.auth-captcha-instruction {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #e1f6f1;
+  color: var(--primary-dark);
+  font-weight: 700;
+}
+
 @keyframes authCardEnter {
   from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: translateY(0); }

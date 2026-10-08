@@ -1,5 +1,5 @@
 import { useClerk } from '@clerk/react'
-import { type FormEvent, useState } from 'react'
+import { type FormEvent, useEffect, useRef, useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/auth'
 import { api } from '../lib/api'
@@ -62,7 +62,35 @@ export function RegisterPage() {
   const [verificationCode, setVerificationCode] = useState('')
   const [submittedEmail, setSubmittedEmail] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [captchaRequired, setCaptchaRequired] = useState(false)
+  const [verificationIsTakingLong, setVerificationIsTakingLong] = useState(false)
   const [error, setError] = useState('')
+  const captchaRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (step !== 'details') return
+
+    const captchaElement = captchaRef.current
+    if (!captchaElement) return
+
+    const observer = new MutationObserver(() => {
+      if (!captchaElement.querySelector('iframe')) return
+
+      setCaptchaRequired(true)
+      captchaElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      observer.disconnect()
+    })
+
+    observer.observe(captchaElement, { childList: true, subtree: true })
+    return () => observer.disconnect()
+  }, [step])
+
+  useEffect(() => {
+    if (!submitting) return
+
+    const timeoutId = window.setTimeout(() => setVerificationIsTakingLong(true), 30_000)
+    return () => window.clearTimeout(timeoutId)
+  }, [submitting])
 
   const isLoaded = Boolean(signUp && setActive)
   const clerkBusy = !isLoaded
@@ -135,6 +163,8 @@ export function RegisterPage() {
     }
 
     setSubmitting(true)
+    setCaptchaRequired(false)
+    setVerificationIsTakingLong(false)
     setError('')
 
     try {
@@ -320,12 +350,26 @@ export function RegisterPage() {
                   ))}
                 </div>
 
-                <div id="clerk-captcha" />
+                <div id="clerk-captcha" ref={captchaRef} data-cl-language="fr-FR" data-cl-size="flexible" />
+
+                {captchaRequired && submitting ? (
+                  <p className="auth-captcha-instruction" role="status">
+                    Pour continuer, cochez la case de vérification antirobot ci-dessus.
+                  </p>
+                ) : null}
+                {verificationIsTakingLong ? (
+                  <div className="form-error" role="alert">
+                    La vérification prend trop de temps. Si la case antirobot ne répond pas,{' '}
+                    <button className="inline-link auth-link-button" type="button" onClick={() => window.location.reload()}>
+                      rechargez la page et réessayez
+                    </button>.
+                  </div>
+                ) : null}
 
                 {error ? <div className="form-error">{error}</div> : null}
 
                 <button className="primary-button full-width" type="submit" disabled={!canCreateAccount}>
-                  {submitting ? 'Création...' : 'Créer et vérifier mon compte'}
+                  {submitting && captchaRequired ? 'Vérification antirobot...' : submitting ? 'Création...' : 'Créer et vérifier mon compte'}
                 </button>
               </form>
 
