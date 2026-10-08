@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // --- Mocks ---
 
@@ -63,6 +63,8 @@ const {
 
 // --- Tests ---
 
+beforeEach(() => vi.clearAllMocks())
+
 describe('isPlayerProfileComplete', () => {
   it('retourne true si tous les champs obligatoires sont présents', () => {
     expect(
@@ -113,6 +115,16 @@ describe('getOrCreatePlayer', () => {
     expect(prismaMock.player.create).toHaveBeenCalled()
     expect(player.id).toBe('player_new')
   })
+
+  it('returns the player created by a concurrent request', async () => {
+    prismaMock.player.findUnique
+      .mockResolvedValueOnce(null as unknown as typeof existingPlayer)
+      .mockResolvedValueOnce(existingPlayer)
+    prismaMock.player.create.mockRejectedValueOnce({ code: 'P2002' })
+
+    await expect(getOrCreatePlayer('clerk_123')).resolves.toEqual(existingPlayer)
+    expect(prismaMock.player.findUnique).toHaveBeenCalledTimes(2)
+  })
 })
 
 describe('getCurrentPlayer', () => {
@@ -125,6 +137,26 @@ describe('getCurrentPlayer', () => {
 })
 
 describe('upsertPlayerProfile', () => {
+  it('completes the profile when a concurrent read creates the player', async () => {
+    const incompletePlayer = { ...existingPlayer, firstName: null, lastName: null, birthDate: null, username: null }
+    prismaMock.player.findUnique
+      .mockResolvedValueOnce(null as unknown as typeof existingPlayer)
+      .mockResolvedValueOnce(incompletePlayer as unknown as typeof existingPlayer)
+    prismaMock.player.create.mockRejectedValueOnce({ code: 'P2002' })
+    prismaMock.player.update.mockResolvedValueOnce(existingPlayer)
+
+    await expect(upsertPlayerProfile('clerk_123', {
+      firstName: 'Awa',
+      lastName: 'Diallo',
+      birthDate: new Date('2000-01-01'),
+      username: 'awa',
+    })).resolves.toEqual(existingPlayer)
+    expect(prismaMock.player.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'player_1' },
+      data: expect.objectContaining({ username: 'awa' }),
+    }))
+  })
+
   it('rejette avec ProfileServiceError si le username est verrouillé et différent', async () => {
     prismaMock.player.findUnique.mockResolvedValue(existingPlayer)
     prismaMock.player.update.mockResolvedValue(existingPlayer)

@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   setActive: vi.fn(),
   getToken: vi.fn(),
   updateProfile: vi.fn(),
+  applyProfile: vi.fn(),
   signUp: {
     create: vi.fn(),
     prepareEmailAddressVerification: vi.fn(),
@@ -28,6 +29,7 @@ vi.mock('../context/auth', () => ({
 }))
 
 vi.mock('../lib/api', () => ({ api: { updateProfile: mocks.updateProfile } }))
+vi.mock('../context/profile-context', () => ({ useProfile: () => ({ applyProfile: mocks.applyProfile }) }))
 
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom')
@@ -49,7 +51,11 @@ describe('RegisterPage', () => {
     vi.clearAllMocks()
     mocks.getToken.mockResolvedValue('session-token')
     mocks.setActive.mockResolvedValue(undefined)
-    mocks.updateProfile.mockResolvedValue({})
+    mocks.updateProfile.mockResolvedValue({ user: {
+      id: 'player_1',
+      clerkUserId: 'clerk_123',
+      profileComplete: true,
+    } })
     Object.defineProperty(Element.prototype, 'scrollIntoView', { configurable: true, value: vi.fn() })
   })
 
@@ -97,6 +103,10 @@ describe('RegisterPage', () => {
         timeZone: expect.any(String),
       })
       expect(mocks.navigate).toHaveBeenCalledWith('/dashboard', { replace: true })
+      expect(mocks.applyProfile).toHaveBeenCalledWith(expect.objectContaining({
+        clerkUserId: 'clerk_123',
+        profileComplete: true,
+      }))
     })
   })
 })

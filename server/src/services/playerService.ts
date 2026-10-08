@@ -56,6 +56,27 @@ function profileDisplayName(firstName: string | null, lastName: string | null, f
   return candidate || fallbackName
 }
 
+async function createPlayerFromClerk(clerkUserId: string, clerkUser: Awaited<ReturnType<typeof getClerkUser>>) {
+  try {
+    return await prisma.player.create({
+      data: {
+        clerkUserId,
+        email: clerkUser.primaryEmailAddress?.emailAddress ?? null,
+        name: displayNameFromClerk(clerkUser),
+        avatarUrl: avatarUrlFromClerk(clerkUser),
+      },
+    })
+  } catch (error) {
+    // A profile fetch and the registration write can create the same player at once.
+    // The unique Clerk ID is the cross-process arbiter; return the winning row.
+    if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002') {
+      const player = await prisma.player.findUnique({ where: { clerkUserId } })
+      if (player) return player
+    }
+    throw error
+  }
+}
+
 export function isPlayerProfileComplete(player: {
   firstName: string | null
   lastName: string | null
@@ -74,14 +95,7 @@ export async function getOrCreatePlayer(clerkUserId: string) {
 
   const clerkUser = await getCachedClerkUser(clerkUserId)
 
-  return prisma.player.create({
-    data: {
-      clerkUserId,
-      email: clerkUser.primaryEmailAddress?.emailAddress ?? null,
-      name: displayNameFromClerk(clerkUser),
-      avatarUrl: avatarUrlFromClerk(clerkUser),
-    },
-  })
+  return createPlayerFromClerk(clerkUserId, clerkUser)
 }
 
 export async function syncPlayerProfile(clerkUserId: string) {
@@ -109,14 +123,7 @@ export async function syncPlayerProfile(clerkUserId: string) {
     })
   }
 
-  return prisma.player.create({
-    data: {
-      clerkUserId,
-      email: clerkUser.primaryEmailAddress?.emailAddress ?? null,
-      name: fallbackName,
-      avatarUrl: avatarUrlFromClerk(clerkUser),
-    },
-  })
+  return createPlayerFromClerk(clerkUserId, clerkUser)
 }
 
 export async function getCurrentPlayer(clerkUserId: string) {

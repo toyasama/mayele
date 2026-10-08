@@ -6,6 +6,7 @@ export type ProfileContextValue = {
   profileLoading: boolean
   profileError: string | null
   refreshProfile: () => Promise<void>
+  applyProfile: (profile: AuthUser) => void
   updateProfilePresence: (presence: Pick<AuthUser, 'id' | 'presenceStatus' | 'presenceUpdatedAt'>) => void
 }
 
@@ -14,6 +15,7 @@ export const ProfileContext = createContext<ProfileContextValue>({
   profileLoading: true,
   profileError: null,
   refreshProfile: async () => {},
+  applyProfile: () => {},
   updateProfilePresence: () => {},
 })
 

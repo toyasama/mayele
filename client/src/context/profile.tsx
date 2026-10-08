@@ -13,8 +13,10 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
   const [profileLoading, setProfileLoading] = useState(false)
   const [profileError, setProfileError] = useState<string | null>(null)
   const fetchedForRef = useRef<string | null>(null)
+  const requestVersionRef = useRef(0)
 
   const fetchProfile = useCallback(async () => {
+    const requestVersion = ++requestVersionRef.current
     setProfileError(null)
 
     if (!isAuthenticated) {
@@ -33,19 +35,30 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
 
     try {
       const payload = await api.getMe(getToken)
+      if (requestVersion !== requestVersionRef.current) return
       setProfile(payload.user)
       if (cacheKey) {
         writeCache(cacheKey, payload.user)
       }
     } catch (caughtError) {
+      if (requestVersion !== requestVersionRef.current) return
       if (!cachedProfile) {
         setProfile((current) => current)
       }
       setProfileError(caughtError instanceof Error ? caughtError.message : 'Impossible de charger votre profil.')
     } finally {
-      setProfileLoading(false)
+      if (requestVersion === requestVersionRef.current) setProfileLoading(false)
     }
   }, [cacheKey, isAuthenticated, getToken])
+
+  const applyProfile = useCallback((updatedProfile: AuthUser) => {
+    // A GET started during sign-up may still contain the incomplete player.
+    ++requestVersionRef.current
+    setProfile(updatedProfile)
+    setProfileLoading(false)
+    setProfileError(null)
+    writeCache(userCacheKey(PROFILE_CACHE_PREFIX, updatedProfile.clerkUserId), updatedProfile)
+  }, [])
 
   const updateProfilePresence = useCallback((presence: Pick<AuthUser, 'id' | 'presenceStatus' | 'presenceUpdatedAt'>) => {
     setProfile((current) => {
@@ -83,7 +96,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
   }, [cacheKey, isAuthenticated, fetchProfile, user?.clerkUserId])
 
   return (
-    <ProfileContext.Provider value={{ profile, profileLoading, profileError, refreshProfile: fetchProfile, updateProfilePresence }}>
+    <ProfileContext.Provider value={{ profile, profileLoading, profileError, refreshProfile: fetchProfile, applyProfile, updateProfilePresence }}>
       {children}
     </ProfileContext.Provider>
   )

@@ -2,6 +2,7 @@ import { useClerk } from '@clerk/react'
 import { type FormEvent, useEffect, useRef, useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/auth'
+import { useProfile } from '../context/profile-context'
 import { api } from '../lib/api'
 import { clerkErrorMessage } from '../lib/clerkErrors'
 import { dateInputLimit, isValidBirthDate, USERNAME_PATTERN } from '../lib/profile'
@@ -53,6 +54,7 @@ function detectedSignupTimeZone() {
 
 export function RegisterPage() {
   const { isAuthenticated, loading, getToken } = useAuth()
+  const { applyProfile } = useProfile()
   const clerk = useClerk()
   const signUp = clerk.client?.signUp
   const setActive = clerk.setActive
@@ -139,7 +141,8 @@ export function RegisterPage() {
     await waitForActiveSessionToken(getToken)
 
     try {
-      await api.updateProfile(getToken, profileDraft())
+      const { user: updatedProfile } = await api.updateProfile(getToken, profileDraft())
+      applyProfile(updatedProfile)
       navigate('/dashboard', { replace: true })
     } catch {
       navigate('/profil/configuration', {
