@@ -65,7 +65,9 @@ describe('RegisterPage', () => {
     expect(captcha).not.toBeNull()
     expect(captcha?.getAttribute('data-cl-language')).toBe('fr-FR')
     expect(captcha?.getAttribute('data-cl-size')).toBe('flexible')
-    captcha?.appendChild(document.createElement('iframe'))
+    // Clerk mounts the Cloudflare widget inside a div; the challenge internals
+    // can live in a shadow tree, so there is no iframe to query from our page.
+    captcha?.appendChild(document.createElement('div'))
 
     expect(await screen.findByRole('status')).toHaveTextContent('cochez la case de vérification antirobot')
     expect(Element.prototype.scrollIntoView).toHaveBeenCalled()

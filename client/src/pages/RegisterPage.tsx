@@ -74,7 +74,7 @@ export function RegisterPage() {
     if (!captchaElement) return
 
     const observer = new MutationObserver(() => {
-      if (!captchaElement.querySelector('iframe')) return
+      if (!captchaElement.firstElementChild) return
 
       setCaptchaRequired(true)
       captchaElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
